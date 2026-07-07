@@ -1,0 +1,26 @@
+{
+  "incidents": [
+    {"id": "i01", "lat": 47.5805, "lon": -122.0910, "type": "water_rescue"},
+    {"id": "i02", "lat": 47.5810, "lon": -122.0914, "type": "swimmer_distress"},
+    {"id": "i03", "lat": 47.5798, "lon": -122.0906, "type": "water_rescue"},
+    {"id": "i04", "lat": 47.5860, "lon": -122.0960, "type": "swimmer_distress"},
+    {"id": "i05", "lat": 47.6002, "lon": -122.0832, "type": "boating_assist"},
+    {"id": "i06", "lat": 47.5678, "lon": -122.0992, "type": "water_rescue"}
+  ],
+  "depth_contours": [
+    {"id": "d01", "lat": 47.5808, "lon": -122.0912, "severity": 0.95},
+    {"id": "d02", "lat": 47.5865, "lon": -122.0965, "severity": 0.75},
+    {"id": "d03", "lat": 47.5998, "lon": -122.0830, "severity": 0.55},
+    {"id": "d04", "lat": 47.5680, "lon": -122.0990, "severity": 0.65},
+    {"id": "d05", "lat": 47.5930, "lon": -122.0880, "severity": 0.35},
+    {"id": "d06", "lat": 47.5600, "lon": -122.0805, "severity": 0.45}
+  ],
+  "access_points": [
+    {"id": "a01", "name": "Idylwood", "lat": 47.5807, "lon": -122.0909, "crowding": 1.0},
+    {"id": "a02", "name": "Vasa", "lat": 47.5862, "lon": -122.0963, "crowding": 0.7},
+    {"id": "a03", "name": "Marymoor", "lat": 47.6000, "lon": -122.0835, "crowding": 0.8},
+    {"id": "a04", "name": "South Cove", "lat": 47.5684, "lon": -122.0994, "crowding": 0.6},
+    {"id": "a05", "name": "East Lake", "lat": 47.5932, "lon": -122.0884, "crowding": 0.4},
+    {"id": "a06", "name": "North Bend", "lat": 47.6045, "lon": -122.0798, "crowding": 0.3}
+  ]
+}

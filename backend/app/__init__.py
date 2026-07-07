@@ -1,0 +1,1 @@
+"""LakeSafe Initiative backend package."""

@@ -1,0 +1,22 @@
+[project]
+name = "lakesafe-cac-backend"
+version = "0.1.0"
+description = "LakeSafe Initiative CAC backend for drone surveillance demo"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "websockets",
+    "ultralytics",
+    "shapely",
+    "geopandas",
+    "sodapy",
+    "numpy",
+    "scipy",
+    "pydantic",
+    "supabase",
+    "pytest",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
