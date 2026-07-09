@@ -35,6 +35,12 @@ body {
   text-transform: uppercase;
 }
 
+.operator-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .source-badge {
   display: inline-flex;
   align-items: center;
