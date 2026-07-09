@@ -25,3 +25,10 @@ def test_positions_ws_receives_state_with_source():
         payload = ws.receive_json()
     assert payload["drones"]
     assert "source" in payload["drones"][0]
+
+
+def test_startup_launches_background_tick_task_that_stays_alive():
+    with TestClient(app) as client:
+        task = getattr(client.app.state, "tick_task", None)
+        assert task is not None
+        assert not task.done()

@@ -1,18 +1,21 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import asdict, is_dataclass
 from datetime import datetime
 
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
 from app.coordination.engine import SimulationEngine
 from app.detection.detector import ThermalDetector
 from app.detection.temporal import TemporalPersistenceFilter
 from app.models import Detection, Drone, DroneStatus, LatLon
 from app.pipeline.alerts import AlertRepository, InMemoryBackend, assemble_alert
-from app.pipeline.ws import ConnectionHub
+from app.pipeline.ws import ConnectionHub, tick_loop
 from app.risk_zones.heatmap import zones_to_geojson
 from app.risk_zones.scoring import compute_risk_zones
+
+TICK_INTERVAL_S = 0.5
 
 app = FastAPI(title="LakeSafe Initiative Demo API")
 
@@ -85,5 +88,27 @@ async def positions_ws(websocket: WebSocket):
     await hub.connect(websocket)
     try:
         await websocket.send_json(current_state())
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
     finally:
         hub.disconnect(websocket)
+
+
+@app.on_event("startup")
+async def _start_tick_loop() -> None:
+    app.state.tick_task = asyncio.create_task(
+        tick_loop(engine, hub, _jsonable, interval=TICK_INTERVAL_S)
+    )
+
+
+@app.on_event("shutdown")
+async def _stop_tick_loop() -> None:
+    task = getattr(app.state, "tick_task", None)
+    if task is not None:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
