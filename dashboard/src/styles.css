@@ -57,3 +57,80 @@ body {
   color: #14532d;
   border: 1px solid #2f9e44;
 }
+
+.operator-layout {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.lake-map {
+  height: 520px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #c7d6d0;
+}
+
+.side-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.drone-roster {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.drone-roster th,
+.drone-roster td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid #dbe6e2;
+}
+
+.risk-zone--proxy {
+  opacity: 0.85;
+}
+
+.alert-panel {
+  border: 1px solid #c7d6d0;
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.alert-panel--empty {
+  color: #4d6261;
+  font-size: 14px;
+}
+
+.alert-panel__dispatch {
+  margin-top: 8px;
+  height: 48px;
+  font-size: 16px;
+  font-weight: 700;
+  border-radius: 6px;
+  border: none;
+  background: #14532d;
+  color: white;
+  cursor: pointer;
+}
+
+.alert-panel__dispatch:disabled {
+  background: #9db8ad;
+  cursor: not-allowed;
+}
+
+.alert-panel__operator-assist {
+  background: #fff2cc;
+  border: 1px solid #d6a500;
+  color: #6f4d00;
+  padding: 8px;
+  border-radius: 4px;
+  font-size: 13px;
+}
