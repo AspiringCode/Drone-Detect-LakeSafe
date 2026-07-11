@@ -32,3 +32,9 @@ def test_startup_launches_background_tick_task_that_stays_alive():
         task = getattr(client.app.state, "tick_task", None)
         assert task is not None
         assert not task.done()
+
+
+def test_riskmap_allows_cross_origin_dashboard_dev_server():
+    client = TestClient(app)
+    response = client.get("/api/riskmap", headers={"Origin": "http://localhost:5173"})
+    assert response.headers.get("access-control-allow-origin") == "http://localhost:5173"

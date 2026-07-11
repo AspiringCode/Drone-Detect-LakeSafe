@@ -5,6 +5,7 @@ from dataclasses import asdict, is_dataclass
 from datetime import datetime
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.coordination.engine import SimulationEngine
 from app.detection.detector import ThermalDetector
@@ -18,6 +19,15 @@ from app.risk_zones.scoring import compute_risk_zones
 TICK_INTERVAL_S = 0.5
 
 app = FastAPI(title="LakeSafe Initiative Demo API")
+
+# Local-dev dashboard runs on Vite's default port; CAC judges run this locally,
+# not behind a shared origin, so permissive localhost/127.0.0.1 dev ports are fine.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 zones = compute_risk_zones(grid_n=3, use_fixture=True)
 drones = [
