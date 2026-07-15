@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, Protocol
+from typing import Literal, Protocol, runtime_checkable
 
 from app.models import LatLon
 
@@ -25,6 +25,7 @@ class ClusterZone:
     category_weights: dict[str, float]
 
 
+@runtime_checkable
 class ZoneClusterStrategy(Protocol):
     def refine(
         self, points: list[WeightedPoint], bbox: tuple[float, float, float, float]

@@ -37,3 +37,7 @@ def test_stub_satisfies_protocol_shape():
     result = strategy.refine([], (47.556, -122.104, 47.606, -122.078))
     assert len(result) == 1
     assert isinstance(result[0], ClusterZone)
+
+
+def test_stub_is_runtime_instance_of_protocol():
+    assert isinstance(_StubStrategy(), ZoneClusterStrategy)
