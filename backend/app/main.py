@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import asdict, is_dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -82,7 +82,7 @@ def demo_trigger():
     engine.trigger_detection(zones[0].zone_id, at=at)
     state = engine.step(30.0)
     drone = state["drones"][0]
-    detected_at = datetime.utcnow()
+    detected_at = datetime.now(timezone.utc)
     detection = Detection(0, (10.0, 10.0, 5.0, 5.0), 0.9, detected_at, source="simulated")
     alert = assemble_alert(detection, drone, confirmed=bool(state.get("confirmed")), clip_ref=None, detected_at=detected_at)
     alerts.save(alert)

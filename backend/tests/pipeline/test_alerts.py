@@ -1,11 +1,11 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from app.models import Detection, Drone, DroneStatus, LatLon
 from app.pipeline.alerts import AlertRepository, InMemoryBackend, assemble_alert
 
 
 def test_assemble_alert_sets_latency_source_and_confirmed():
-    detected_at = datetime.utcnow() - timedelta(milliseconds=5)
+    detected_at = datetime.now(timezone.utc) - timedelta(milliseconds=5)
     detection = Detection(0, (1.0, 2.0, 3.0, 4.0), 0.9, detected_at, "simulated")
     drone = Drone("d1", LatLon(47.58, -122.09), 0.9, DroneStatus.INVESTIGATING, "z1")
     alert = assemble_alert(detection, drone, confirmed=True, clip_ref="clips/a.npy", detected_at=detected_at)
@@ -16,10 +16,20 @@ def test_assemble_alert_sets_latency_source_and_confirmed():
     assert alert.confirmed is True
 
 
+def test_assemble_alert_uses_timezone_aware_utc_timestamp():
+    detected_at = datetime.now(timezone.utc)
+    detection = Detection(0, (1.0, 2.0, 3.0, 4.0), 0.9, detected_at, "simulated")
+    drone = Drone("d1", LatLon(47.58, -122.09), 0.9, DroneStatus.INVESTIGATING, "z1")
+
+    alert = assemble_alert(detection, drone, confirmed=True, clip_ref=None, detected_at=detected_at)
+
+    assert alert.created_at.tzinfo is timezone.utc
+
+
 def test_in_memory_repository_saves_and_retrieves_alert():
     backend = InMemoryBackend()
     repo = AlertRepository(backend)
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     alert = assemble_alert(
         Detection(0, (1, 1, 2, 2), 0.8, now, "real"),
         Drone("d1", LatLon(47.58, -122.09), 1.0, DroneStatus.IDLE, None, source="real"),

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.models import Alert, Detection, Drone, DroneStatus, LatLon, RiskZone
 
@@ -41,7 +41,7 @@ def test_risk_zone_accepts_explicit_radius_m():
 def test_alert_latency_optional():
     a = Alert(
         "a1",
-        datetime.utcnow(),
+        datetime.now(timezone.utc),
         LatLon(47.58, -122.09),
         "thermal-cv",
         "d1",
@@ -58,7 +58,7 @@ def test_detection_carries_explicit_source():
         0,
         (10.0, 10.0, 4.0, 4.0),
         0.9,
-        datetime.utcnow(),
+        datetime.now(timezone.utc),
         source="simulated",
     )
     assert det.source == "simulated"

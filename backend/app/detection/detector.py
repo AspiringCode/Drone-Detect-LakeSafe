@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 import numpy as np
 
@@ -44,7 +44,7 @@ class ThermalDetector:
                         frame_idx=frame_idx,
                         bbox=(float(x1), float(y1), float(x2 - x1), float(y2 - y1)),
                         confidence=max(0.0, min(1.0, conf)),
-                        timestamp=datetime.utcnow(),
+                        timestamp=datetime.now(timezone.utc),
                         source=self.source,
                     )
                 )

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from app.config import SUPABASE_KEY, SUPABASE_URL
@@ -15,7 +15,7 @@ def assemble_alert(
     clip_ref: str | None,
     detected_at: datetime,
 ) -> Alert:
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     latency_ms = max(0, int((now - detected_at).total_seconds() * 1000))
     return Alert(
         alert_id=f"alert-{uuid4().hex}",

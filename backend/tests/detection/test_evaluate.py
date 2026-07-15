@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.detection.dataset import make_fixture_dataset
 from app.detection.evaluate import evaluate
@@ -13,9 +13,9 @@ class StubDetector:
     def detect(self, frame, frame_idx: int):
         self.calls += 1
         if self.calls <= 8:
-            return [Detection(frame_idx, (54.0, 47.0, 10.0, 10.0), 0.9, datetime.utcnow(), "simulated")]
+            return [Detection(frame_idx, (54.0, 47.0, 10.0, 10.0), 0.9, datetime.now(timezone.utc), "simulated")]
         if self.calls == 11:
-            return [Detection(frame_idx, (5.0, 5.0, 8.0, 8.0), 0.8, datetime.utcnow(), "simulated")]
+            return [Detection(frame_idx, (5.0, 5.0, 8.0, 8.0), 0.8, datetime.now(timezone.utc), "simulated")]
         return []
 
 

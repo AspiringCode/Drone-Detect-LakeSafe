@@ -1,11 +1,11 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.detection.temporal import TemporalPersistenceFilter
 from app.models import Detection
 
 
 def mk_det(frame_idx: int, bbox=(10.0, 10.0, 5.0, 5.0)) -> Detection:
-    return Detection(frame_idx, bbox, 0.9, datetime.utcnow(), source="simulated")
+    return Detection(frame_idx, bbox, 0.9, datetime.now(timezone.utc), source="simulated")
 
 
 def test_single_frame_blip_suppressed():
