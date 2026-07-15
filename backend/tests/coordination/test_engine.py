@@ -46,3 +46,35 @@ def test_step_deconflicts_altitudes():
     st = eng.step(1.0)
     assert detect_conflicts(st["drones"], altitudes=st["altitudes"]) == []
     assert all(d.source == "simulated" for d in st["drones"])
+
+
+def mk_circular_zone(zone_id: str, at: LatLon, radius_m: float = 60.0) -> RiskZone:
+    return RiskZone(zone_id, at, [at, at, at, at], 1.0, {}, is_proxy=False, radius_m=radius_m)
+
+
+def test_patrolling_drone_on_circular_zone_advances_around_waypoints():
+    drones = [Drone("d0", LatLon(47.579, -122.091), 1.0, DroneStatus.IDLE, None)]
+    zone = mk_circular_zone("z1", LatLon(47.58, -122.09))
+    eng = SimulationEngine(drones, [zone], [])
+    eng.drones[0].status = DroneStatus.EN_ROUTE
+    eng.targets["d0"] = zone.centroid
+
+    st = eng.step(20.0)
+    assert st["drones"][0].status == DroneStatus.PATROLLING
+    pos_after_arrival = st["drones"][0].pos
+
+    st = eng.step(5.0)
+    assert st["drones"][0].pos != pos_after_arrival
+
+
+def test_patrolling_drone_on_grid_zone_still_holds_position():
+    drones = [Drone("d0", LatLon(47.579, -122.091), 1.0, DroneStatus.IDLE, None)]
+    zone = mk_zone("z1")
+    eng = SimulationEngine(drones, [zone], [])
+    eng.drones[0].status = DroneStatus.EN_ROUTE
+    eng.targets["d0"] = zone.centroid
+
+    eng.step(20.0)
+    held_pos = eng.drones[0].pos
+    eng.step(5.0)
+    assert eng.drones[0].pos == held_pos
