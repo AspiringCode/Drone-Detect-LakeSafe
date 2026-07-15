@@ -65,7 +65,7 @@ export function LakeMap({ riskmap, drones }: LakeMapProps) {
       const color = droneMarkerColor(drone.status);
       marker.setStyle({ color, fillColor: color, fillOpacity: 0.9 });
       marker.bindTooltip(
-        `<span class="source-badge source-badge--${drone.source}">${drone.source.toUpperCase()}</span> ${drone.drone_id} &mdash; ${drone.status}`,
+        `<span class="source-badge source-badge--${drone.source}">${drone.source.toUpperCase()}</span> ${drone.drone_id} &mdash; ${drone.status} &mdash; ${drone.assigned_zone ?? "unassigned"}`,
       );
     }
     for (const [id, marker] of markersRef.current) {

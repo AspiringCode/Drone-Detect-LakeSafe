@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.coordination.assignment import haversine_m
+from app.main import app, drones, engine, zones
 
 
 def test_get_riskmap_returns_feature_collection():
@@ -52,3 +53,16 @@ def test_riskmap_can_include_a_circular_cluster_zone():
         if feature["properties"]["zone_id"].startswith("cluster-"):
             coords = feature["geometry"]["coordinates"][0]
             assert coords[0] == coords[-1]
+
+
+def test_simulation_assigns_from_every_rendered_zone():
+    assert engine.zones == zones
+
+
+def test_demo_drones_start_spread_across_lake():
+    pairwise_distances = [
+        haversine_m(left.pos, right.pos)
+        for index, left in enumerate(drones)
+        for right in drones[index + 1 :]
+    ]
+    assert min(pairwise_distances) >= 500.0

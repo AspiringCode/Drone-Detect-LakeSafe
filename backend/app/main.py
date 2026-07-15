@@ -31,11 +31,15 @@ app.add_middleware(
 )
 
 zones = compute_hybrid_zones(grid_n=3, use_fixture=True)
-drones = [
-    Drone(f"d{i}", LatLon(47.579 + i * 0.0002, -122.091), 1.0, DroneStatus.IDLE, None)
-    for i in range(5)
+DEMO_DRONE_POSITIONS = [
+    LatLon(47.600, -122.090),
+    LatLon(47.590, -122.098),
+    LatLon(47.580, -122.084),
+    LatLon(47.570, -122.098),
+    LatLon(47.560, -122.088),
 ]
-engine = SimulationEngine(drones, zones[:5], shore_stations=[])
+drones = [Drone(f"d{i}", position, 1.0, DroneStatus.IDLE, None) for i, position in enumerate(DEMO_DRONE_POSITIONS)]
+engine = SimulationEngine(drones, zones, shore_stations=[])
 alert_backend = InMemoryBackend()
 alerts = AlertRepository(alert_backend)
 hub = ConnectionHub()
