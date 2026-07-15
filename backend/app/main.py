@@ -14,6 +14,7 @@ from app.models import Detection, Drone, DroneStatus, LatLon
 from app.pipeline.alerts import AlertRepository, InMemoryBackend, assemble_alert
 from app.pipeline.ws import ConnectionHub, tick_loop
 from app.risk_zones.heatmap import zones_to_geojson
+from app.risk_zones.hybrid import compute_hybrid_zones
 from app.risk_zones.scoring import compute_risk_zones
 
 TICK_INTERVAL_S = 0.5
@@ -29,7 +30,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-zones = compute_risk_zones(grid_n=3, use_fixture=True)
+zones = compute_hybrid_zones(grid_n=3, use_fixture=True)
 drones = [
     Drone(f"d{i}", LatLon(47.579 + i * 0.0002, -122.091), 1.0, DroneStatus.IDLE, None)
     for i in range(5)

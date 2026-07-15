@@ -38,3 +38,17 @@ def test_riskmap_allows_cross_origin_dashboard_dev_server():
     client = TestClient(app)
     response = client.get("/api/riskmap", headers={"Origin": "http://localhost:5173"})
     assert response.headers.get("access-control-allow-origin") == "http://localhost:5173"
+
+
+def test_riskmap_can_include_a_circular_cluster_zone():
+    client = TestClient(app)
+    response = client.get("/api/riskmap")
+    assert response.status_code == 200
+    # Not asserting a cluster is always present (fixture data may or may not
+    # be dense enough to pass MIN_CLUSTER_WEIGHT) - asserting the shape is
+    # correct when one is: any feature whose properties advertise a cluster
+    # zone_id must have a valid closed-ring polygon.
+    for feature in response.json()["features"]:
+        if feature["properties"]["zone_id"].startswith("cluster-"):
+            coords = feature["geometry"]["coordinates"][0]
+            assert coords[0] == coords[-1]
