@@ -22,6 +22,7 @@ class RiskZone:
     risk_score: float
     components: dict[str, float]
     is_proxy: bool
+    radius_m: float | None = None
 
 
 class DroneStatus(str, Enum):
