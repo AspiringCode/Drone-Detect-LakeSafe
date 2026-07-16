@@ -5,6 +5,9 @@ export interface LatLon {
   lon: number;
 }
 
+export interface Lake { lake_id: string; name: string; }
+export interface LakeCandidate { name: string; lat: number; lon: number; }
+
 export interface RiskZone {
   zone_id: string;
   centroid: LatLon;

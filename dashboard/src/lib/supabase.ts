@@ -10,6 +10,9 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "placeholder
 
 export const supabase: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+/** Narrow injectable client surface used by auth and onboarding screens. */
+export type SupabaseLike = any;
+
 export function subscribeAlerts(onAlert: (alert: Alert) => void, client: SupabaseClient = supabase): () => void {
   const channel = client
     .channel("alerts-changes")

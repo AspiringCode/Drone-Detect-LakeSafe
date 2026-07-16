@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import type { Drone, RiskZone } from "../lib/types";
+import type { Drone, LatLon, RiskZone } from "../lib/types";
 import { droneMarkerColor, riskZoneStyle } from "../lib/mapStyle";
 
 const LAKE_SAMMAMISH_CENTER: L.LatLngExpression = [47.581, -122.091];
@@ -19,13 +19,15 @@ export interface RiskGeoJSON {
 interface LakeMapProps {
   riskmap: RiskGeoJSON | null;
   drones: Drone[];
+  stationLocation?: LatLon;
 }
 
-export function LakeMap({ riskmap, drones }: LakeMapProps) {
+export function LakeMap({ riskmap, drones, stationLocation }: LakeMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const riskLayerRef = useRef<L.GeoJSON | null>(null);
   const markersRef = useRef<Map<string, L.CircleMarker>>(new Map());
+  const stationRef = useRef<L.CircleMarker | null>(null);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -39,6 +41,15 @@ export function LakeMap({ riskmap, drones }: LakeMapProps) {
       mapRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !stationLocation) return;
+    const point: L.LatLngExpression = [stationLocation.lat, stationLocation.lon];
+    if (!stationRef.current) stationRef.current = L.circleMarker(point, { radius: 9, color: "#c4332d", fillColor: "#c4332d", fillOpacity: 1, weight: 2 }).addTo(map);
+    stationRef.current.setLatLng(point);
+    stationRef.current.bindTooltip("Shore station");
+  }, [stationLocation]);
 
   useEffect(() => {
     const map = mapRef.current;
