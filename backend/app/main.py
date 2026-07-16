@@ -229,6 +229,8 @@ def deploy_drone(lake_id: str, authorization: str | None = Header(default=None))
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Bearer token is required")
     claims = verify_supabase_jwt(authorization.removeprefix("Bearer "))
+    if claims.get("aal") != "aal2":
+        raise HTTPException(status_code=403, detail="MFA AAL2 is required")
     metadata = get_lake_deployment_metadata(lake_id)
     if metadata is None:
         raise HTTPException(status_code=404, detail="Lake not found")

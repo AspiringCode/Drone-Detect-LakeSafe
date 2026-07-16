@@ -99,7 +99,21 @@ def test_all_lake_scoped_http_endpoints_return_404_for_unknown_lakes(method, pat
 
 
 def test_deploy_rejects_non_owner(monkeypatch):
-    monkeypatch.setattr("app.main.verify_supabase_jwt", lambda token: {"sub": "not-owner"})
+    monkeypatch.setattr("app.main.verify_supabase_jwt", lambda token: {"sub": "not-owner", "aal": "aal2"})
+    monkeypatch.setattr(
+        "app.main.get_lake_deployment_metadata",
+        lambda lake_id: {"org_id": "org-demo", "owner_user_id": "owner", "drone_inventory_cap": 10},
+    )
+
+    response = TestClient(app).post(
+        f"/api/lakes/{LAKE_ID}/drones/deploy", headers={"Authorization": "Bearer signed-token"}
+    )
+
+    assert response.status_code == 403
+
+
+def test_deploy_rejects_owner_without_aal2(monkeypatch):
+    monkeypatch.setattr("app.main.verify_supabase_jwt", lambda token: {"sub": "owner", "aal": "aal1"})
     monkeypatch.setattr(
         "app.main.get_lake_deployment_metadata",
         lambda lake_id: {"org_id": "org-demo", "owner_user_id": "owner", "drone_inventory_cap": 10},
@@ -138,7 +152,7 @@ def test_deploy_rejects_malformed_jwt_signature(monkeypatch):
 
 def test_deploy_rejects_when_inventory_cap_reached(monkeypatch):
     runtime = lake_runtimes[LAKE_ID]
-    monkeypatch.setattr("app.main.verify_supabase_jwt", lambda token: {"sub": "owner"})
+    monkeypatch.setattr("app.main.verify_supabase_jwt", lambda token: {"sub": "owner", "aal": "aal2"})
     monkeypatch.setattr(
         "app.main.get_lake_deployment_metadata",
         lambda lake_id: {
@@ -155,10 +169,10 @@ def test_deploy_rejects_when_inventory_cap_reached(monkeypatch):
     assert response.status_code == 409
 
 
-def test_deploy_adds_shore_drone_and_reassigns_zones(monkeypatch):
+def test_deploy_allows_aal2_owner_and_reassigns_zones(monkeypatch):
     runtime = lake_runtimes[LAKE_ID]
     before = len(runtime.engine.drones)
-    monkeypatch.setattr("app.main.verify_supabase_jwt", lambda token: {"sub": "owner"})
+    monkeypatch.setattr("app.main.verify_supabase_jwt", lambda token: {"sub": "owner", "aal": "aal2"})
     monkeypatch.setattr(
         "app.main.get_lake_deployment_metadata",
         lambda lake_id: {"org_id": "org-demo", "owner_user_id": "owner", "drone_inventory_cap": before + 1},
