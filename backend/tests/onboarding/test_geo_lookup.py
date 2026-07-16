@@ -4,7 +4,6 @@ import base64
 import hashlib
 import hmac
 import httpx
-import importlib
 import json
 import time
 import pytest
@@ -51,18 +50,15 @@ def _signed_jwt(secret: str, *, algorithm: str = "HS256") -> str:
 
 
 def _app_with_test_jwt_secret(monkeypatch: pytest.MonkeyPatch):
-    """Reload auth wiring so the endpoint uses this test's configured secret."""
-    monkeypatch.setenv("SUPABASE_JWT_SECRET", TEST_JWT_SECRET)
-    monkeypatch.delenv("SUPABASE_JWT_ISSUER", raising=False)
-    monkeypatch.delenv("SUPABASE_JWT_AUDIENCE", raising=False)
-
+    """Patch the loaded verifier without replacing the shared FastAPI app."""
     import app.auth
-    import app.config
     import app.main
 
-    importlib.reload(app.config)
-    importlib.reload(app.auth)
-    return importlib.reload(app.main)
+    monkeypatch.setattr(app.auth, "SUPABASE_JWT_SECRET", TEST_JWT_SECRET)
+    monkeypatch.setattr(app.auth, "SUPABASE_JWT_ISSUER", None)
+    monkeypatch.setattr(app.auth, "SUPABASE_JWT_AUDIENCE", None)
+
+    return app.main
 
 
 def _organization_payload() -> dict[str, object]:
