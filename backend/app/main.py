@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import asdict, is_dataclass
+from uuid import uuid4
+from dataclasses import asdict, dataclass, is_dataclass
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, ConfigDict, Field
+from supabase import create_client
 
+from app.auth import verify_supabase_jwt
+from app.config import SUPABASE_KEY, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL
 from app.coordination.engine import SimulationEngine
 from app.detection.detector import ThermalDetector
 from app.detection.temporal import TemporalPersistenceFilter
@@ -16,6 +21,7 @@ from app.pipeline.ws import ConnectionHub, tick_loop
 from app.risk_zones.heatmap import zones_to_geojson
 from app.risk_zones.hybrid import compute_hybrid_zones
 from app.risk_zones.scoring import compute_risk_zones
+from app.onboarding.geo_lookup import AddressNotFoundError, lookup_nearby_lakes
 
 TICK_INTERVAL_S = 0.5
 
@@ -30,7 +36,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-zones = compute_hybrid_zones(grid_n=3, use_fixture=True)
+@dataclass
+class LakeRuntime:
+    lake_id: str
+    zones: list
+    engine: SimulationEngine
+    alerts: AlertRepository
+    alert_backend: InMemoryBackend
+    hub: ConnectionHub
+    shore_station: LatLon
+
+
+def _build_sammamish_runtime() -> LakeRuntime:
+    zones = compute_hybrid_zones(grid_n=3, use_fixture=True)
+    shore_station = LatLon(47.606, -122.090)
+    drones = [Drone(f"d{i}", position, 1.0, DroneStatus.IDLE, None) for i, position in enumerate(DEMO_DRONE_POSITIONS)]
+    backend = InMemoryBackend()
+    return LakeRuntime(
+        lake_id="lake-sammamish", zones=zones,
+        engine=SimulationEngine(drones, zones, shore_stations=[shore_station]),
+        alerts=AlertRepository(backend), alert_backend=backend, hub=ConnectionHub(), shore_station=shore_station,
+    )
+
+
 DEMO_DRONE_POSITIONS = [
     LatLon(47.600, -122.090),
     LatLon(47.590, -122.098),
@@ -38,11 +66,51 @@ DEMO_DRONE_POSITIONS = [
     LatLon(47.570, -122.098),
     LatLon(47.560, -122.088),
 ]
-drones = [Drone(f"d{i}", position, 1.0, DroneStatus.IDLE, None) for i, position in enumerate(DEMO_DRONE_POSITIONS)]
-engine = SimulationEngine(drones, zones, shore_stations=[])
-alert_backend = InMemoryBackend()
-alerts = AlertRepository(alert_backend)
-hub = ConnectionHub()
+lake_runtimes: dict[str, LakeRuntime] = {"lake-sammamish": _build_sammamish_runtime()}
+
+
+class NearbyLakesRequest(BaseModel):
+    station_name: str = Field(min_length=1)
+    station_address: str = Field(min_length=1)
+
+
+class OrganizationCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1)
+    station_lat: float
+    station_lon: float
+    lake_name: str = Field(min_length=1)
+    lake_lat: float
+    lake_lon: float
+
+
+def create_organization_and_lake(*, request: OrganizationCreateRequest, owner_user_id: str) -> dict:
+    """Persist onboarding entities with the server's Supabase service credential."""
+    credential = SUPABASE_SERVICE_ROLE_KEY or SUPABASE_KEY
+    if not SUPABASE_URL or not credential:
+        raise RuntimeError("Supabase credentials are not configured")
+    client = create_client(SUPABASE_URL, credential)
+    org_id = f"org-{uuid4()}"
+    lake_id = f"lake-{uuid4()}"
+    client.table("organizations").insert({
+        "org_id": org_id,
+        "name": request.name,
+        # The published request contract does not carry an address. Preserve a
+        # meaningful station label until the authenticated flow supplies it.
+        "station_address": request.name,
+        "station_lat": request.station_lat,
+        "station_lon": request.station_lon,
+        "owner_user_id": owner_user_id,
+    }).execute()
+    client.table("lakes").insert({
+        "lake_id": lake_id,
+        "org_id": org_id,
+        "name": request.lake_name,
+        "centroid_lat": request.lake_lat,
+        "centroid_lon": request.lake_lon,
+    }).execute()
+    return {"org_id": org_id, "lake_id": lake_id}
 
 
 def _jsonable(value):
@@ -61,67 +129,151 @@ def _jsonable(value):
     return value
 
 
-def current_state() -> dict:
-    return _jsonable(engine.step(0.1))
+def get_runtime(lake_id: str) -> LakeRuntime:
+    runtime = lake_runtimes.get(lake_id)
+    if runtime is None:
+        raise HTTPException(status_code=404, detail="Lake runtime not found")
+    return runtime
 
 
-@app.get("/api/riskmap")
-def get_riskmap():
-    return zones_to_geojson(zones)
+def current_state(runtime: LakeRuntime) -> dict:
+    return _jsonable(runtime.engine.step(0.1))
 
 
-@app.get("/api/drones")
-def get_drones():
-    return current_state()
+def get_lake_deployment_metadata(lake_id: str) -> dict[str, object] | None:
+    credential = SUPABASE_SERVICE_ROLE_KEY or SUPABASE_KEY
+    if not SUPABASE_URL or not credential:
+        raise RuntimeError("Supabase credentials are not configured")
+    response = create_client(SUPABASE_URL, credential).table("lakes").select(
+        "org_id,drone_inventory_cap,organizations(owner_user_id)"
+    ).eq("lake_id", lake_id).maybe_single().execute()
+    record = response.data
+    if not record:
+        return None
+    organization = record.get("organizations") or {}
+    if isinstance(organization, list):
+        organization = organization[0] if organization else {}
+    return {
+        "org_id": record["org_id"],
+        "owner_user_id": organization.get("owner_user_id"),
+        "drone_inventory_cap": record["drone_inventory_cap"],
+    }
 
 
-@app.get("/api/alerts")
-def get_alerts():
-    return _jsonable(alert_backend.list())
+@app.post("/api/onboarding/nearby-lakes")
+def nearby_lakes(request: NearbyLakesRequest):
+    try:
+        result = lookup_nearby_lakes(request.station_address)
+    except AddressNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {
+        "station": {"lat": result.coordinates.latitude, "lon": result.coordinates.longitude},
+        "candidates": [
+            {"name": lake.name, "lat": lake.latitude, "lon": lake.longitude}
+            for lake in result.lakes
+        ],
+    }
 
 
-@app.post("/api/demo/trigger")
-def demo_trigger():
-    at = zones[0].centroid
-    engine.trigger_detection(zones[0].zone_id, at=at)
-    state = engine.step(30.0)
+@app.post("/api/onboarding/organizations", status_code=201)
+def create_organization(
+    request: OrganizationCreateRequest, authorization: str | None = Header(default=None)
+):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Bearer token is required")
+    claims = verify_supabase_jwt(authorization.removeprefix("Bearer "))
+    try:
+        return create_organization_and_lake(request=request, owner_user_id=claims["sub"])
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="Organization storage is unavailable") from exc
+
+
+@app.get("/api/lakes/{lake_id}/riskmap")
+def get_riskmap(lake_id: str):
+    return zones_to_geojson(get_runtime(lake_id).zones)
+
+
+@app.get("/api/lakes/{lake_id}/drones")
+def get_drones(lake_id: str):
+    return current_state(get_runtime(lake_id))
+
+
+@app.get("/api/lakes/{lake_id}/alerts")
+def get_alerts(lake_id: str):
+    return _jsonable(get_runtime(lake_id).alert_backend.list())
+
+
+@app.post("/api/lakes/{lake_id}/demo/trigger")
+def demo_trigger(lake_id: str):
+    runtime = get_runtime(lake_id)
+    at = runtime.zones[0].centroid
+    runtime.engine.trigger_detection(runtime.zones[0].zone_id, at=at)
+    state = runtime.engine.step(30.0)
     drone = state["drones"][0]
     detected_at = datetime.now(timezone.utc)
     detection = Detection(0, (10.0, 10.0, 5.0, 5.0), 0.9, detected_at, source="simulated")
     alert = assemble_alert(detection, drone, confirmed=bool(state.get("confirmed")), clip_ref=None, detected_at=detected_at)
-    alerts.save(alert)
+    runtime.alerts.save(alert)
     return _jsonable(alert)
 
 
-@app.post("/api/alerts/{alert_id}/escalate")
-def escalate_alert(alert_id: str):
+@app.post("/api/lakes/{lake_id}/alerts/{alert_id}/escalate")
+def escalate_alert(lake_id: str, alert_id: str):
+    get_runtime(lake_id)
     return {"alert_id": alert_id, "escalated": True}
 
 
-@app.websocket("/ws/positions")
-async def positions_ws(websocket: WebSocket):
-    await hub.connect(websocket)
+@app.post("/api/lakes/{lake_id}/drones/deploy", status_code=201)
+def deploy_drone(lake_id: str, authorization: str | None = Header(default=None)):
+    runtime = get_runtime(lake_id)
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Bearer token is required")
+    claims = verify_supabase_jwt(authorization.removeprefix("Bearer "))
+    metadata = get_lake_deployment_metadata(lake_id)
+    if metadata is None:
+        raise HTTPException(status_code=404, detail="Lake not found")
+    if metadata["owner_user_id"] != claims["sub"]:
+        raise HTTPException(status_code=403, detail="Lake ownership is required")
+    if len(runtime.engine.drones) >= int(metadata["drone_inventory_cap"]):
+        raise HTTPException(status_code=409, detail="Drone inventory cap reached")
+    drone = Drone(f"deploy-{uuid4().hex[:8]}", runtime.shore_station, 1.0, DroneStatus.IDLE, None)
+    runtime.engine.drones.append(drone)
+    runtime.engine.altitudes[drone.drone_id] = 30.0
+    runtime.engine._initial_assign()
+    return {
+        "drone_id": drone.drone_id, "position": _jsonable(drone.pos),
+        "status": drone.status.value, "assigned_zone": drone.assigned_zone,
+    }
+
+
+@app.websocket("/ws/lakes/{lake_id}/positions")
+async def positions_ws(websocket: WebSocket, lake_id: str):
+    runtime = lake_runtimes.get(lake_id)
+    if runtime is None:
+        await websocket.close(code=1008)
+        return
+    await runtime.hub.connect(websocket)
     try:
-        await websocket.send_json(current_state())
+        await websocket.send_json(current_state(runtime))
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
         pass
     finally:
-        hub.disconnect(websocket)
+        runtime.hub.disconnect(websocket)
 
 
 @app.on_event("startup")
 async def _start_tick_loop() -> None:
-    app.state.tick_task = asyncio.create_task(
-        tick_loop(engine, hub, _jsonable, interval=TICK_INTERVAL_S)
-    )
+    app.state.tick_tasks = {
+        lake_id: asyncio.create_task(tick_loop(runtime.engine, runtime.hub, _jsonable, interval=TICK_INTERVAL_S))
+        for lake_id, runtime in lake_runtimes.items()
+    }
 
 
 @app.on_event("shutdown")
 async def _stop_tick_loop() -> None:
-    task = getattr(app.state, "tick_task", None)
-    if task is not None:
+    for task in getattr(app.state, "tick_tasks", {}).values():
         task.cancel()
         try:
             await task
