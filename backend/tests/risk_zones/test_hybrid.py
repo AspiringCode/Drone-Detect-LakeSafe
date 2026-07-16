@@ -37,8 +37,21 @@ def test_boundary_straddling_hotspot_gets_one_precise_cluster_not_diluted_grid_c
     assert cluster.radius_m >= MIN_RADIUS_M
 
 
-def test_grid_cells_outside_any_cluster_pass_through_unchanged():
-    incidents, depths, access = _boundary_straddling_fixture()
+def _single_cell_hotspot_fixture():
+    # Well inside grid_n=2's top-right cell (lat 47.581-47.606, lon
+    # -122.091--122.078 for LAKE_BBOX (47.556,-122.104,47.606,-122.078)) and
+    # nowhere near any cell boundary, so exactly one grid cell should be
+    # suppressed and the other three should pass through untouched.
+    incidents = [
+        {"lat": 47.598, "lon": -122.083},
+        {"lat": 47.599, "lon": -122.0831},
+        {"lat": 47.5985, "lon": -122.0825},
+    ]
+    return incidents, [], []
+
+
+def test_cluster_suppresses_only_the_grid_cell_it_falls_inside():
+    incidents, depths, access = _single_cell_hotspot_fixture()
     with (
         patch("app.risk_zones.hybrid.fetch_incidents", return_value=incidents),
         patch("app.risk_zones.hybrid.fetch_depth_contours", return_value=depths),
@@ -51,8 +64,33 @@ def test_grid_cells_outside_any_cluster_pass_through_unchanged():
         expected_grid = compute_risk_zones(grid_n=2, use_fixture=True)
 
     grid_zones = [z for z in zones if not z.zone_id.startswith("cluster-")]
-    assert [zone.zone_id for zone in grid_zones] == [zone.zone_id for zone in expected_grid]
-    assert grid_zones == expected_grid
+    # The top-right cell (z1-1) contains the hotspot and must be replaced by
+    # the cluster; the other three cells must pass through byte-for-byte.
+    assert "z1-1" not in [z.zone_id for z in grid_zones]
+    assert len(grid_zones) == 3
+    for zone in grid_zones:
+        assert zone == next(z for z in expected_grid if z.zone_id == zone.zone_id)
+
+
+def test_grid_never_gets_suppressed_when_cluster_radius_cant_reach_cell_centroids():
+    # Regression test for the reported bug: at the demo's real grid_n=3
+    # resolution, cells are large enough (multi-km) that a cluster's clamped
+    # radius (<=150m) can never reach a cell's own centroid. Suppression must
+    # be based on whether the cluster sits INSIDE the cell, not on distance
+    # to that cell's centroid -- otherwise every grid cell renders alongside
+    # every cluster circle with nothing ever actually replaced.
+    incidents, depths, access = _single_cell_hotspot_fixture()
+    with (
+        patch("app.risk_zones.hybrid.fetch_incidents", return_value=incidents),
+        patch("app.risk_zones.hybrid.fetch_depth_contours", return_value=depths),
+        patch("app.risk_zones.hybrid.fetch_access_points", return_value=access),
+    ):
+        zones = compute_hybrid_zones(grid_n=3, use_fixture=True, k=1)
+
+    grid_zone_ids = [z.zone_id for z in zones if not z.zone_id.startswith("cluster-")]
+    assert len(grid_zone_ids) == 8  # 9 grid cells minus the one the cluster falls inside
+    cluster = next(z for z in zones if z.zone_id.startswith("cluster-"))
+    assert cluster.radius_m <= 150.0
 
 
 def test_sparse_data_produces_no_cluster_and_full_grid_coverage():
