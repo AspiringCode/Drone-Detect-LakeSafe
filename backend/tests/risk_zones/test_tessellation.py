@@ -4,11 +4,14 @@ import pytest
 from shapely.geometry import Point, Polygon
 from shapely.ops import transform, unary_union
 
-from app.models import LatLon
+from app.models import LatLon, RiskZone
 from app.risk_zones.shoreline import load_lake_polygon
 from app.risk_zones.kmeans_strategy import MAX_RADIUS_M, MIN_RADIUS_M
 from app.risk_zones.tessellation import (
     PATROL_EDGE_BUFFER_M,
+    RESPONSE_RADIUS_M,
+    adaptive_seeds,
+    compute_tessellated_zones,
     inscribed_radius,
     project,
     unproject,
@@ -145,3 +148,86 @@ def test_inscribed_radius_circle_with_edge_buffer_fits_generated_cell() -> None:
     )
 
     assert circle_with_buffer.within(cell)
+
+
+def test_adaptive_seeds_keeps_hotspots_when_cells_already_within_reach() -> None:
+    boundary = _projected_sammamish_boundary()
+    hotspots = [LatLon(47.581, -122.090)]
+
+    seeds, kinds = adaptive_seeds(
+        hotspots, boundary, MEAN_LAT, drone_count=5, response_radius_m=1_000_000.0
+    )
+
+    assert seeds == hotspots
+    assert kinds == ["hotspot"]
+
+
+def test_adaptive_seeds_adds_coverage_until_within_reach_or_out_of_drones() -> None:
+    boundary = _projected_sammamish_boundary()
+    hotspots = [LatLon(47.5805, -122.091), LatLon(47.5991, -122.0839)]
+
+    seeds, kinds = adaptive_seeds(
+        hotspots,
+        boundary,
+        MEAN_LAT,
+        drone_count=5,
+        response_radius_m=RESPONSE_RADIUS_M,
+    )
+
+    assert len(seeds) == 4
+    assert kinds[:2] == ["hotspot", "hotspot"]
+    assert kinds[2:] == ["coverage", "coverage"]
+
+
+def test_adaptive_seeds_never_exceeds_drone_count() -> None:
+    boundary = _projected_sammamish_boundary()
+
+    seeds, kinds = adaptive_seeds(
+        [LatLon(47.5805, -122.091)],
+        boundary,
+        MEAN_LAT,
+        drone_count=3,
+        response_radius_m=1.0,
+    )
+
+    assert len(seeds) <= 3
+    assert len(kinds) == len(seeds)
+
+
+def test_produces_coverage_driven_cell_count_not_fixed_to_drone_count() -> None:
+    zones = compute_tessellated_zones("lake-sammamish", drone_count=5, use_fixture=True)
+
+    assert len(zones) == 4
+    assert all(isinstance(zone, RiskZone) for zone in zones)
+    for zone in zones:
+        assert zone.radius_m is not None
+        assert zone.polygon[0] == zone.polygon[-1]
+        assert len(zone.polygon) >= 4
+
+
+def test_hotspot_cells_scored_and_coverage_cells_zeroed() -> None:
+    zones = compute_tessellated_zones("lake-sammamish", drone_count=5, use_fixture=True)
+
+    hotspot_cells = [zone for zone in zones if zone.risk_score > 0.0]
+    coverage_cells = [zone for zone in zones if zone.risk_score == 0.0]
+    assert len(hotspot_cells) == 2
+    assert len(coverage_cells) == 2
+    for zone in coverage_cells:
+        assert zone.components == {}
+        assert zone.is_proxy is True
+
+
+def test_zone_centroids_lie_inside_the_lake() -> None:
+    lake = load_lake_polygon("lake-sammamish")
+    zones = compute_tessellated_zones("lake-sammamish", drone_count=5, use_fixture=True)
+
+    assert all(lake.contains(Point(zone.centroid.lon, zone.centroid.lat)) for zone in zones)
+
+
+def test_cells_cover_the_lake_when_reunioned() -> None:
+    lake = load_lake_polygon("lake-sammamish")
+    zones = compute_tessellated_zones("lake-sammamish", drone_count=5, use_fixture=True)
+    cell_polys = [Polygon([(point.lon, point.lat) for point in zone.polygon]) for zone in zones]
+
+    union = unary_union(cell_polys)
+    assert math.isclose(union.area, lake.area, rel_tol=1e-3)
