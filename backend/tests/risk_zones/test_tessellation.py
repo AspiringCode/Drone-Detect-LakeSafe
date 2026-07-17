@@ -6,6 +6,7 @@ from shapely.ops import transform, unary_union
 
 from app.models import LatLon
 from app.coordination.assignment import haversine_m
+from app.risk_zones.cluster_strategy import ClusterZone
 from app.risk_zones.shoreline import load_lake_polygon
 from app.geo import destination_point
 from app.risk_zones.kmeans_strategy import MAX_RADIUS_M, MIN_RADIUS_M
@@ -154,6 +155,26 @@ def test_patrol_circle_stays_inside_every_generated_cell_at_all_bearings() -> No
             assert cell.buffer(1e-9).contains(Point(project(waypoint, MEAN_LAT)))
 
 
+def test_patrol_rejects_narrow_cell_that_cannot_fit_minimum_circle_at_all_bearings() -> None:
+    """A 40 m-wide cell has only 10 m of radius after the 10 m edge buffer."""
+    metres_per_degree = 111_000
+    center = LatLon(MEAN_LAT, -122.09)
+    half_width_degrees = 20 / metres_per_degree
+    half_height_degrees = 40 / metres_per_degree
+    center_x, center_y = project(center, MEAN_LAT)
+    cell = Polygon(
+        [
+            (center_x - half_width_degrees * math.cos(math.radians(MEAN_LAT)), center_y - half_height_degrees),
+            (center_x + half_width_degrees * math.cos(math.radians(MEAN_LAT)), center_y - half_height_degrees),
+            (center_x + half_width_degrees * math.cos(math.radians(MEAN_LAT)), center_y + half_height_degrees),
+            (center_x - half_width_degrees * math.cos(math.radians(MEAN_LAT)), center_y + half_height_degrees),
+        ]
+    )
+
+    with pytest.raises(ValueError, match="minimum patrol radius"):
+        patrol_center_and_radius(cell, MEAN_LAT)
+
+
 def test_demo_four_final_cells_clamp_to_150m_and_patrols_remain_in_lake() -> None:
     """The four-cell fixture geometry used by the committed Lake Sammamish demo."""
     boundary = _projected_sammamish_boundary()
@@ -188,6 +209,35 @@ def test_adaptive_seeds_deduplicates_hotspots_before_reserving_fleet_capacity() 
     assert seeds[:2] == [hotspot, LatLon(47.5991, -122.0839)]
     assert kinds[:2] == ["hotspot", "hotspot"]
     assert len(seeds) <= 2  # one drone is always kept on standby
+
+
+def test_duplicate_hotspot_centroids_retain_first_cluster_metadata() -> None:
+    first = ClusterZone(
+        centroid=LatLon(47.5805, -122.0910), radius_m=40, weight=10, member_count=3,
+        category_weights={"incidents": 10},
+    )
+    duplicate = ClusterZone(
+        centroid=first.centroid, radius_m=40, weight=100, member_count=1,
+        category_weights={"crowding": 100},
+    )
+    second = ClusterZone(
+        centroid=LatLon(47.5991, -122.0839), radius_m=40, weight=5, member_count=2,
+        category_weights={"depth": 5},
+    )
+
+    class DuplicateCentroidStrategy:
+        def refine(self, points, bbox):
+            return [first, duplicate, second]
+
+    zones = compute_tessellated_zones(
+        "lake-sammamish", drone_count=3, use_fixture=True, strategy=DuplicateCentroidStrategy()
+    )
+
+    assert len(zones) == 2
+    assert {frozenset(zone.components) for zone in zones} == {
+        frozenset({"incidents"}),
+        frozenset({"depth"}),
+    }
 
 
 def test_adaptive_seeds_adds_coverage_only_when_response_reach_exceeds_limit() -> None:

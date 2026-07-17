@@ -47,7 +47,12 @@ def patrol_center_and_radius(cell: Polygon, mean_lat: float) -> tuple[LatLon, fl
     edge = unproject((nearest_edge.x, nearest_edge.y), mean_lat)
     clearance_m = haversine_m(center, edge)
     radius_m = clearance_m - PATROL_EDGE_BUFFER_M
-    return center, max(MIN_RADIUS_M, min(MAX_RADIUS_M, radius_m))
+    if radius_m < MIN_RADIUS_M:
+        raise ValueError(
+            "cell clearance cannot accommodate the minimum patrol radius "
+            f"of {MIN_RADIUS_M:g} m after the {PATROL_EDGE_BUFFER_M:g} m edge buffer"
+        )
+    return center, min(MAX_RADIUS_M, radius_m)
 
 
 def voronoi_cells(
@@ -78,23 +83,25 @@ def voronoi_cells(
 
 def _deduplicate_seeds(seeds: list[LatLon], mean_lat: float) -> list[LatLon]:
     """Keep the first seed from each group separated by at least one metre."""
+    unique_seeds: list[LatLon] = []
+    for seed in seeds:
+        if all(_seeds_are_distinct(seed, existing, mean_lat) for existing in unique_seeds):
+            unique_seeds.append(seed)
+    return unique_seeds
+
+
+def _seeds_are_distinct(first: LatLon, second: LatLon, mean_lat: float) -> bool:
+    """Return whether two seeds are more than the deduplication tolerance apart."""
     metres_per_degree = 111_000
     longitude_scale = math.cos(math.radians(mean_lat))
-    unique_seeds: list[LatLon] = []
-
-    for seed in seeds:
-        if all(
-            math.hypot(
-                (seed.lon - existing.lon) * longitude_scale,
-                seed.lat - existing.lat,
-            )
-            * metres_per_degree
-            > SEED_DEDUP_EPS_M
-            for existing in unique_seeds
-        ):
-            unique_seeds.append(seed)
-
-    return unique_seeds
+    return (
+        math.hypot(
+            (first.lon - second.lon) * longitude_scale,
+            first.lat - second.lat,
+        )
+        * metres_per_degree
+        > SEED_DEDUP_EPS_M
+    )
 
 
 def _rows_to_weighted_points(
@@ -133,9 +140,10 @@ def _deduplicate_hotspot_clusters(
     """Keep first hotspot clusters, preserving their cluster-to-seed mapping."""
     surviving: list[ClusterZone] = []
     for cluster in clusters:
-        if _deduplicate_seeds([item.centroid for item in surviving] + [cluster.centroid], mean_lat)[
-            -1
-        ] == cluster.centroid:
+        if all(
+            _seeds_are_distinct(cluster.centroid, existing.centroid, mean_lat)
+            for existing in surviving
+        ):
             surviving.append(cluster)
     return surviving
 
@@ -208,7 +216,9 @@ def compute_tessellated_zones(
     if not seeds:
         return []
 
-    hotspot_by_seed = {cluster.centroid: cluster for cluster in hotspots}
+    hotspot_by_seed: dict[LatLon, ClusterZone] = {}
+    for cluster in hotspots:
+        hotspot_by_seed.setdefault(cluster.centroid, cluster)
     max_weight = max((cluster.weight for cluster in hotspots), default=1.0)
     zones: list[RiskZone] = []
     for index, ((seed, cell), kind) in enumerate(zip(voronoi_cells(seeds, boundary, mean_lat), kinds, strict=True)):
