@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+# NOTE (2026-07-15): The grid-based risk scoring below is no longer used by the
+# active zone pipeline, which moved to shoreline-clipped Voronoi tessellation
+# (app/risk_zones/tessellation.py). k-means reads raw incident/depth/crowding
+# rows directly, not grid cells. This module and test_scoring.py are retained
+# for reference and possible reuse; remove them only after confirming nothing
+# imports compute_risk_zones (rg "compute_risk_zones" backend/app).
+
 from app.config import LAKE_BBOX
 from app.models import LatLon, RiskZone
 from app.risk_zones.socrata_client import (
