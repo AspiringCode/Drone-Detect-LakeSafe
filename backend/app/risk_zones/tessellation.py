@@ -31,7 +31,7 @@ def voronoi_cells(
         return [(unique_seeds[0], boundary)]
 
     seed_points = [Point(project(seed, mean_lat)) for seed in unique_seeds]
-    regions = voronoi_diagram(MultiPoint(seed_points)).geoms
+    regions = voronoi_diagram(MultiPoint(seed_points), envelope=boundary).geoms
     cells: list[tuple[LatLon, Polygon]] = []
 
     for seed, seed_point in zip(unique_seeds, seed_points, strict=True):

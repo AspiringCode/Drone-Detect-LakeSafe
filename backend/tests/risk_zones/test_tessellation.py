@@ -64,6 +64,19 @@ def test_voronoi_cells_tile_shoreline_and_assign_each_seed_once() -> None:
     assert sum(cell.area for _, cell in cells) == pytest.approx(boundary.area, abs=1e-12)
 
 
+def test_voronoi_cells_cover_shoreline_with_two_non_collinear_seeds() -> None:
+    boundary = _projected_sammamish_boundary()
+    seeds = [
+        LatLon(47.5820, -122.0900),
+        LatLon(47.5825, -122.0897),
+    ]
+
+    cells = voronoi_cells(seeds, boundary, MEAN_LAT)
+
+    union = unary_union([cell for _, cell in cells])
+    assert boundary.difference(union).area == pytest.approx(0, abs=1e-12)
+
+
 def test_voronoi_cells_single_seed_returns_the_whole_boundary() -> None:
     boundary = _projected_sammamish_boundary()
     seed = LatLon(47.582, -122.090)
