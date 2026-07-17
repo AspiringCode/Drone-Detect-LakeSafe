@@ -43,10 +43,14 @@ create policy "Owners can update their lakes"
  ));
 
 insert into organizations (org_id, name, station_address, station_lat, station_lon, owner_user_id)
-values ('org-demo', 'LakeSafe Demo Station', '400 4th Ave NE, Issaquah, WA', 47.5301, -122.0326,
-        'bc14340d-ea56-4a7a-9b74-7b679f9055c4')
+select 'org-demo', 'LakeSafe Demo Station', '400 4th Ave NE, Issaquah, WA', 47.5301, -122.0326,
+       demo_owner.id
+from auth.users as demo_owner
+where demo_owner.id = 'bc14340d-ea56-4a7a-9b74-7b679f9055c4'
 on conflict (org_id) do nothing;
 
 insert into lakes (lake_id, org_id, name, centroid_lat, centroid_lon, drone_inventory_cap)
-values ('lake-sammamish', 'org-demo', 'Lake Sammamish', 47.581, -122.091, 5)
+select 'lake-sammamish', 'org-demo', 'Lake Sammamish', 47.581, -122.091, 5
+from organizations
+where org_id = 'org-demo'
 on conflict (lake_id) do nothing;
