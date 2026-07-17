@@ -148,6 +148,13 @@ describe("operator workflow", () => {
     expect(await screen.findByTestId("lake-map")).toHaveTextContent("47.5301,-122.0326"); const deploy = screen.getByRole("button", { name: /inventory cap reached/i }); expect(deploy).toBeDisabled(); expect(fetcher).not.toHaveBeenCalledWith(expect.stringContaining("/drones/deploy"), expect.anything());
   });
 
+  it("keeps deployment disabled until the lake inventory cap is known", () => {
+    const metadataClient = { auth: { getSession: vi.fn().mockResolvedValue({ data: { session } }) }, from: vi.fn(() => ({ select: vi.fn(() => ({ eq: vi.fn(() => ({ maybeSingle: vi.fn(() => new Promise(() => {})) })) })) })) };
+    const fetcher = vi.fn((url: string) => Promise.resolve({ ok: true, status: 200, json: async () => url.includes("riskmap") ? ({ type: "FeatureCollection", features: [] }) : [] }));
+    render(<MemoryRouter initialEntries={["/lakes/lake-sammamish"]}><Routes><Route path="/lakes/:lakeId" element={<LakeLiveView client={metadataClient as never} accessToken="token" fetcher={fetcher as never} connect={() => () => {}} />} /></Routes></MemoryRouter>);
+    expect(screen.getByRole("button", { name: /deploy drone/i })).toBeDisabled();
+  });
+
   it("reports a backend inventory-cap conflict that races the client-side check", async () => {
     const metadataClient = { auth: { getSession: vi.fn().mockResolvedValue({ data: { session } }) }, from: vi.fn(() => ({ select: vi.fn(() => ({ eq: vi.fn(() => ({ maybeSingle: vi.fn().mockResolvedValue({ data: { drone_inventory_cap: 5, organizations: { station_lat: 47.5301, station_lon: -122.0326 } }, error: null }) })) })) })) };
     const fetcher = vi.fn((url: string) => { if (url.includes("riskmap")) return Promise.resolve({ ok: true, status: 200, json: async () => ({ type: "FeatureCollection", features: [] }) }); if (url.includes("alerts")) return Promise.resolve({ ok: true, status: 200, json: async () => [] }); if (url.includes("deploy")) return Promise.resolve({ ok: false, status: 409, json: async () => ({ detail: "Drone inventory cap reached" }) }); return Promise.resolve({ ok: true, status: 200, json: async () => ({}) }); });

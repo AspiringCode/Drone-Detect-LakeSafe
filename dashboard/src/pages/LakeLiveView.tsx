@@ -25,17 +25,22 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
   const [deploying, setDeploying] = useState(false);
   const [station, setStation] = useState<{ lat: number; lon: number } | null>(null);
   const [inventoryCap, setInventoryCap] = useState<number | null>(null);
+  const [inventoryReady, setInventoryReady] = useState(false);
 
   useEffect(() => { let active = true; void fetcher(`${API}/api/lakes/${lakeId}/riskmap`).then(async (r) => { if (r.status === 404) return active && setNoLive(true); if (r.ok) setRiskmap(await r.json()); }).catch(() => active && setNoLive(true)); const stop = connect(wsFor(lakeId), (state) => setDrones(state.drones)); return () => { active = false; stop(); }; }, [lakeId, fetcher, connect]);
   useEffect(() => { void fetcher(`${API}/api/lakes/${lakeId}/alerts`).then((r) => r.ok ? r.json() : []).then((alerts: Alert[]) => setAlert(alerts[0] ?? null)); }, [lakeId, fetcher]);
   useEffect(() => {
     let active = true;
+    setInventoryReady(false);
+    setInventoryCap(null);
+    setStation(null);
     void client.from("lakes").select("drone_inventory_cap,organizations(station_lat,station_lon)").eq("lake_id", lakeId).maybeSingle().then(({ data, error }: { data: LakeMetadata | null; error: unknown }) => {
       if (error || !data || !active) return;
       const org = Array.isArray(data.organizations) ? data.organizations[0] : data.organizations;
       if (!org) return;
       setStation({ lat: org.station_lat, lon: org.station_lon });
       setInventoryCap(data.drone_inventory_cap);
+      setInventoryReady(true);
     });
     return () => { active = false; };
   }, [client, lakeId]);
@@ -45,5 +50,5 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
   async function demo() { const response = await fetcher(`${API}/api/lakes/${lakeId}/demo/trigger`, { method: "POST" }); if (response.ok) setAlert(await response.json()); }
   async function escalate(id: string) { await fetcher(`${API}/api/lakes/${lakeId}/alerts/${id}/escalate`, { method: "POST" }); }
   if (noLive) return <main className="no-live"><p className="kicker">LakeSafe Initiative</p><h1>No live data for this lake</h1><p>This lake is saved to your organization, but its operator runtime is not active.</p><Link to="/lakes">Return to lakes</Link></main>;
-  return <main ref={ref} className="live-shell"><header className="operator-header"><div><p className="kicker">LakeSafe Initiative</p><h1>Live operator view</h1></div><div className="operator-header__actions"><SimulatedBadge source="simulated" /><button onClick={demo}>Fire demo trigger</button><button onClick={deploy} disabled={deploying || capReached || atCap}>{capReached || atCap ? "Inventory cap reached" : "Deploy drone"}</button></div></header>{(capReached || atCap) && <p className="form-error" role="alert">Drone inventory cap reached. Deployment is unavailable for this lake.</p>}<section className="operator-layout">{station && <LakeMap riskmap={riskmap} drones={drones} stationLocation={station} />}<div className="side-panel"><DroneRoster drones={drones} /><AlertPanel alert={alert} onEscalate={escalate} /></div></section></main>;
+  return <main ref={ref} className="live-shell"><header className="operator-header"><div><p className="kicker">LakeSafe Initiative</p><h1>Live operator view</h1></div><div className="operator-header__actions"><SimulatedBadge source="simulated" /><button onClick={demo}>Fire demo trigger</button><button onClick={deploy} disabled={!inventoryReady || deploying || capReached || atCap}>{capReached || atCap ? "Inventory cap reached" : "Deploy drone"}</button></div></header>{(capReached || atCap) && <p className="form-error" role="alert">Drone inventory cap reached. Deployment is unavailable for this lake.</p>}<section className="operator-layout">{station && <LakeMap riskmap={riskmap} drones={drones} stationLocation={station} />}<div className="side-panel"><DroneRoster drones={drones} /><AlertPanel alert={alert} onEscalate={escalate} /></div></section></main>;
 }
