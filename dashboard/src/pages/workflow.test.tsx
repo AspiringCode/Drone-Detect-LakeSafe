@@ -5,6 +5,7 @@ import { AuthGate } from "../auth/AuthGate";
 import { OnboardingGate } from "../auth/OnboardingGate";
 import { LoginPage } from "./LoginPage";
 import { SignupPage } from "./SignupPage";
+import { VerifyOtpPage } from "./VerifyOtpPage";
 import { LakeGridPage } from "./LakeGridPage";
 import { LakeLiveView } from "./LakeLiveView";
 
@@ -71,6 +72,19 @@ describe("operator workflow", () => {
     expect(await screen.findByAltText(/totp qr code/i)).toBeInTheDocument(); expect(screen.getByLabelText(/setup key/i)).toHaveValue("SECRET"); expect(auth.mfa.enroll).toHaveBeenCalledWith({ factorType: "totp", friendlyName: "LakeSafe operator" });
     fireEvent.change(screen.getByLabelText(/authentication code/i), { target: { value: "123456" } }); fireEvent.click(screen.getByRole("button", { name: /verify and continue/i }));
     await waitFor(() => expect(auth.mfa.verify).toHaveBeenCalledWith({ factorId: "factor-1", challengeId: "challenge-1", code: "123456" }));
+  });
+
+  it("enrolls TOTP for a signed-in operator with no verified factor and verifies it", async () => {
+    const auth = { mfa: { listFactors: vi.fn().mockResolvedValue({ data: { totp: [] }, error: null }), enroll: vi.fn().mockResolvedValue({ data: { id: "factor-2", totp: { qr_code: "data:image/svg+xml,test", secret: "EXISTING-SECRET" } }, error: null }), challenge: vi.fn().mockResolvedValue({ data: { id: "challenge-2" }, error: null }), verify: vi.fn().mockResolvedValue({ error: null }) } };
+    render(<MemoryRouter><VerifyOtpPage client={{ auth } as never} /></MemoryRouter>);
+
+    expect(await screen.findByAltText(/totp qr code/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/setup key/i)).toHaveValue("EXISTING-SECRET");
+    expect(auth.mfa.enroll).toHaveBeenCalledWith({ factorType: "totp", friendlyName: "LakeSafe operator" });
+
+    fireEvent.change(screen.getByLabelText(/authentication code/i), { target: { value: "123456" } });
+    fireEvent.click(screen.getByRole("button", { name: /verify and continue/i }));
+    await waitFor(() => expect(auth.mfa.verify).toHaveBeenCalledWith({ factorId: "factor-2", challengeId: "challenge-2", code: "123456" }));
   });
 
   it("renders title-only lake cards without fleet inspection requests", async () => {
