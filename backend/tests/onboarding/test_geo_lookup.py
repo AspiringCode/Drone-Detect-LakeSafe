@@ -112,6 +112,29 @@ def test_lookup_uses_kumi_only_after_primary_overpass_failure(monkeypatch: pytes
     assert [call[0] for call in client.calls][2] == geo_lookup.OVERPASS_KUMI_URL
 
 
+def test_nearby_lakes_endpoint_returns_service_unavailable_when_both_overpass_hosts_fail(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.main import app
+
+    client = StubHttpClient([
+        response("https://nominatim.openstreetmap.org/search", [{"lat": "47.6", "lon": "-122.1"}]),
+        httpx.ReadTimeout("primary timed out"),
+        httpx.ReadTimeout("fallback timed out"),
+    ])
+    from app.onboarding import geo_lookup
+
+    monkeypatch.setattr(geo_lookup.httpx, "Client", lambda **_: client)
+
+    endpoint_response = TestClient(app, raise_server_exceptions=False).post(
+        "/api/onboarding/nearby-lakes",
+        json={"station_name": "LakeSafe", "station_address": "Sammamish, WA"},
+    )
+
+    assert endpoint_response.status_code == 503
+    assert endpoint_response.json()["detail"] == "Lake search is temporarily unavailable. Please try again."
+
+
 def test_lookup_raises_not_found_when_nominatim_has_no_result(monkeypatch: pytest.MonkeyPatch):
     from app.onboarding import geo_lookup
 

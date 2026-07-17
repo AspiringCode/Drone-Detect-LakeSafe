@@ -8,6 +8,7 @@ import { SignupPage } from "./SignupPage";
 import { VerifyOtpPage } from "./VerifyOtpPage";
 import { LakeGridPage } from "./LakeGridPage";
 import { LakeLiveView } from "./LakeLiveView";
+import { OnboardingPage } from "./OnboardingPage";
 
 vi.mock("../components/LakeMap", () => ({
   LakeMap: ({ stationLocation }: { stationLocation: { lat: number; lon: number } }) => <div data-testid="lake-map">{stationLocation.lat},{stationLocation.lon}</div>,
@@ -63,6 +64,17 @@ describe("operator workflow", () => {
     render(<MemoryRouter><LoginPage client={{ auth } as never} /></MemoryRouter>);
     fireEvent.change(screen.getByLabelText(/email/i), { target: { value: "operator@example.com" } }); fireEvent.change(screen.getByLabelText(/password/i), { target: { value: "secure-password" } }); fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
     await waitFor(() => expect(auth.mfa.getAuthenticatorAssuranceLevel).toHaveBeenCalledWith("token"));
+  });
+
+  it("restores onboarding search controls after a network failure", async () => {
+    const fetcher = vi.fn().mockRejectedValue(new TypeError("network unavailable"));
+    render(<MemoryRouter><OnboardingPage fetcher={fetcher} /></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText(/station name/i), { target: { value: "LakeSafe" } });
+    fireEvent.change(screen.getByLabelText(/station address/i), { target: { value: "Sammamish, WA" } });
+    fireEvent.click(screen.getByRole("button", { name: /find nearby lakes/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/could not find lakes/i);
+    expect(screen.getByRole("button", { name: /find nearby lakes/i })).toBeEnabled();
   });
 
   it("enrolls a genuine TOTP factor, presents it, and verifies the enrollment", async () => {

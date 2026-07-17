@@ -5,6 +5,7 @@ from uuid import uuid4
 from dataclasses import asdict, dataclass, is_dataclass
 from datetime import datetime, timezone
 
+import httpx
 from fastapi import FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
@@ -167,6 +168,11 @@ def nearby_lakes(request: NearbyLakesRequest):
         result = lookup_nearby_lakes(request.station_address)
     except AddressNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Lake search is temporarily unavailable. Please try again.",
+        ) from exc
     return {
         "station": {"lat": result.coordinates.latitude, "lon": result.coordinates.longitude},
         "candidates": [
