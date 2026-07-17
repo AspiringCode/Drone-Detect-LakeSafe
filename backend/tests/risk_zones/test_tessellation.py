@@ -6,14 +6,7 @@ from shapely.ops import transform, unary_union
 
 from app.models import LatLon
 from app.risk_zones.shoreline import load_lake_polygon
-from app.risk_zones.kmeans_strategy import MAX_RADIUS_M, MIN_RADIUS_M
-from app.risk_zones.tessellation import (
-    PATROL_EDGE_BUFFER_M,
-    inscribed_radius,
-    project,
-    unproject,
-    voronoi_cells,
-)
+from app.risk_zones.tessellation import project, unproject, voronoi_cells
 
 
 def test_project_scales_longitude_by_mean_latitude_cosine() -> None:
@@ -101,47 +94,3 @@ def test_voronoi_cells_deduplicates_seeds_within_one_metre() -> None:
     cells = voronoi_cells([seed, duplicate_within_half_metre], boundary, MEAN_LAT)
 
     assert cells == [(seed, boundary)]
-
-
-def test_inscribed_radius_clamps_to_shared_radius_bounds() -> None:
-    seed = LatLon(0.0, 0.0)
-    tiny_cell = Polygon(
-        [
-            (-0.00001, -0.00001),
-            (0.00001, -0.00001),
-            (0.00001, 0.00001),
-            (-0.00001, 0.00001),
-        ]
-    )
-    large_cell = Polygon(
-        [
-            (-0.01, -0.01),
-            (0.01, -0.01),
-            (0.01, 0.01),
-            (-0.01, 0.01),
-        ]
-    )
-
-    assert inscribed_radius(tiny_cell, seed, mean_lat=0.0) == MIN_RADIUS_M
-    assert inscribed_radius(large_cell, seed, mean_lat=0.0) == MAX_RADIUS_M
-
-
-def test_inscribed_radius_circle_with_edge_buffer_fits_generated_cell() -> None:
-    seed = LatLon(0.0, 0.0)
-    boundary = Polygon(
-        [
-            (-0.001, -0.001),
-            (0.001, -0.001),
-            (0.001, 0.001),
-            (-0.001, 0.001),
-        ]
-    )
-    cells = voronoi_cells([seed, LatLon(0.0, 0.001)], boundary, mean_lat=0.0)
-    _, cell = cells[0]
-
-    radius_m = inscribed_radius(cell, seed, mean_lat=0.0)
-    circle_with_buffer = Point(project(seed, 0.0)).buffer(
-        (radius_m + PATROL_EDGE_BUFFER_M) / 111_195
-    )
-
-    assert circle_with_buffer.within(cell)

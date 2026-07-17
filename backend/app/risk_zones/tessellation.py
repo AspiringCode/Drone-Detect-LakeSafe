@@ -1,15 +1,12 @@
 import math
 
 from shapely.geometry import MultiPoint, Point, Polygon
-from shapely.ops import nearest_points, voronoi_diagram
+from shapely.ops import voronoi_diagram
 
-from app.coordination.assignment import haversine_m
 from app.models import LatLon
-from app.risk_zones.kmeans_strategy import MAX_RADIUS_M, MIN_RADIUS_M
 
 
 SEED_DEDUP_EPS_M = 1.0
-PATROL_EDGE_BUFFER_M = 10.0
 
 
 def project(point: LatLon, mean_lat: float) -> tuple[float, float]:
@@ -21,20 +18,6 @@ def unproject(xy: tuple[float, float], mean_lat: float) -> LatLon:
     """Convert a locally scaled Cartesian coordinate back to latitude/longitude."""
     x, y = xy
     return LatLon(y, x / math.cos(math.radians(mean_lat)))
-
-
-def inscribed_radius(cell: Polygon, seed: LatLon, mean_lat: float) -> float:
-    """Return a patrol radius that keeps the required buffer inside ``cell``."""
-    projected_seed = Point(project(seed, mean_lat))
-    _, nearest_edge = nearest_points(projected_seed, cell.boundary)
-    edge_distance_m = haversine_m(
-        seed,
-        unproject((nearest_edge.x, nearest_edge.y), mean_lat),
-    )
-    return max(
-        MIN_RADIUS_M,
-        min(MAX_RADIUS_M, edge_distance_m - PATROL_EDGE_BUFFER_M),
-    )
 
 
 def voronoi_cells(
