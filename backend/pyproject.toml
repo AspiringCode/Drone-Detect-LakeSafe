@@ -15,6 +15,7 @@ dependencies = [
     "scipy",
     "pydantic",
     "httpx",
+    "PyJWT[crypto]",
     "supabase",
     "pytest",
 ]
