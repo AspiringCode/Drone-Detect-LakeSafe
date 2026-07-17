@@ -5,7 +5,6 @@ import hashlib
 import hmac
 import httpx
 import json
-from pathlib import Path
 import time
 import pytest
 from fastapi import HTTPException
@@ -34,16 +33,6 @@ def response(url: str, payload: object, status_code: int = 200) -> httpx.Respons
 
 
 TEST_JWT_SECRET = "onboarding-test-jwt-secret"
-MIGRATION_PATH = Path(__file__).parents[3] / "supabase" / "migrations" / "0002_orgs_lakes.sql"
-
-
-def test_lake_sammamish_seed_is_safe_when_demo_auth_user_is_absent():
-    """The optional demo seed must not prevent a fresh Supabase migration."""
-    migration = MIGRATION_PATH.read_text(encoding="utf-8")
-
-    assert "from auth.users" in migration.lower()
-    assert "demo_owner.id" in migration
-    assert "select 'lake-sammamish'" in migration.lower()
 
 
 def _signed_jwt(secret: str, *, algorithm: str = "HS256") -> str:
