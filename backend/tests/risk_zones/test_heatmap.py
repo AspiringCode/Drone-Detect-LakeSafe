@@ -1,11 +1,11 @@
 from shapely.geometry import shape
 
 from app.risk_zones.heatmap import zones_to_geojson
-from app.risk_zones.scoring import compute_risk_zones
+from app.risk_zones.tessellation import compute_tessellated_zones
 
 
 def test_zones_to_geojson_feature_collection_valid_polygons():
-    zones = compute_risk_zones(grid_n=2, use_fixture=True)
+    zones = compute_tessellated_zones("lake-sammamish", drone_count=2, use_fixture=True)
     geojson = zones_to_geojson(zones)
 
     assert geojson["type"] == "FeatureCollection"
