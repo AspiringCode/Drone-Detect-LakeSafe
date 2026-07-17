@@ -6,7 +6,14 @@ from shapely.ops import transform, unary_union
 
 from app.models import LatLon
 from app.risk_zones.shoreline import load_lake_polygon
-from app.risk_zones.tessellation import project, unproject, voronoi_cells
+from app.geo import destination_point
+from app.risk_zones.kmeans_strategy import MAX_RADIUS_M, MIN_RADIUS_M
+from app.risk_zones.tessellation import (
+    patrol_center_and_radius,
+    project,
+    unproject,
+    voronoi_cells,
+)
 
 
 def test_project_scales_longitude_by_mean_latitude_cosine() -> None:
@@ -94,3 +101,46 @@ def test_voronoi_cells_deduplicates_seeds_within_one_metre() -> None:
     cells = voronoi_cells([seed, duplicate_within_half_metre], boundary, MEAN_LAT)
 
     assert cells == [(seed, boundary)]
+
+
+def test_patrol_circle_stays_inside_every_generated_cell_at_all_bearings() -> None:
+    boundary = _projected_sammamish_boundary()
+    cells = voronoi_cells(
+        [
+            LatLon(47.595, -122.092),
+            LatLon(47.581, -122.090),
+            LatLon(47.565, -122.091),
+        ],
+        boundary,
+        MEAN_LAT,
+    )
+
+    for _, cell in cells:
+        center, radius_m = patrol_center_and_radius(cell, MEAN_LAT)
+        assert MIN_RADIUS_M <= radius_m <= MAX_RADIUS_M
+        assert cell.contains(Point(project(center, MEAN_LAT)))
+        for bearing in range(360):
+            waypoint = destination_point(center, float(bearing), radius_m)
+            assert cell.buffer(1e-9).contains(Point(project(waypoint, MEAN_LAT)))
+
+
+def test_demo_four_final_cells_clamp_to_150m_and_patrols_remain_in_lake() -> None:
+    """The four-cell fixture geometry used by the committed Lake Sammamish demo."""
+    boundary = _projected_sammamish_boundary()
+    demo_seeds = [
+        LatLon(47.58051284634761, -122.09101863979849),
+        LatLon(47.599119626168225, -122.0838831775701),
+        LatLon(47.557000019, -122.09199999774616),
+        LatLon(47.568608070855994, -122.08369597431815),
+    ]
+    cells = voronoi_cells(demo_seeds, boundary, MEAN_LAT)
+
+    assert len(cells) == 4
+    for _, cell in cells:
+        center, radius_m = patrol_center_and_radius(cell, MEAN_LAT)
+        assert radius_m == MAX_RADIUS_M == 150.0
+        for bearing in range(360):
+            waypoint = destination_point(center, float(bearing), radius_m)
+            projected_waypoint = Point(project(waypoint, MEAN_LAT))
+            assert cell.buffer(1e-9).contains(projected_waypoint)
+            assert boundary.buffer(1e-9).contains(projected_waypoint)
