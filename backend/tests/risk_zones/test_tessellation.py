@@ -5,10 +5,14 @@ from shapely.geometry import Point, Polygon
 from shapely.ops import transform, unary_union
 
 from app.models import LatLon
+from app.coordination.assignment import haversine_m
 from app.risk_zones.shoreline import load_lake_polygon
 from app.geo import destination_point
 from app.risk_zones.kmeans_strategy import MAX_RADIUS_M, MIN_RADIUS_M
 from app.risk_zones.tessellation import (
+    RESPONSE_RADIUS_M,
+    adaptive_seeds,
+    compute_tessellated_zones,
     patrol_center_and_radius,
     project,
     unproject,
@@ -144,3 +148,65 @@ def test_demo_four_final_cells_clamp_to_150m_and_patrols_remain_in_lake() -> Non
             projected_waypoint = Point(project(waypoint, MEAN_LAT))
             assert cell.buffer(1e-9).contains(projected_waypoint)
             assert boundary.buffer(1e-9).contains(projected_waypoint)
+
+
+def test_adaptive_seeds_deduplicates_hotspots_before_reserving_fleet_capacity() -> None:
+    boundary = _projected_sammamish_boundary()
+    hotspot = LatLon(47.5805, -122.0910)
+    duplicate = LatLon(47.5805 + 0.5 / 111_000, -122.0910)
+
+    seeds, kinds = adaptive_seeds(
+        [hotspot, duplicate, LatLon(47.5991, -122.0839)], boundary, MEAN_LAT, drone_count=3
+    )
+
+    assert seeds[:2] == [hotspot, LatLon(47.5991, -122.0839)]
+    assert kinds[:2] == ["hotspot", "hotspot"]
+    assert len(seeds) <= 2  # one drone is always kept on standby
+
+
+def test_adaptive_seeds_adds_coverage_only_when_response_reach_exceeds_limit() -> None:
+    boundary = _projected_sammamish_boundary()
+    seeds, kinds = adaptive_seeds([LatLon(47.5805, -122.0910)], boundary, MEAN_LAT, drone_count=5)
+
+    assert len(seeds) <= 4
+    assert kinds[0] == "hotspot"
+    assert all(kind == "coverage" for kind in kinds[1:])
+    assert any(kind == "coverage" for kind in kinds)
+    for seed, kind in zip(seeds, kinds, strict=True):
+        if kind == "coverage":
+            assert min(haversine_m(seed, other) for other in seeds if other != seed) > RESPONSE_RADIUS_M
+
+
+def test_tessellated_pipeline_rejects_a_non_positive_drone_count() -> None:
+    with pytest.raises(ValueError, match="drone_count"):
+        compute_tessellated_zones("lake-sammamish", drone_count=0)
+
+
+def test_fixture_pipeline_has_two_hotspots_two_coverage_cells_and_a_standby_drone() -> None:
+    zones = compute_tessellated_zones("lake-sammamish", drone_count=5)
+    lake = load_lake_polygon("lake-sammamish")
+    projected_boundary = _projected_sammamish_boundary()
+
+    assert len(zones) == 4
+    assert len(zones) < 5
+    hotspot_zones = [zone for zone in zones if zone.risk_score > 0]
+    coverage_zones = [zone for zone in zones if zone.risk_score == 0]
+    assert len(hotspot_zones) == 2
+    assert len(coverage_zones) == 2
+    assert all(zone.components == {} and zone.is_proxy for zone in coverage_zones)
+    assert all(zone.radius_m == MAX_RADIUS_M == 150.0 for zone in zones)
+    assert all(lake.contains(Point(zone.centroid.lon, zone.centroid.lat)) for zone in zones)
+
+    zone_polygons = [
+        Polygon([(point.lon, point.lat) for point in zone.polygon]) for zone in zones
+    ]
+    assert unary_union(zone_polygons).symmetric_difference(lake).area == pytest.approx(0, abs=1e-12)
+
+    for zone in zones:
+        zone_cell = Polygon([(point.lon * math.cos(math.radians(MEAN_LAT)), point.lat) for point in zone.polygon])
+        assert zone.polygon[0] == zone.polygon[-1]
+        for bearing in range(360):
+            waypoint = destination_point(zone.centroid, float(bearing), zone.radius_m)
+            projected_waypoint = Point(project(waypoint, MEAN_LAT))
+            assert zone_cell.buffer(1e-9).contains(projected_waypoint)
+            assert projected_boundary.buffer(1e-9).contains(projected_waypoint)

@@ -1,16 +1,26 @@
 import math
 
 from shapely.geometry import MultiPoint, Point, Polygon
-from shapely.ops import nearest_points, polylabel, voronoi_diagram
+from shapely.ops import nearest_points, polylabel, transform, voronoi_diagram
 
 from app.coordination.assignment import haversine_m
-from app.models import LatLon
+from app.config import LAKE_BBOX
+from app.models import LatLon, RiskZone
+from app.risk_zones.cluster_strategy import ClusterZone, WeightedPoint, ZoneClusterStrategy
 from app.risk_zones.kmeans_strategy import MAX_RADIUS_M, MIN_RADIUS_M
+from app.risk_zones.scoring import INCIDENT_PROXY_THRESHOLD, WEIGHTS
+from app.risk_zones.shoreline import load_lake_polygon
+from app.risk_zones.socrata_client import (
+    fetch_access_points,
+    fetch_depth_contours,
+    fetch_incidents,
+)
 
 
 SEED_DEDUP_EPS_M = 1.0
 PATROL_EDGE_BUFFER_M = 10.0
 POLYLABEL_TOLERANCE = 1e-4
+RESPONSE_RADIUS_M = 1350.0
 
 
 def project(point: LatLon, mean_lat: float) -> tuple[float, float]:
@@ -85,3 +95,141 @@ def _deduplicate_seeds(seeds: list[LatLon], mean_lat: float) -> list[LatLon]:
             unique_seeds.append(seed)
 
     return unique_seeds
+
+
+def _rows_to_weighted_points(
+    incidents: list[dict], depths: list[dict], access: list[dict]
+) -> list[WeightedPoint]:
+    """Convert source rows to weighted clustering inputs without importing hybrid."""
+    points: list[WeightedPoint] = []
+    for row in incidents:
+        points.append(
+            WeightedPoint(float(row["lat"]), float(row["lon"]), WEIGHTS["incidents"], "incidents")
+        )
+    for row in depths:
+        points.append(
+            WeightedPoint(
+                float(row["lat"]),
+                float(row["lon"]),
+                WEIGHTS["depth"] * float(row.get("severity", 1.0)),
+                "depth",
+            )
+        )
+    for row in access:
+        points.append(
+            WeightedPoint(
+                float(row["lat"]),
+                float(row["lon"]),
+                WEIGHTS["crowding"] * float(row.get("crowding", 1.0)),
+                "crowding",
+            )
+        )
+    return points
+
+
+def _deduplicate_hotspot_clusters(
+    clusters: list[ClusterZone], mean_lat: float
+) -> list[ClusterZone]:
+    """Keep first hotspot clusters, preserving their cluster-to-seed mapping."""
+    surviving: list[ClusterZone] = []
+    for cluster in clusters:
+        if _deduplicate_seeds([item.centroid for item in surviving] + [cluster.centroid], mean_lat)[
+            -1
+        ] == cluster.centroid:
+            surviving.append(cluster)
+    return surviving
+
+
+def _farthest_coverage_candidate(
+    seeds: list[LatLon], boundary: Polygon, mean_lat: float
+) -> tuple[LatLon, float]:
+    """Return the sampled shoreline point with the worst nearest-seed response reach."""
+    candidates: list[LatLon] = []
+    for _, cell in voronoi_cells(seeds, boundary, mean_lat):
+        candidates.extend(unproject((x, y), mean_lat) for x, y in cell.exterior.coords[:-1])
+        representative = cell.representative_point()
+        candidates.append(unproject((representative.x, representative.y), mean_lat))
+    return max(
+        ((candidate, min(haversine_m(candidate, seed) for seed in seeds)) for candidate in candidates),
+        key=lambda item: item[1],
+    )
+
+
+def adaptive_seeds(
+    hotspot_seeds: list[LatLon], boundary: Polygon, mean_lat: float, drone_count: int
+) -> tuple[list[LatLon], list[str]]:
+    """Build bounded hotspot and coverage seeds while reserving one standby drone."""
+    if drone_count <= 0:
+        raise ValueError("drone_count must be positive")
+
+    capacity = drone_count - 1
+    seeds = _deduplicate_seeds(hotspot_seeds, mean_lat)[:capacity]
+    kinds = ["hotspot"] * len(seeds)
+    while seeds and len(seeds) < capacity:
+        candidate, response_reach_m = _farthest_coverage_candidate(seeds, boundary, mean_lat)
+        if response_reach_m <= RESPONSE_RADIUS_M:
+            break
+        seeds.append(candidate)
+        kinds.append("coverage")
+    return seeds, kinds
+
+
+def _mean_latitude(boundary: Polygon) -> float:
+    return boundary.centroid.y
+
+
+def _cluster_components(cluster: ClusterZone) -> dict[str, float]:
+    total = sum(cluster.category_weights.values()) or 1.0
+    return {category: round(weight / total, 6) for category, weight in cluster.category_weights.items()}
+
+
+def compute_tessellated_zones(
+    lake_id: str, drone_count: int, use_fixture: bool = True, strategy: ZoneClusterStrategy | None = None
+) -> list[RiskZone]:
+    """Tile a lake between hotspot and coverage patrol cells, retaining one standby drone."""
+    if drone_count <= 0:
+        raise ValueError("drone_count must be positive")
+
+    shoreline = load_lake_polygon(lake_id)
+    mean_lat = _mean_latitude(shoreline)
+    boundary = transform(
+        lambda x, y, z=None: (x * math.cos(math.radians(mean_lat)), y), shoreline
+    )
+    points = _rows_to_weighted_points(
+        fetch_incidents(use_fixture=use_fixture),
+        fetch_depth_contours(use_fixture=use_fixture),
+        fetch_access_points(use_fixture=use_fixture),
+    )
+    from app.risk_zones.kmeans_strategy import WeightedKMeansStrategy
+
+    clusters = (strategy or WeightedKMeansStrategy(k=drone_count)).refine(points, bbox=LAKE_BBOX)
+    hotspots = _deduplicate_hotspot_clusters(clusters, mean_lat)
+    seeds, kinds = adaptive_seeds([cluster.centroid for cluster in hotspots], boundary, mean_lat, drone_count)
+    if not seeds:
+        return []
+
+    hotspot_by_seed = {cluster.centroid: cluster for cluster in hotspots}
+    max_weight = max((cluster.weight for cluster in hotspots), default=1.0)
+    zones: list[RiskZone] = []
+    for index, ((seed, cell), kind) in enumerate(zip(voronoi_cells(seeds, boundary, mean_lat), kinds, strict=True)):
+        centroid, radius_m = patrol_center_and_radius(cell, mean_lat)
+        ring = [unproject((x, y), mean_lat) for x, y in cell.exterior.coords]
+        if kind == "coverage":
+            risk_score, components, is_proxy = 0.0, {}, True
+        else:
+            cluster = hotspot_by_seed[seed]
+            risk_score = round(cluster.weight / max_weight, 6)
+            components = _cluster_components(cluster)
+            is_proxy = cluster.member_count < INCIDENT_PROXY_THRESHOLD
+        zones.append(
+            RiskZone(
+                zone_id=f"cell-{index}",
+                centroid=centroid,
+                polygon=ring,
+                risk_score=risk_score,
+                components=components,
+                is_proxy=is_proxy,
+                radius_m=radius_m,
+            )
+        )
+    return zones
