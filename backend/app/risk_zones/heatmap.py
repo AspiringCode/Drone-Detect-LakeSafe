@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from app.models import RiskZone
-from app.risk_zones.tessellation import compute_tessellated_zones
+from app.risk_zones.scoring import compute_risk_zones
 
 
 def zones_to_geojson(zones: list[RiskZone]) -> dict:
@@ -27,10 +27,7 @@ def zones_to_geojson(zones: list[RiskZone]) -> dict:
 
 def _write_fixture() -> Path:
     path = Path(__file__).resolve().parents[2] / "fixtures" / "lake_sammamish_riskmap.geojson"
-    zones = compute_tessellated_zones(
-        "lake-sammamish", drone_count=5, use_fixture=True
-    )
-    path.write_text(json.dumps(zones_to_geojson(zones), indent=2), encoding="utf-8")
+    path.write_text(json.dumps(zones_to_geojson(compute_risk_zones(5, use_fixture=True)), indent=2), encoding="utf-8")
     return path
 
 

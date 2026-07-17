@@ -19,7 +19,8 @@ from app.models import Detection, Drone, DroneStatus, LatLon
 from app.pipeline.alerts import AlertRepository, InMemoryBackend, assemble_alert
 from app.pipeline.ws import ConnectionHub, tick_loop
 from app.risk_zones.heatmap import zones_to_geojson
-from app.risk_zones.tessellation import compute_tessellated_zones
+from app.risk_zones.hybrid import compute_hybrid_zones
+from app.risk_zones.scoring import compute_risk_zones
 from app.onboarding.geo_lookup import AddressNotFoundError, lookup_nearby_lakes
 
 TICK_INTERVAL_S = 0.5
@@ -47,9 +48,7 @@ class LakeRuntime:
 
 
 def _build_sammamish_runtime() -> LakeRuntime:
-    zones = compute_tessellated_zones(
-        "lake-sammamish", drone_count=len(DEMO_DRONE_POSITIONS), use_fixture=True
-    )
+    zones = compute_hybrid_zones(grid_n=3, use_fixture=True)
     shore_station = LatLon(47.606, -122.090)
     drones = [Drone(f"d{i}", position, 1.0, DroneStatus.IDLE, None) for i, position in enumerate(DEMO_DRONE_POSITIONS)]
     backend = InMemoryBackend()

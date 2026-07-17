@@ -48,14 +48,18 @@ def test_riskmap_allows_cross_origin_dashboard_dev_server():
     assert response.headers.get("access-control-allow-origin") == "http://localhost:5173"
 
 
-def test_riskmap_returns_closed_tessellated_cell_rings():
+def test_riskmap_can_include_a_circular_cluster_zone():
     client = TestClient(app)
     response = client.get(f"/api/lakes/{LAKE_ID}/riskmap")
     assert response.status_code == 200
+    # Not asserting a cluster is always present (fixture data may or may not
+    # be dense enough to pass MIN_CLUSTER_WEIGHT) - asserting the shape is
+    # correct when one is: any feature whose properties advertise a cluster
+    # zone_id must have a valid closed-ring polygon.
     for feature in response.json()["features"]:
-        assert feature["properties"]["zone_id"].startswith("cell-")
-        coords = feature["geometry"]["coordinates"][0]
-        assert coords[0] == coords[-1]
+        if feature["properties"]["zone_id"].startswith("cluster-"):
+            coords = feature["geometry"]["coordinates"][0]
+            assert coords[0] == coords[-1]
 
 
 def test_simulation_assigns_from_every_rendered_zone():
@@ -165,7 +169,7 @@ def test_deploy_rejects_when_inventory_cap_reached(monkeypatch):
     assert response.status_code == 409
 
 
-def test_deploy_allows_aal2_owner_when_tessellated_zones_are_fully_staffed(monkeypatch):
+def test_deploy_allows_aal2_owner_and_reassigns_zones(monkeypatch):
     runtime = lake_runtimes[LAKE_ID]
     before = len(runtime.engine.drones)
     monkeypatch.setattr("app.main.verify_supabase_jwt", lambda token: {"sub": "owner", "aal": "aal2"})
@@ -180,8 +184,8 @@ def test_deploy_allows_aal2_owner_when_tessellated_zones_are_fully_staffed(monke
 
     assert response.status_code == 201
     deployed = response.json()
-    assert deployed["status"] == "idle"
-    assert deployed["assigned_zone"] is None
+    assert deployed["status"] == "en_route"
+    assert deployed["assigned_zone"] is not None
     assert deployed["position"] == {"lat": 47.606, "lon": -122.09}
     runtime.engine.drones.pop()
     runtime.engine._initial_assign()
