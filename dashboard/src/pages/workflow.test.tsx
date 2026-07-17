@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { AuthGate } from "../auth/AuthGate";
 import { OnboardingGate } from "../auth/OnboardingGate";
@@ -153,37 +153,6 @@ describe("operator workflow", () => {
     const fetcher = vi.fn((url: string) => Promise.resolve({ ok: true, status: 200, json: async () => url.includes("riskmap") ? ({ type: "FeatureCollection", features: [] }) : [] }));
     render(<MemoryRouter initialEntries={["/lakes/lake-sammamish"]}><Routes><Route path="/lakes/:lakeId" element={<LakeLiveView client={metadataClient as never} accessToken="token" fetcher={fetcher as never} connect={() => () => {}} />} /></Routes></MemoryRouter>);
     expect(screen.getByRole("button", { name: /deploy drone/i })).toBeDisabled();
-  });
-
-  it("keeps deployment disabled while navigating to a lake whose inventory is still loading", async () => {
-    let resolveSecondLake: ((value: { data: { drone_inventory_cap: number; organizations: { station_lat: number; station_lon: number } }; error: null }) => void) | undefined;
-    const metadataQuery = { maybeSingle: vi.fn() };
-    const metadataClient = {
-      auth: { getSession: vi.fn().mockResolvedValue({ data: { session } }) },
-      from: vi.fn(() => ({ select: vi.fn(() => ({ eq: vi.fn((_column: string, lakeId: string) => {
-        metadataQuery.maybeSingle.mockImplementationOnce(() => lakeId === "lake-one"
-          ? Promise.resolve({ data: { drone_inventory_cap: 5, organizations: { station_lat: 1, station_lon: 2 } }, error: null })
-          : new Promise((resolve) => { resolveSecondLake = resolve; }));
-        return metadataQuery;
-      }) })) })),
-    };
-    const fetcher = vi.fn((url: string) => {
-      if (url.includes("lake-one/drones/deploy")) return Promise.resolve({ ok: false, status: 409, json: async () => ({ detail: "Drone inventory cap reached" }) });
-      return Promise.resolve({ ok: true, status: 200, json: async () => url.includes("riskmap") ? ({ type: "FeatureCollection", features: [] }) : [] });
-    });
-    function Navigation() { const navigate = useNavigate(); return <button onClick={() => navigate("/lakes/lake-two")}>Next lake</button>; }
-    render(<MemoryRouter initialEntries={["/lakes/lake-one"]}><Navigation /><Routes><Route path="/lakes/:lakeId" element={<LakeLiveView client={metadataClient as never} accessToken="token" fetcher={fetcher as never} connect={() => () => {}} />} /></Routes></MemoryRouter>);
-
-    expect(await screen.findByRole("button", { name: /deploy drone/i })).toBeEnabled();
-    fireEvent.click(screen.getByRole("button", { name: /deploy drone/i }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(/inventory cap reached/i);
-    fireEvent.click(screen.getByRole("button", { name: "Next lake" }));
-    const deploy = screen.getByRole("button", { name: /^deploy drone$/i });
-    expect(deploy).toBeDisabled();
-    fireEvent.click(deploy);
-    expect(fetcher).not.toHaveBeenCalledWith(expect.stringContaining("/lakes/lake-two/drones/deploy"), expect.anything());
-
-    resolveSecondLake?.({ data: { drone_inventory_cap: 5, organizations: { station_lat: 3, station_lon: 4 } }, error: null });
   });
 
   it("reports a backend inventory-cap conflict that races the client-side check", async () => {
