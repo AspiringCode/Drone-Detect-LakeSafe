@@ -8,6 +8,8 @@ import { SignupPage } from "./SignupPage";
 import { VerifyOtpPage } from "./VerifyOtpPage";
 import { LakeGridPage } from "./LakeGridPage";
 import { LakeLiveView } from "./LakeLiveView";
+import { OnboardingPage } from "./OnboardingPage";
+import "../styles.css";
 
 vi.mock("../components/LakeMap", () => ({
   LakeMap: ({ stationLocation }: { stationLocation: { lat: number; lon: number } }) => <div data-testid="lake-map">{stationLocation.lat},{stationLocation.lon}</div>,
@@ -60,9 +62,17 @@ describe("OnboardingGate", () => {
 describe("operator workflow", () => {
   it("branches a password sign-in according to the session AAL", async () => {
     const auth = { signInWithPassword: vi.fn().mockResolvedValue({ data: { session }, error: null }), mfa: { getAuthenticatorAssuranceLevel: vi.fn().mockResolvedValue({ data: { currentLevel: "aal2" } }) } };
-    render(<MemoryRouter><LoginPage client={{ auth } as never} /></MemoryRouter>);
+    render(<MemoryRouter><Routes><Route path="/" element={<LoginPage client={{ auth } as never} />} /><Route path="/lakes" element={<p>Lakes dashboard</p>} /><Route path="/verify-2fa" element={<p>Verify factor</p>} /></Routes></MemoryRouter>);
     fireEvent.change(screen.getByLabelText(/email/i), { target: { value: "operator@example.com" } }); fireEvent.change(screen.getByLabelText(/password/i), { target: { value: "secure-password" } }); fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
     await waitFor(() => expect(auth.mfa.getAuthenticatorAssuranceLevel).toHaveBeenCalledWith("token"));
+    expect(await screen.findByText("Lakes dashboard")).toBeInTheDocument();
+  });
+
+  it("sends an AAL1 password sign-in to factor verification", async () => {
+    const auth = { signInWithPassword: vi.fn().mockResolvedValue({ data: { session }, error: null }), mfa: { getAuthenticatorAssuranceLevel: vi.fn().mockResolvedValue({ data: { currentLevel: "aal1" } }) } };
+    render(<MemoryRouter><Routes><Route path="/" element={<LoginPage client={{ auth } as never} />} /><Route path="/lakes" element={<p>Lakes dashboard</p>} /><Route path="/verify-2fa" element={<p>Verify factor</p>} /></Routes></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: "operator@example.com" } }); fireEvent.change(screen.getByLabelText(/password/i), { target: { value: "secure-password" } }); fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
+    expect(await screen.findByText("Verify factor")).toBeInTheDocument();
   });
 
   it("enrolls a genuine TOTP factor, presents it, and verifies the enrollment", async () => {
@@ -87,10 +97,48 @@ describe("operator workflow", () => {
     await waitFor(() => expect(auth.mfa.verify).toHaveBeenCalledWith({ factorId: "factor-2", challengeId: "challenge-2", code: "123456" }));
   });
 
-  it("renders title-only lake cards without fleet inspection requests", async () => {
-    const client = { from: vi.fn(() => ({ select: vi.fn(() => ({ order: vi.fn(() => Promise.resolve({ data: [{ lake_id: "lake-unknown", name: "Quiet Lake" }], error: null })) })) })) };
+  it("keeps title-only lake cards until hovered, then shows a lightweight fleet summary", async () => {
+    const lakeQuery = { select: vi.fn(() => ({ order: vi.fn(() => Promise.resolve({ data: [{ lake_id: "lake-unknown", name: "Quiet Lake" }], error: null })) })) };
+    const fleetQuery = { select: vi.fn(() => ({ eq: vi.fn(() => Promise.resolve({ data: [{ status: "idle" }, { status: "patrolling" }], error: null })) })) };
+    const client = { from: vi.fn((table: string) => table === "lakes" ? lakeQuery : fleetQuery) };
     render(<MemoryRouter><LakeGridPage client={client as never} /></MemoryRouter>);
-    expect(await screen.findByRole("link", { name: "Quiet Lake" })).toBeInTheDocument(); expect(client.from).toHaveBeenCalledTimes(1);
+    const card = await screen.findByRole("link", { name: "Quiet Lake" });
+    expect(client.from).toHaveBeenCalledTimes(1);
+    fireEvent.mouseEnter(card);
+    expect(await screen.findByText("2 drones · idle, patrolling")).toBeInTheDocument();
+    expect(fleetQuery.select).toHaveBeenCalledWith("status");
+  });
+
+  it("treats a missing fleet endpoint as an expected non-live lake", async () => {
+    const lakeQuery = { select: vi.fn(() => ({ order: vi.fn(() => Promise.resolve({ data: [{ lake_id: "lake-unknown", name: "Quiet Lake" }], error: null })) })) };
+    const fleetQuery = { select: vi.fn(() => ({ eq: vi.fn(() => Promise.resolve({ data: null, error: { status: 404 } })) })) };
+    const client = { from: vi.fn((table: string) => table === "lakes" ? lakeQuery : fleetQuery) };
+    render(<MemoryRouter><LakeGridPage client={client as never} /></MemoryRouter>);
+    fireEvent.focus(await screen.findByRole("link", { name: "Quiet Lake" }));
+    expect(await screen.findByText("No live fleet")).toBeInTheDocument();
+  });
+
+  it("selects a lake candidate by clicking its 44px label", async () => {
+    const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ station: { lat: 1, lon: 2 }, candidates: [{ name: "First Lake", lat: 1, lon: 2 }, { name: "Second Lake", lat: 3, lon: 4 }] }) });
+    render(<MemoryRouter><OnboardingPage fetcher={fetcher as never} /></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText(/station name/i), { target: { value: "Dock" } }); fireEvent.change(screen.getByLabelText(/station address/i), { target: { value: "123 Shore" } }); fireEvent.click(screen.getByRole("button", { name: /find nearby lakes/i }));
+    const second = await screen.findByLabelText("Second Lake");
+    const label = second.closest("label")!;
+    expect(getComputedStyle(label).minHeight).toBe("44px");
+    fireEvent.click(label);
+    expect(second).toBeChecked();
+  });
+
+  it("shows a retryable error and resets the search button when nearby-lake lookup rejects", async () => {
+    const fetcher = vi.fn().mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce({ ok: true, json: async () => ({ station: { lat: 1, lon: 2 }, candidates: [] }) });
+    render(<MemoryRouter><OnboardingPage fetcher={fetcher as never} /></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText(/station name/i), { target: { value: "Dock" } }); fireEvent.change(screen.getByLabelText(/station address/i), { target: { value: "123 Shore" } });
+    const submit = screen.getByRole("button", { name: /find nearby lakes/i });
+    fireEvent.click(submit);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/try again/i);
+    expect(submit).toBeEnabled();
+    fireEvent.click(submit);
+    await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
   });
 
   it("uses the signed-in organization's station coordinates and disables deployment at the cap", async () => {
