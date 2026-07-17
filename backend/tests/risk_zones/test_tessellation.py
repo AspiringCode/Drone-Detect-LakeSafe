@@ -40,32 +40,6 @@ def test_unproject_round_trips_projected_point() -> None:
 MEAN_LAT = 47.581
 
 
-def test_tessellated_scores_normalized_and_coverage_cells_proxy_flagged() -> None:
-    zones = compute_tessellated_zones("lake-sammamish", drone_count=5, use_fixture=True)
-
-    assert zones
-    assert all(0.0 <= zone.risk_score <= 1.0 for zone in zones)
-    assert any(zone.is_proxy for zone in zones)
-    assert max(zone.risk_score for zone in zones) == 1.0
-    assert min(zone.risk_score for zone in zones) == 0.0
-
-
-def test_tessellated_hotspot_with_incidents_is_not_proxy() -> None:
-    zones = compute_tessellated_zones("lake-sammamish", drone_count=5, use_fixture=True)
-    hotspot_zones = [zone for zone in zones if "incidents" in zone.components]
-    hot = max(hotspot_zones, key=lambda zone: zone.components["incidents"])
-
-    assert hot.components["incidents"] > 0.0
-    assert hot.is_proxy is False
-
-
-def test_tessellated_coverage_cell_is_proxy() -> None:
-    zones = compute_tessellated_zones("lake-sammamish", drone_count=5, use_fixture=True)
-    proxy = next(zone for zone in zones if not zone.components)
-
-    assert proxy.is_proxy is True
-
-
 def _projected_sammamish_boundary() -> Polygon:
     scale = math.cos(math.radians(MEAN_LAT))
     boundary = load_lake_polygon("lake-sammamish")

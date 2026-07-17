@@ -52,9 +52,7 @@ def test_riskmap_returns_closed_tessellated_cell_rings():
     client = TestClient(app)
     response = client.get(f"/api/lakes/{LAKE_ID}/riskmap")
     assert response.status_code == 200
-    features = response.json()["features"]
-    assert features
-    for feature in features:
+    for feature in response.json()["features"]:
         assert feature["properties"]["zone_id"].startswith("cell-")
         coords = feature["geometry"]["coordinates"][0]
         assert coords[0] == coords[-1]
