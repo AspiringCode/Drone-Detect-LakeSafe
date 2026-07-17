@@ -21,17 +21,17 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
   const [riskmap, setRiskmap] = useState<RiskGeoJSON | null>(null);
   const [alert, setAlert] = useState<Alert | null>(null);
   const [noLive, setNoLive] = useState(false);
-  const [capReached, setCapReached] = useState(false);
+  const [capReachedLakeId, setCapReachedLakeId] = useState<string | null>(null);
   const [deploying, setDeploying] = useState(false);
   const [station, setStation] = useState<{ lat: number; lon: number } | null>(null);
   const [inventoryCap, setInventoryCap] = useState<number | null>(null);
-  const [inventoryReady, setInventoryReady] = useState(false);
+  const [inventoryLakeId, setInventoryLakeId] = useState<string | null>(null);
 
   useEffect(() => { let active = true; void fetcher(`${API}/api/lakes/${lakeId}/riskmap`).then(async (r) => { if (r.status === 404) return active && setNoLive(true); if (r.ok) setRiskmap(await r.json()); }).catch(() => active && setNoLive(true)); const stop = connect(wsFor(lakeId), (state) => setDrones(state.drones)); return () => { active = false; stop(); }; }, [lakeId, fetcher, connect]);
   useEffect(() => { void fetcher(`${API}/api/lakes/${lakeId}/alerts`).then((r) => r.ok ? r.json() : []).then((alerts: Alert[]) => setAlert(alerts[0] ?? null)); }, [lakeId, fetcher]);
   useEffect(() => {
     let active = true;
-    setInventoryReady(false);
+    setInventoryLakeId(null);
     setInventoryCap(null);
     setStation(null);
     void client.from("lakes").select("drone_inventory_cap,organizations(station_lat,station_lon)").eq("lake_id", lakeId).maybeSingle().then(({ data, error }: { data: LakeMetadata | null; error: unknown }) => {
@@ -40,13 +40,15 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
       if (!org) return;
       setStation({ lat: org.station_lat, lon: org.station_lon });
       setInventoryCap(data.drone_inventory_cap);
-      setInventoryReady(true);
+      setInventoryLakeId(lakeId);
     });
     return () => { active = false; };
   }, [client, lakeId]);
 
-  const atCap = inventoryCap !== null && drones.length >= inventoryCap;
-  async function deploy() { if (atCap) return; setDeploying(true); const token = accessToken ?? (await client.auth.getSession()).data.session?.access_token; const response = await fetcher(`${API}/api/lakes/${lakeId}/drones/deploy`, { method: "POST", headers: { Authorization: `Bearer ${token ?? ""}` } }); setDeploying(false); if (response.status === 409) setCapReached(true); }
+  const inventoryReady = inventoryLakeId === lakeId;
+  const capReached = capReachedLakeId === lakeId;
+  const atCap = inventoryReady && inventoryCap !== null && drones.length >= inventoryCap;
+  async function deploy() { if (!inventoryReady || atCap || capReached) return; setDeploying(true); const token = accessToken ?? (await client.auth.getSession()).data.session?.access_token; const response = await fetcher(`${API}/api/lakes/${lakeId}/drones/deploy`, { method: "POST", headers: { Authorization: `Bearer ${token ?? ""}` } }); setDeploying(false); if (response.status === 409) setCapReachedLakeId(lakeId); }
   async function demo() { const response = await fetcher(`${API}/api/lakes/${lakeId}/demo/trigger`, { method: "POST" }); if (response.ok) setAlert(await response.json()); }
   async function escalate(id: string) { await fetcher(`${API}/api/lakes/${lakeId}/alerts/${id}/escalate`, { method: "POST" }); }
   if (noLive) return <main className="no-live"><p className="kicker">LakeSafe Initiative</p><h1>No live data for this lake</h1><p>This lake is saved to your organization, but its operator runtime is not active.</p><Link to="/lakes">Return to lakes</Link></main>;
