@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+# Legacy grid-based compute_risk_zones scoring is superseded: tessellation uses raw
+# rows. This module and test_scoring are retained for reference until imports are
+# confirmed absent.
+
 from app.config import LAKE_BBOX
 from app.models import LatLon, RiskZone
 from app.risk_zones.socrata_client import (
