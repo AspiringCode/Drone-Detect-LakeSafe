@@ -16,12 +16,9 @@ from app.config import SUPABASE_JWT_AUDIENCE, SUPABASE_JWT_ISSUER, SUPABASE_JWT_
 def _decode_segment(segment: str) -> dict[str, object]:
     try:
         padded = segment + "=" * (-len(segment) % 4)
-        decoded = json.loads(base64.urlsafe_b64decode(padded))
+        return json.loads(base64.urlsafe_b64decode(padded))
     except (ValueError, json.JSONDecodeError) as exc:
         raise HTTPException(status_code=401, detail="Invalid bearer token") from exc
-    if not isinstance(decoded, dict):
-        raise HTTPException(status_code=401, detail="Invalid bearer token")
-    return decoded
 
 
 def verify_supabase_jwt(token: str) -> dict[str, object]:

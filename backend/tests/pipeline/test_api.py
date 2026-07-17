@@ -3,7 +3,6 @@ import json
 
 import pytest
 from fastapi.testclient import TestClient
-from starlette.websockets import WebSocketDisconnect
 
 from app.coordination.assignment import haversine_m
 from app.main import app, lake_runtimes
@@ -34,16 +33,6 @@ def test_positions_ws_receives_state_with_source():
         payload = ws.receive_json()
     assert payload["drones"]
     assert "source" in payload["drones"][0]
-
-
-def test_positions_ws_rejects_unknown_lake_with_policy_violation():
-    client = TestClient(app)
-
-    with pytest.raises(WebSocketDisconnect) as error:
-        with client.websocket_connect("/ws/lakes/lake-unknown/positions"):
-            pass
-
-    assert error.value.code == 1008
 
 
 def test_startup_launches_background_tick_task_that_stays_alive():

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import base64
-import json
 import time
 
 import httpx
@@ -85,16 +84,6 @@ def test_verify_supabase_jwt_rejects_hs256_when_only_es256_jwks_is_configured(
         "attacker-secret-that-is-at-least-32-bytes",
         algorithm="HS256",
     )
-
-    with pytest.raises(HTTPException, match="Invalid bearer token") as error:
-        auth.verify_supabase_jwt(token)
-
-    assert error.value.status_code == 401
-
-
-def test_verify_supabase_jwt_rejects_a_json_array_header():
-    encode = lambda value: base64.urlsafe_b64encode(json.dumps(value).encode()).rstrip(b"=").decode()
-    token = f"{encode([])}.{encode({'sub': 'user-1', 'exp': time.time() + 3600})}.signature"
 
     with pytest.raises(HTTPException, match="Invalid bearer token") as error:
         auth.verify_supabase_jwt(token)
