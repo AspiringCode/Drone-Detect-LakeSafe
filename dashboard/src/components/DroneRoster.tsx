@@ -5,6 +5,10 @@ interface DroneRosterProps {
 }
 
 export function DroneRoster({ drones }: DroneRosterProps) {
+  if (drones.length === 0) {
+    return <p className="panel-empty">Waiting for fleet telemetry.</p>;
+  }
+
   return (
     <table className="drone-roster">
       <thead>
@@ -19,7 +23,7 @@ export function DroneRoster({ drones }: DroneRosterProps) {
         {drones.map((drone) => (
           <tr key={drone.drone_id}>
             <td>{drone.drone_id}</td>
-            <td>{drone.status}</td>
+            <td><span className="drone-status"><span className="drone-status__dot" aria-hidden="true" />{drone.status.replace(/_/g, " ")}</span></td>
             <td>{Math.round(drone.battery * 100)}%</td>
             <td>{drone.assigned_zone ?? "-"}</td>
           </tr>

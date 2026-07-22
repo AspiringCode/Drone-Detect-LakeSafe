@@ -8,6 +8,7 @@ import { supabase, type SupabaseLike } from "../lib/supabase";
 import { connectPositions } from "../lib/ws";
 import { useOrientation } from "../lib/useOrientation";
 import type { Alert, SimulationState } from "../lib/types";
+import { AppHeader } from "../components/AppHeader";
 
 const API = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 const wsFor = (lakeId: string) => `${API.replace(/^http/, "ws")}/ws/lakes/${lakeId}/positions`;
@@ -45,5 +46,42 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
   async function demo() { const response = await fetcher(`${API}/api/lakes/${lakeId}/demo/trigger`, { method: "POST" }); if (response.ok) setAlert(await response.json()); }
   async function escalate(id: string) { await fetcher(`${API}/api/lakes/${lakeId}/alerts/${id}/escalate`, { method: "POST" }); }
   if (noLive) return <main className="no-live"><p className="kicker">LakeSafe Initiative</p><h1>No live data for this lake</h1><p>This lake is saved to your organization, but its operator runtime is not active.</p><Link to="/lakes">Return to lakes</Link></main>;
-  return <main ref={ref} className="live-shell"><header className="operator-header"><div><p className="kicker">LakeSafe Initiative</p><h1>Live operator view</h1></div><div className="operator-header__actions"><SimulatedBadge source="simulated" /><button onClick={demo}>Fire demo trigger</button><button onClick={deploy} disabled={deploying || capReached || atCap}>{capReached || atCap ? "Inventory cap reached" : "Deploy drone"}</button></div></header>{(capReached || atCap) && <p className="form-error" role="alert">Drone inventory cap reached. Deployment is unavailable for this lake.</p>}<section className="operator-layout">{station && <LakeMap riskmap={riskmap} drones={drones} stationLocation={station} />}<div className="side-panel"><DroneRoster drones={drones} /><AlertPanel alert={alert} onEscalate={escalate} /></div></section></main>;
+  const lakeName = lakeId === "lake-sammamish" ? "Lake Sammamish" : "Live lake";
+
+  return (
+    <main ref={ref} className="app-page live-shell">
+      <AppHeader active="operations" contextLabel={lakeName} />
+      <section className="live-heading">
+        <div>
+          <p className="kicker">Live operations</p>
+          <h1>{lakeName}</h1>
+        </div>
+        <SimulatedBadge source="simulated" />
+      </section>
+      {(capReached || atCap) && <p className="form-error live-notice" role="alert">Drone inventory cap reached. Deployment is unavailable for this lake.</p>}
+      <section className="operator-layout" aria-label={`${lakeName} live operations`}>
+        <section className="map-card" aria-label="Live lake map">
+          {station && <LakeMap riskmap={riskmap} drones={drones} stationLocation={station} />}
+        </section>
+        <aside className="side-panel" aria-label="Operations details">
+          <section className="panel-card fleet-card">
+            <div className="panel-heading">
+              <div><p className="panel-eyebrow">Fleet</p><h2>Drone status</h2></div>
+              <span className="fleet-count">{drones.length}</span>
+            </div>
+            <DroneRoster drones={drones} />
+          </section>
+          <section className="panel-card alert-card">
+            <div className="panel-heading"><div><p className="panel-eyebrow">Response</p><h2>Active alert</h2></div></div>
+            <AlertPanel alert={alert} onEscalate={escalate} />
+          </section>
+          <section className="panel-card action-card">
+            <div className="panel-heading"><div><p className="panel-eyebrow">Controls</p><h2>Operator actions</h2></div></div>
+            <button onClick={deploy} disabled={deploying || capReached || atCap}>{capReached || atCap ? "Inventory cap reached" : "Deploy drone"}</button>
+            <button className="button-secondary" onClick={demo}>Fire demo trigger</button>
+          </section>
+        </aside>
+      </section>
+    </main>
+  );
 }

@@ -13,7 +13,7 @@ async function defaultEscalate(alertId: string, apiBaseUrl: string): Promise<voi
 
 export function AlertPanel({ alert, onEscalate, apiBaseUrl = "" }: AlertPanelProps) {
   if (!alert) {
-    return <div className="alert-panel alert-panel--empty">No active alert.</div>;
+    return <div className="alert-panel alert-panel--empty"><span className="status-dot" aria-hidden="true" />No active alert.</div>;
   }
 
   const mapsUrl = `https://www.google.com/maps?q=${alert.location.lat},${alert.location.lon}`;
