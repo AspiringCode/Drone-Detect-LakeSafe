@@ -54,6 +54,11 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
       <section className="live-summary">
         <div className="live-heading">
           <div>
+            <nav className="live-context" aria-label="Breadcrumb">
+              <Link to="/lakes">Lakes</Link>
+              <span aria-hidden="true"> &gt; </span>
+              <span aria-current="page">Operations</span>
+            </nav>
             <h1>{lakeName}</h1>
           </div>
           <SimulatedBadge source="simulated" />

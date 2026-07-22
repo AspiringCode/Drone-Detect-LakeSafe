@@ -230,6 +230,9 @@ legend { padding: 0 0.4rem; font-weight: 700; }
 .live-shell { display: grid; grid-template-rows: auto auto minmax(0, 1fr); height: 100dvh; min-height: 0; overflow: hidden; }
 .live-summary { min-height: 0; }
 .live-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; width: min(calc(100% - 4rem), 104rem); margin: 0 auto; padding: 1.5rem 0 1.25rem; }
+.live-context { display: flex; align-items: center; margin: 0 0 0.35rem; color: var(--primary); font-size: 0.68rem; font-weight: 750; letter-spacing: 0.13em; text-transform: uppercase; }
+.live-context a { color: var(--text-muted); text-decoration: none; }
+.live-context a:hover { color: var(--primary-hover); }
 .live-heading h1 { font-size: clamp(1.8rem, 3vw, 2.5rem); }
 .operator-layout { display: grid; grid-template-columns: minmax(0, 2.65fr) minmax(19rem, 1fr); gap: 1.25rem; width: min(calc(100% - 4rem), 104rem); height: 100%; min-height: 0; margin: 0 auto; padding-bottom: 2rem; overflow: hidden; }
 .map-card { min-width: 0; min-height: 0; height: 100%; overflow: hidden; border: 1px solid var(--border); border-radius: 22px; background: var(--surface); box-shadow: var(--shadow-soft); }

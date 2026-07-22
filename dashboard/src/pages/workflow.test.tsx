@@ -134,6 +134,9 @@ describe("operator workflow", () => {
     const fleetCard = screen.getByRole("heading", { name: /drone status/i }).closest("section");
     expect(fleetCard).not.toBeNull();
     expect(within(fleetCard!).getByRole("alert")).toHaveTextContent(/fleet capacity reached/i);
+    const breadcrumb = screen.getByRole("navigation", { name: /breadcrumb/i });
+    expect(breadcrumb).toHaveTextContent("Lakes > Operations");
+    expect(within(breadcrumb).getByRole("link", { name: "Lakes" })).toHaveAttribute("href", "/lakes");
     expect(screen.queryByText("Live operations")).not.toBeInTheDocument();
     const deploy = screen.getByRole("button", { name: /inventory cap reached/i });
     expect(deploy).toBeDisabled();
