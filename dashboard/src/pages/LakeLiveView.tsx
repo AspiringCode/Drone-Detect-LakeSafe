@@ -54,12 +54,10 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
       <section className="live-summary">
         <div className="live-heading">
           <div>
-            <p className="kicker">Live operations</p>
             <h1>{lakeName}</h1>
           </div>
           <SimulatedBadge source="simulated" />
         </div>
-        {(capReached || atCap) && <p className="form-error live-notice" role="alert">Drone inventory cap reached. Deployment is unavailable for this lake.</p>}
       </section>
       <section className="operator-layout" aria-label={`${lakeName} live operations`}>
         <section className="map-card" aria-label="Live lake map">
@@ -69,8 +67,12 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
           <section className="panel-card fleet-card">
             <div className="panel-heading">
               <div><p className="panel-eyebrow">Fleet</p><h2>Drone status</h2></div>
-              <span className="fleet-count">{drones.length}</span>
+              <div className="fleet-capacity" aria-label={`${drones.length} of ${inventoryCap ?? "unknown"} drones deployed`}>
+                <span><strong>{drones.length}</strong><small> / {inventoryCap ?? "—"}</small></span>
+                {inventoryCap !== null && <span className="fleet-capacity__meter" role="progressbar" aria-label="Fleet capacity" aria-valuemin={0} aria-valuemax={inventoryCap} aria-valuenow={Math.min(drones.length, inventoryCap)}><span style={{ width: `${Math.min(100, (drones.length / inventoryCap) * 100)}%` }} /></span>}
+              </div>
             </div>
+            {(capReached || atCap) && <div className="fleet-warning" role="alert"><span className="fleet-warning__icon" aria-hidden="true">!</span><span><strong>Fleet capacity reached</strong><small>Inventory cap reached. Deployment is paused.</small></span></div>}
             <DroneRoster drones={drones} />
           </section>
           <section className="panel-card alert-card">

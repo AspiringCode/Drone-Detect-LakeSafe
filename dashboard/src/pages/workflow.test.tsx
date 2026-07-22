@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { AuthGate } from "../auth/AuthGate";
@@ -130,7 +130,14 @@ describe("operator workflow", () => {
     const metadataClient = { auth: { getSession: vi.fn().mockResolvedValue({ data: { session } }) }, from: vi.fn(() => ({ select: vi.fn(() => ({ eq: vi.fn(() => ({ maybeSingle: vi.fn().mockResolvedValue({ data: { drone_inventory_cap: 1, organizations: { station_lat: 47.5301, station_lon: -122.0326 } }, error: null }) })) })) })) };
     const fetcher = vi.fn((url: string) => { if (url.includes("riskmap")) return Promise.resolve({ ok: true, status: 200, json: async () => ({ type: "FeatureCollection", features: [] }) }); if (url.includes("alerts")) return Promise.resolve({ ok: true, status: 200, json: async () => [] }); return Promise.resolve({ ok: true, status: 200, json: async () => ({}) }); });
     render(<MemoryRouter initialEntries={["/lakes/lake-sammamish"]}><Routes><Route path="/lakes/:lakeId" element={<LakeLiveView client={metadataClient as never} accessToken="token" fetcher={fetcher as never} connect={(_url, onState) => { onState({ drones: [{ drone_id: "d1", pos: { lat: 1, lon: 1 }, battery: 1, status: "idle", assigned_zone: null, source: "simulated" }], conflicts: [], t: 0 }); return () => {}; }} />} /></Routes></MemoryRouter>);
-    expect(await screen.findByTestId("lake-map")).toHaveTextContent("47.5301,-122.0326"); const deploy = screen.getByRole("button", { name: /inventory cap reached/i }); expect(deploy).toBeDisabled(); expect(fetcher).not.toHaveBeenCalledWith(expect.stringContaining("/drones/deploy"), expect.anything());
+    expect(await screen.findByTestId("lake-map")).toHaveTextContent("47.5301,-122.0326");
+    const fleetCard = screen.getByRole("heading", { name: /drone status/i }).closest("section");
+    expect(fleetCard).not.toBeNull();
+    expect(within(fleetCard!).getByRole("alert")).toHaveTextContent(/fleet capacity reached/i);
+    expect(screen.queryByText("Live operations")).not.toBeInTheDocument();
+    const deploy = screen.getByRole("button", { name: /inventory cap reached/i });
+    expect(deploy).toBeDisabled();
+    expect(fetcher).not.toHaveBeenCalledWith(expect.stringContaining("/drones/deploy"), expect.anything());
   });
 
   it("reports a backend inventory-cap conflict that races the client-side check", async () => {

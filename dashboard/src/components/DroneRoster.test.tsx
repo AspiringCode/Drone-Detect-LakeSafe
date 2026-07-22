@@ -37,4 +37,12 @@ describe("DroneRoster", () => {
     expect(screen.getByText("20%")).toBeTruthy();
     expect(screen.getAllByText("-").length).toBeGreaterThan(0);
   });
+
+  it("exposes battery charge as an accessible visual meter", () => {
+    render(<DroneRoster drones={drones} />);
+    const meters = screen.getAllByRole("progressbar", { name: /battery/i });
+    expect(meters).toHaveLength(2);
+    expect(meters[0]).toHaveAttribute("aria-valuenow", "82");
+    expect(meters[1]).toHaveAttribute("aria-valuenow", "20");
+  });
 });

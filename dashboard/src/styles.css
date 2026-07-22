@@ -229,23 +229,45 @@ legend { padding: 0 0.4rem; font-weight: 700; }
 
 .live-shell { display: grid; grid-template-rows: auto auto minmax(0, 1fr); height: 100dvh; min-height: 0; overflow: hidden; }
 .live-summary { min-height: 0; }
-.live-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; width: min(100%, 104rem); margin: 0 auto; padding: 0.8rem 1.5rem 0.65rem; }
+.live-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; width: min(100%, 104rem); margin: 0 auto; padding: 0.65rem 1.5rem; }
 .live-heading h1 { font-size: clamp(1.8rem, 3vw, 2.5rem); }
-.live-notice { width: min(calc(100% - 3rem), 104rem); margin: 0 auto 0.65rem; padding: 0.55rem 0.8rem; border: 1px solid oklch(83% 0.07 25); border-radius: 10px; background: oklch(95% 0.04 25); font-size: 0.76rem; }
 .operator-layout { display: grid; grid-template-columns: minmax(0, 2.65fr) minmax(19rem, 1fr); gap: 1rem; width: min(calc(100% - 3rem), 104rem); height: 100%; min-height: 0; margin: 0 auto; padding-bottom: 1rem; overflow: hidden; }
 .map-card { min-width: 0; min-height: 0; height: 100%; overflow: hidden; border: 1px solid var(--border); border-radius: 22px; background: var(--surface); box-shadow: var(--shadow-soft); }
 .lake-map { width: 100%; height: 100%; min-height: 0; }
-.side-panel { display: grid; grid-template-rows: auto auto auto; align-content: space-between; gap: 0.75rem; min-width: 0; min-height: 0; overflow: hidden; }
+.side-panel { display: grid; grid-template-rows: minmax(0, 1fr) auto auto; gap: 0.75rem; min-width: 0; min-height: 0; overflow: hidden; }
 .panel-card { padding: 1.15rem; overflow: hidden; border: 1px solid var(--border); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow-soft); }
 .panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 0.9rem; }
 .panel-eyebrow { margin-bottom: 0.25rem; color: var(--text-muted); font-size: 0.62rem; }
-.fleet-count { display: grid; place-items: center; min-width: 2rem; min-height: 2rem; border-radius: 10px; background: var(--surface-blue); color: var(--primary-hover); font-weight: 750; }
-.drone-roster { width: 100%; border-collapse: collapse; font-size: 0.74rem; }
+.fleet-capacity { display: grid; justify-items: end; gap: 0.25rem; min-width: 4rem; color: var(--primary-hover); }
+.fleet-capacity > span:first-child { line-height: 1; }
+.fleet-capacity strong { font-size: 1.15rem; }
+.fleet-capacity small { color: var(--text-muted); font-size: 0.7rem; font-weight: 700; }
+.fleet-capacity__meter { display: block; width: 3.8rem; height: 0.28rem; overflow: hidden; border-radius: 99px; background: var(--surface-blue); }
+.fleet-capacity__meter > span { display: block; height: 100%; border-radius: inherit; background: var(--primary); }
+.fleet-warning { display: flex; align-items: center; gap: 0.55rem; margin: -0.1rem 0 0.45rem; padding: 0.48rem 0.6rem; border: 1px solid oklch(85% 0.065 40); border-radius: 11px; background: oklch(96% 0.035 40); color: oklch(43% 0.13 30); }
+.fleet-warning__icon { display: grid; flex: 0 0 auto; place-items: center; width: 1.55rem; height: 1.55rem; border-radius: 50%; background: oklch(89% 0.07 40); font-size: 0.75rem; font-weight: 750; }
+.fleet-warning > span:last-child { display: grid; gap: 0.1rem; }
+.fleet-warning strong { font-size: 0.72rem; }
+.fleet-warning small { color: oklch(50% 0.07 35); font-size: 0.62rem; }
+.drone-roster { width: 100%; border-collapse: separate; border-spacing: 0 0.18rem; font-size: 0.7rem; }
 .drone-roster th { color: var(--text-muted); font-size: 0.64rem; letter-spacing: 0.06em; text-transform: uppercase; }
-.drone-roster th, .drone-roster td { padding: 0.65rem 0.25rem; text-align: left; border-bottom: 1px solid var(--border); }
-.drone-roster tbody tr:last-child td { border-bottom: 0; }
-.drone-status { display: inline-flex; align-items: center; gap: 0.35rem; text-transform: capitalize; }
-.drone-status__dot { width: 0.45rem; height: 0.45rem; border-radius: 50%; background: var(--primary); }
+.drone-roster th { padding: 0 0.42rem 0.2rem; text-align: left; }
+.drone-roster td { padding: 0.3rem 0.4rem; text-align: left; background: var(--surface-muted); }
+.drone-roster td:first-child { border-radius: 9px 0 0 9px; }
+.drone-roster td:last-child { border-radius: 0 9px 9px 0; }
+.drone-id { display: inline-flex; align-items: center; gap: 0.4rem; font-weight: 750; }
+.drone-id > span { width: 0.48rem; height: 0.48rem; border: 1px solid oklch(72% 0.075 240); border-radius: 2px; background: var(--surface-blue); transform: rotate(45deg); }
+.drone-status { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.16rem 0.38rem; border-radius: 999px; background: oklch(93% 0.035 235); color: oklch(43% 0.095 245); text-transform: capitalize; white-space: nowrap; }
+.drone-status__dot { width: 0.38rem; height: 0.38rem; border-radius: 50%; background: var(--primary); }
+.drone-status[data-status="idle"] { background: oklch(95% 0.015 235); color: var(--text-muted); }
+.drone-status[data-status="idle"] .drone-status__dot { background: oklch(68% 0.03 240); }
+.drone-status[data-status="returning"], .drone-status[data-status="charging"] { background: oklch(95% 0.04 85); color: oklch(45% 0.09 80); }
+.drone-status[data-status="returning"] .drone-status__dot, .drone-status[data-status="charging"] .drone-status__dot { background: oklch(68% 0.12 80); }
+.battery-reading { display: grid; grid-template-columns: 2rem minmax(2.3rem, 1fr); align-items: center; gap: 0.35rem; min-width: 4.8rem; font-variant-numeric: tabular-nums; }
+.battery-meter { display: block; height: 0.3rem; overflow: hidden; border-radius: 99px; background: oklch(88% 0.02 235); }
+.battery-meter > span { display: block; height: 100%; border-radius: inherit; background: var(--success); }
+.zone-chip { display: inline-flex; align-items: center; min-height: 1.35rem; padding: 0.15rem 0.38rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text-muted); white-space: nowrap; }
+.zone-chip--empty { border-color: transparent; background: transparent; }
 .alert-panel { display: grid; gap: 0.7rem; color: var(--text-muted); font-size: 0.82rem; line-height: 1.5; }
 .alert-panel p { margin: 0; }
 .alert-panel__header { display: flex; justify-content: space-between; gap: 0.5rem; }
@@ -253,9 +275,13 @@ legend { padding: 0 0.4rem; font-weight: 700; }
 .alert-panel__mode { color: var(--text-muted); font-size: 0.7rem; }
 .alert-panel__dispatch { width: 100%; margin-top: 0.2rem; }
 .alert-panel__operator-assist { padding: 0.75rem; border-radius: 10px; background: var(--warning-surface); color: oklch(42% 0.08 80); }
-.fleet-card { min-height: 0; overflow: auto; }
-.action-card { display: grid; gap: 0.65rem; }
-.action-card .panel-heading { margin-bottom: 0.25rem; }
+.fleet-card { min-height: 0; padding: 0.9rem 1rem; overflow: auto; }
+.fleet-card .panel-heading { margin-bottom: 0.6rem; }
+.alert-card, .action-card { padding: 0.75rem 1rem; }
+.alert-card .panel-heading { margin-bottom: 0.3rem; }
+.action-card { display: grid; gap: 0.3rem; }
+.action-card .panel-heading { margin-bottom: 0; }
+.action-card button { min-height: 2.25rem; padding-block: 0.4rem; }
 .source-badge { display: inline-flex; align-items: center; min-height: 1.7rem; padding: 0.25rem 0.55rem; border: 1px solid; border-radius: 8px; font-size: 0.63rem; font-weight: 750; letter-spacing: 0.08em; }
 .source-badge--simulated { color: oklch(43% 0.09 80); background: oklch(96% 0.05 85); border-color: oklch(84% 0.08 85); }
 .source-badge--real { color: oklch(40% 0.11 150); background: oklch(95% 0.04 150); border-color: oklch(84% 0.07 150); }
