@@ -7,6 +7,7 @@ import { VerifyOtpPage } from "./pages/VerifyOtpPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
 import { LakeGridPage } from "./pages/LakeGridPage";
 import { LakeLiveView } from "./pages/LakeLiveView";
+import { ProfileSettingsPage } from "./pages/ProfileSettingsPage";
 import "./styles.css";
 
 export default function App() {
@@ -20,6 +21,7 @@ export default function App() {
     <Route element={<AuthGate />}>
       <Route path="/lakes" element={<LakeGridPage />} />
       <Route path="/lakes/:lakeId" element={<LakeLiveView />} />
+      <Route path="/profile" element={<ProfileSettingsPage />} />
     </Route>
     <Route path="*" element={<Navigate to="/lakes" replace />} />
   </Routes></BrowserRouter>;
