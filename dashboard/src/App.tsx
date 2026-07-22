@@ -8,6 +8,8 @@ import { OnboardingPage } from "./pages/OnboardingPage";
 import { LakeGridPage } from "./pages/LakeGridPage";
 import { LakeLiveView } from "./pages/LakeLiveView";
 import { ProfileSettingsPage } from "./pages/ProfileSettingsPage";
+import { AlertsPage } from "./pages/AlertsPage";
+import { ReportsPage } from "./pages/ReportsPage";
 import "./styles.css";
 
 export default function App() {
@@ -22,6 +24,8 @@ export default function App() {
       <Route path="/lakes" element={<LakeGridPage />} />
       <Route path="/lakes/:lakeId" element={<LakeLiveView />} />
       <Route path="/profile" element={<ProfileSettingsPage />} />
+      <Route path="/alerts" element={<AlertsPage />} />
+      <Route path="/reports" element={<ReportsPage />} />
     </Route>
     <Route path="*" element={<Navigate to="/lakes" replace />} />
   </Routes></BrowserRouter>;

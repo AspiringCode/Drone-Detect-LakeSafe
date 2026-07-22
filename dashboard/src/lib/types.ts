@@ -5,7 +5,13 @@ export interface LatLon {
   lon: number;
 }
 
-export interface Lake { lake_id: string; name: string; }
+export interface Lake {
+  lake_id: string;
+  org_id: string;
+  name: string;
+  centroid_lat: number;
+  centroid_lon: number;
+}
 export interface LakeCandidate { name: string; lat: number; lon: number; }
 
 export interface RiskZone {

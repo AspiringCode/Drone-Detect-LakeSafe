@@ -99,10 +99,31 @@ describe("operator workflow", () => {
     await waitFor(() => expect(auth.mfa.verify).toHaveBeenCalledWith({ factorId: "factor-2", challengeId: "challenge-2", code: "123456" }));
   });
 
-  it("renders title-only lake cards without fleet inspection requests", async () => {
-    const client = { from: vi.fn(() => ({ select: vi.fn(() => ({ order: vi.fn(() => Promise.resolve({ data: [{ lake_id: "lake-unknown", name: "Quiet Lake" }], error: null })) })) })) };
+  it("renders lake cards with geographic previews without fleet inspection requests", async () => {
+    const client = { from: vi.fn(() => ({ select: vi.fn(() => ({ order: vi.fn(() => Promise.resolve({ data: [{ lake_id: "lake-unknown", name: "Quiet Lake", org_id: "org-1", centroid_lat: 47.58, centroid_lon: -122.09 }], error: null })) })) })) };
     render(<MemoryRouter><LakeGridPage client={client as never} /></MemoryRouter>);
-    expect(await screen.findByRole("link", { name: "Quiet Lake" })).toBeInTheDocument(); expect(client.from).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole("link", { name: /quiet lake/i })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /quiet lake map preview/i })).toBeInTheDocument();
+    expect(client.from).toHaveBeenCalledWith("lakes");
+    expect(client.from).toHaveBeenCalledWith("organizations");
+  });
+
+  it("filters managed lakes when the operator chooses a station", async () => {
+    const lakes = [
+      { lake_id: "lake-one", name: "First Lake", org_id: "org-1", centroid_lat: 1, centroid_lon: 1 },
+      { lake_id: "lake-two", name: "Second Lake", org_id: "org-2", centroid_lat: 2, centroid_lon: 2 },
+    ];
+    const client = {
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: null } }) },
+      from: vi.fn((table: string) => table === "organizations"
+        ? { select: vi.fn().mockResolvedValue({ data: [{ org_id: "org-1", name: "Station One" }, { org_id: "org-2", name: "Station Two" }] }) }
+        : { select: vi.fn(() => ({ order: vi.fn().mockResolvedValue({ data: lakes, error: null }) })) }),
+    };
+
+    render(<MemoryRouter initialEntries={["/lakes?station=org-2"]}><LakeGridPage client={client as never} /></MemoryRouter>);
+
+    expect(await screen.findByRole("link", { name: /second lake/i })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /first lake/i })).not.toBeInTheDocument();
   });
 
   it("uses the signed-in organization's station coordinates and disables deployment at the cap", async () => {

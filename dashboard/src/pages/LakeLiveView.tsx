@@ -50,15 +50,17 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
 
   return (
     <main ref={ref} className="app-page live-shell">
-      <AppHeader active="operations" contextLabel={lakeName} />
-      <section className="live-heading">
-        <div>
-          <p className="kicker">Live operations</p>
-          <h1>{lakeName}</h1>
+      <AppHeader active="operations" contextLabel={lakeName} operationsHref={`/lakes/${lakeId}`} client={client} />
+      <section className="live-summary">
+        <div className="live-heading">
+          <div>
+            <p className="kicker">Live operations</p>
+            <h1>{lakeName}</h1>
+          </div>
+          <SimulatedBadge source="simulated" />
         </div>
-        <SimulatedBadge source="simulated" />
+        {(capReached || atCap) && <p className="form-error live-notice" role="alert">Drone inventory cap reached. Deployment is unavailable for this lake.</p>}
       </section>
-      {(capReached || atCap) && <p className="form-error live-notice" role="alert">Drone inventory cap reached. Deployment is unavailable for this lake.</p>}
       <section className="operator-layout" aria-label={`${lakeName} live operations`}>
         <section className="map-card" aria-label="Live lake map">
           {station && <LakeMap riskmap={riskmap} drones={drones} stationLocation={station} />}
