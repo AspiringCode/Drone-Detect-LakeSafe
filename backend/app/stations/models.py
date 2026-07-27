@@ -79,8 +79,24 @@ class JoinRequestCreate:
 
 
 @dataclass(frozen=True)
+class JoinRequest:
+    station_join_request_id: str
+    station_id: str
+    user_id: str
+    status: str
+
+    @classmethod
+    def from_record(cls, value: dict) -> "JoinRequest":
+        return cls(
+            str(value["station_join_request_id"]), str(value["station_id"]),
+            str(value["user_id"]), str(value["status"]),
+        )
+
+
+@dataclass(frozen=True)
 class InvitationCreate:
     station_id: str
+    acting_admin_user_id: str
     token_hash: str
     intended_email: str
     expires_at: datetime

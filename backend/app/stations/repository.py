@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+import re
 from typing import Protocol
 
 from app.config import SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL
 from app.stations.models import (
-    AuditEventCreate, IdMeVerification, InvitationCreate, JoinRequestCreate,
+    AuditEventCreate, IdMeVerification, InvitationCreate, JoinRequest, JoinRequestCreate,
     JoinReviewCreate, LakeCreate, LakeRecord, StationMembership,
     StationRequest, StationRequestCreate, StationReviewCreate,
     VerificationSession, VerificationSessionCreate,
@@ -21,7 +22,7 @@ class WorkflowRepository(Protocol):
     def consume_verification_session(self, state_hash: str) -> VerificationSession: ...
     def upsert_idme_verification(self, value: IdMeVerification) -> None: ...
     def create_station_request(self, value: StationRequestCreate) -> StationRequest: ...
-    def create_join_request(self, value: JoinRequestCreate) -> StationRequest: ...
+    def create_join_request(self, value: JoinRequestCreate) -> JoinRequest: ...
     def create_invitation(self, value: InvitationCreate) -> None: ...
     def accept_invitation(self, token_hash: str, user_id: str, email: str) -> StationMembership: ...
     def review_station_request(self, value: StationReviewCreate) -> StationMembership | None: ...
@@ -42,9 +43,13 @@ class SupabaseWorkflowRepository:
         self._client = client
 
     def create_verification_session(self, value: VerificationSessionCreate) -> None:
+        _require_sha256(value.state_hash)
+        _require_sha256(value.nonce_hash)
+        _require_sha256(value.verifier_hash)
         self._client.table("verification_sessions").insert(_payload(value)).execute()
 
     def consume_verification_session(self, state_hash: str) -> VerificationSession:
+        _require_sha256(state_hash)
         return VerificationSession.from_record(self._rpc_one("consume_verification_session", {"p_state_hash": state_hash}, "Verification session is invalid, expired, or already consumed"))
 
     def upsert_idme_verification(self, value: IdMeVerification) -> None:
@@ -61,19 +66,22 @@ class SupabaseWorkflowRepository:
             "p_requested_address": value.requested_address,
         }, "Unable to create station request"))
 
-    def create_join_request(self, value: JoinRequestCreate) -> StationRequest:
-        return StationRequest.from_record(self._rpc_one("create_station_join_request", {
+    def create_join_request(self, value: JoinRequestCreate) -> JoinRequest:
+        return JoinRequest.from_record(self._rpc_one("create_station_join_request", {
             "p_station_id": value.station_id, "p_user_id": value.user_id,
         }, "Unable to create join request"))
 
     def create_invitation(self, value: InvitationCreate) -> None:
+        _require_sha256(value.token_hash)
         self._rpc_one("create_station_invitation", {
-            "p_station_id": value.station_id, "p_token_hash": value.token_hash,
+            "p_station_id": value.station_id, "p_actor_user_id": value.acting_admin_user_id,
+            "p_token_hash": value.token_hash,
             "p_intended_email": value.intended_email.strip().casefold(),
             "p_expires_at": value.expires_at.isoformat(),
         }, "Unable to create station invitation")
 
     def accept_invitation(self, token_hash: str, user_id: str, email: str) -> StationMembership:
+        _require_sha256(token_hash)
         record = self._rpc_one("accept_station_invitation", {"p_token_hash": token_hash, "p_user_id": user_id, "p_email": email.strip().casefold()}, "Invitation is invalid, expired, or already used")
         return StationMembership.from_record(record)
 
@@ -120,3 +128,8 @@ def _payload(value, **overrides) -> dict:
     data = asdict(value)
     data.update(overrides)
     return {key: item.isoformat() if hasattr(item, "isoformat") else item for key, item in data.items()}
+
+
+def _require_sha256(value: str) -> None:
+    if not re.fullmatch(r"[0-9a-f]{64}", value):
+        raise ValueError("Expected a canonical lowercase SHA-256 hash")

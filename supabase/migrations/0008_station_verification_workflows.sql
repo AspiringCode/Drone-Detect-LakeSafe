@@ -17,7 +17,14 @@ create table public.verification_sessions (
   consumed_at timestamptz,
   created_at timestamptz not null default now(),
   check (expires_at > created_at)
+  ,check (state_hash ~ '^[0-9a-f]{64}$')
+  ,check (nonce_hash ~ '^[0-9a-f]{64}$')
+  ,check (verifier_hash ~ '^[0-9a-f]{64}$')
 );
+
+alter table public.station_invitations
+  add constraint station_invitations_token_hash_sha256
+  check (token_hash ~ '^[0-9a-f]{64}$');
 
 create table public.station_request_reviews (
   station_request_review_id uuid primary key default gen_random_uuid(),
@@ -188,7 +195,7 @@ end;
 $$;
 
 create or replace function public.create_station_invitation(
-  p_station_id uuid, p_token_hash text, p_intended_email text, p_expires_at timestamptz
+  p_station_id uuid, p_actor_user_id uuid, p_token_hash text, p_intended_email text, p_expires_at timestamptz
 ) returns jsonb language plpgsql security definer set search_path = '' as $$
 declare invitation_id uuid;
 begin
@@ -199,12 +206,15 @@ begin
     join public.station_membership_roles as membership_role on membership_role.membership_id = membership.membership_id
     join public.officer_verifications as verification on verification.user_id = membership.user_id
     where station.station_id = p_station_id and station.status = 'active'
-      and membership.status = 'active' and membership_role.role = 'station_admin'
+      and membership.user_id = p_actor_user_id and membership.status = 'active' and membership_role.role = 'station_admin'
       and private.officer_verification_is_current(verification.verification_id)
   ) then return null; end if;
   insert into public.station_invitations (station_id, token_hash, intended_email, expires_at)
   values (p_station_id, p_token_hash, lower(btrim(p_intended_email)), p_expires_at)
   returning station_invitations.invitation_id into invitation_id;
+  perform private.record_workflow_audit(p_actor_user_id, p_station_id, null,
+    'station_invitation.create', 'allowed', 'hash-only invitation created', null,
+    jsonb_build_object('invitation_id', invitation_id));
   return jsonb_build_object('invitation_id', invitation_id);
 exception when unique_violation then
   return null;
@@ -347,13 +357,13 @@ alter table public.audit_events force row level security;
 revoke all on public.verification_sessions, public.station_request_reviews, public.audit_events from public, anon, authenticated;
 revoke all on function public.consume_verification_session(text), public.upsert_idme_verification(uuid, text, text, text, timestamptz, timestamptz),
   public.create_station_request(uuid, text, text), public.create_station_join_request(uuid, uuid),
-  public.create_station_invitation(uuid, text, text, timestamptz), public.accept_station_invitation(text, uuid, text),
+  public.create_station_invitation(uuid, uuid, text, text, timestamptz), public.accept_station_invitation(text, uuid, text),
   public.review_station_request(uuid, uuid, text, text), public.review_station_join_request(uuid, uuid, text, text[]),
   public.create_station_lake(text, uuid, text, double precision, double precision, jsonb, uuid)
   from public, anon, authenticated;
 grant execute on function public.consume_verification_session(text), public.upsert_idme_verification(uuid, text, text, text, timestamptz, timestamptz),
   public.create_station_request(uuid, text, text), public.create_station_join_request(uuid, uuid),
-  public.create_station_invitation(uuid, text, text, timestamptz), public.accept_station_invitation(text, uuid, text),
+  public.create_station_invitation(uuid, uuid, text, text, timestamptz), public.accept_station_invitation(text, uuid, text),
   public.review_station_request(uuid, uuid, text, text), public.review_station_join_request(uuid, uuid, text, text[]),
   public.create_station_lake(text, uuid, text, double precision, double precision, jsonb, uuid)
   to service_role;
