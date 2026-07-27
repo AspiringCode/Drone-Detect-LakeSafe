@@ -55,19 +55,44 @@ create trigger verification_evidence_append_only
 
 create or replace function private.officer_verification_is_current(target_verification_id uuid)
 returns boolean
-language sql
-stable
+language plpgsql
 security definer
 set search_path = ''
 as $$
-  select exists (
-    select 1
-    from public.officer_verifications as verification
-    where verification.verification_id = target_verification_id
-      and verification.status = 'verified'
-      and (verification.expires_at is null or verification.expires_at > now())
-      and verification.revoked_at is null
-  );
+declare
+  current_verification public.officer_verifications%rowtype;
+begin
+  select * into current_verification
+  from public.officer_verifications
+  where verification_id = target_verification_id
+  for update;
+
+  if not found then
+    return false;
+  end if;
+
+  if current_verification.status = 'verified'
+    and current_verification.expires_at is not null
+    and current_verification.expires_at <= now() then
+    update public.officer_verifications
+    set status = 'expired',
+        version = version + 1,
+        updated_at = now()
+    where verification_id = target_verification_id;
+
+    update public.profiles
+    set account_class = 'civilian',
+        verification_version = verification_version + 1,
+        updated_at = now()
+    where user_id = current_verification.user_id;
+
+    return false;
+  end if;
+
+  return current_verification.status = 'verified'
+    and (current_verification.expires_at is null or current_verification.expires_at > now())
+    and current_verification.revoked_at is null;
+end;
 $$;
 
 create or replace function private.transition_officer_verification(
@@ -215,6 +240,7 @@ create policy verification_reviews_reviewer_insert
       select 1 from public.officer_verifications as verification
       where verification.verification_id = verification_reviews.verification_id
         and verification.status = 'pending'
+        and verification.user_id <> auth.uid()
     )
   );
 
