@@ -1,6 +1,6 @@
 begin;
 
-select plan(11);
+select plan(12);
 
 select has_column('public', 'stations', 'legacy_org_id', 'stations link legacy organizations');
 select col_is_unique('public', 'stations', array['legacy_org_id'], 'one station maps to each legacy organization');
@@ -21,6 +21,12 @@ select throws_ok(
   '23514',
   null,
   'a non-4326 shoreline is rejected'
+);
+select throws_ok(
+  $$ update public.lakes set shoreline = st_setsrid(st_geomfromtext('POLYGON EMPTY'), 4326) where lake_id = 'lake-sammamish' $$,
+  '22023',
+  null,
+  'a valid-SRID non-multipolygon shoreline is rejected'
 );
 
 select is(
