@@ -25,3 +25,7 @@ IDME_USERINFO_ENDPOINT = os.getenv("IDME_USERINFO_ENDPOINT", "https://api.id.me/
 VERIFICATION_SESSION_ENCRYPTION_KEY = os.getenv("VERIFICATION_SESSION_ENCRYPTION_KEY")
 IDME_PROFILE_SUCCESS_URL = os.getenv("IDME_PROFILE_SUCCESS_URL", "/profile?verification=idme-success")
 IDME_PROFILE_FAILURE_URL = os.getenv("IDME_PROFILE_FAILURE_URL", "/profile?verification=idme-failed")
+
+# Reviewed risk connectors are enabled only by a durable database review record.
+# Fixtures remain test-only and are never a production fallback for these values.
+RISK_CONNECTOR_REFRESH_HOURS = int(os.getenv("RISK_CONNECTOR_REFRESH_HOURS", "24"))
