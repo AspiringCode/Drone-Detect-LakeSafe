@@ -25,11 +25,26 @@ DEFAULT_ALTITUDE_M = 30.0
 # the fence still hugs the lake.
 DEFAULT_FENCE_TOLERANCE = 0.0008
 
+# ArduPilot's polygon fence has a bounded point budget; a simplified fence
+# exceeding this must not be shipped.
+MAX_FENCE_VERTICES = 60
+
 
 def simplified_fence(lake_id: str, tolerance: float = DEFAULT_FENCE_TOLERANCE) -> list[LatLon]:
-    """Return the lake outline reduced to a vertex count a fence can hold."""
+    """Return the lake outline reduced to a vertex count a fence can hold.
+
+    Shapely rings repeat the first coordinate as the last to close the ring;
+    QGC/ArduPilot fences expect an open ring, so the closing vertex is sliced
+    off (matching `tessellation.py`'s `cell.exterior.coords[:-1]` convention).
+    """
     polygon = load_lake_polygon(lake_id).simplify(tolerance, preserve_topology=True)
-    return [LatLon(lat, lon) for lon, lat in polygon.exterior.coords]
+    coords = polygon.exterior.coords[:-1]
+    if len(coords) > MAX_FENCE_VERTICES:
+        raise ValueError(
+            f"{lake_id}'s simplified fence has {len(coords)} vertices, "
+            f"exceeding the {MAX_FENCE_VERTICES}-vertex budget"
+        )
+    return [LatLon(lat, lon) for lon, lat in coords]
 
 
 def export_zone_mission(
