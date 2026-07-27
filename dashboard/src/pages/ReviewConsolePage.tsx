@@ -1,0 +1,4 @@
+import { useOptionalPrincipal } from "../auth/PrincipalProvider";
+import { AppHeader } from "../components/AppHeader";
+import { StationReviewCard } from "../components/StationReviewCard";
+export function ReviewConsolePage() { const principal = useOptionalPrincipal()?.principal; if (!principal?.reviewer) return <main className="app-page"><AppHeader active="profile"/><section className="workflow-shell"><h1>Review access is unavailable</h1><p>LakeSafe reviewer access is required.</p></section></main>; return <main className="app-page"><AppHeader active="profile"/><section className="workflow-shell"><header className="page-heading"><p className="kicker">LakeSafe review</p><h1>Station requests</h1><p>Review station requests without exposing private verification evidence in this console.</p></header><StationReviewCard name="No pending station requests" status="Clear"/></section></main>; }

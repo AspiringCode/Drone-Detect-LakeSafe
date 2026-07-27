@@ -12,6 +12,11 @@ import { AlertsPage } from "./pages/AlertsPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { PrincipalProvider } from "./auth/PrincipalProvider";
 import { ActiveStationProvider } from "./hooks/useActiveStation";
+import { OfficerVerificationPage } from "./pages/OfficerVerificationPage";
+import { StationAccessPage } from "./pages/StationAccessPage";
+import { StationAdminPage } from "./pages/StationAdminPage";
+import { AddLakePage } from "./pages/AddLakePage";
+import { ReviewConsolePage } from "./pages/ReviewConsolePage";
 import "./styles.css";
 
 export default function App() {
@@ -28,6 +33,11 @@ export default function App() {
       <Route path="/profile" element={<ProfileSettingsPage />} />
       <Route path="/alerts" element={<AlertsPage />} />
       <Route path="/reports" element={<ReportsPage />} />
+      <Route path="/verify-affiliation" element={<OfficerVerificationPage />} />
+      <Route path="/station-access" element={<StationAccessPage />} />
+      <Route path="/stations/:stationId/admin" element={<StationAdminPage />} />
+      <Route path="/stations/:stationId/lakes/new" element={<AddLakePage />} />
+      <Route path="/internal/reviews" element={<ReviewConsolePage />} />
     </Route>
     <Route path="*" element={<Navigate to="/lakes" replace />} />
   </Routes></BrowserRouter></ActiveStationProvider></PrincipalProvider>;

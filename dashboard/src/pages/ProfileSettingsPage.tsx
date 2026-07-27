@@ -1,6 +1,8 @@
 import { type FormEvent, useEffect, useState } from "react";
 import { AppHeader } from "../components/AppHeader";
 import { supabase, type SupabaseLike } from "../lib/supabase";
+import { Link } from "react-router-dom";
+import { useOptionalPrincipal } from "../auth/PrincipalProvider";
 
 type ProfileState = {
   id: string;
@@ -9,6 +11,7 @@ type ProfileState = {
 };
 
 export function ProfileSettingsPage({ client = supabase }: { client?: SupabaseLike }) {
+  const principal = useOptionalPrincipal()?.principal;
   const [profile, setProfile] = useState<ProfileState | null>(null);
   const [displayName, setDisplayName] = useState("");
   const [loadingError, setLoadingError] = useState("");
@@ -50,10 +53,17 @@ export function ProfileSettingsPage({ client = supabase }: { client?: SupabaseLi
       <AppHeader active="profile" contextLabel="Account settings" client={client} />
       <section className="profile-shell">
         <header className="page-heading">
-          <p className="kicker">Operator account</p>
+          <p className="kicker">Account settings</p>
           <h1>Profile settings</h1>
           <p>Manage the identity shown across your LakeSafe workspace.</p>
         </header>
+
+        <section className="profile-card verification-card" aria-labelledby="verification-title">
+          <p className="panel-eyebrow">Affiliation</p>
+          <h2 id="verification-title">Verification: {(principal?.verification_status ?? "not started").replace(/_/g, " ")}</h2>
+          <p className="field-help">Verification is separate from station membership and never grants access on its own.</p>
+          <Link className="button-link" to="/verify-affiliation">{principal?.verification_status === "verified" ? "View verification" : "Verify affiliation"}</Link>
+        </section>
 
         <section className="profile-card" aria-labelledby="profile-details-title">
           <div className="profile-card__heading">

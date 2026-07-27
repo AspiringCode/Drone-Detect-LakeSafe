@@ -1,0 +1,17 @@
+import { FormEvent, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { AppHeader } from "../components/AppHeader";
+import { useOptionalPrincipal } from "../auth/PrincipalProvider";
+import { apiRequest } from "../lib/apiClient";
+import { supabase } from "../lib/supabase";
+
+type LakeForm = { name: string; centroid_lat: number; centroid_lon: number; bbox: number[] };
+export function AddLakePage() {
+  const { stationId = "" } = useParams(); const navigate = useNavigate(); const principal = useOptionalPrincipal()?.principal; const allowed = principal?.memberships.some((item) => item.station_id === stationId && item.status === "active" && item.capabilities.includes("lake.create"));
+  const [candidate, setCandidate] = useState<{ data_source_status: string; candidates: Array<{ name: string }> } | null>(null); const [error, setError] = useState(""); const [busy, setBusy] = useState(false);
+  function value(event: FormEvent<HTMLFormElement>): LakeForm { const form = new FormData(event.currentTarget); const lat = Number(form.get("lat")); const lon = Number(form.get("lon")); return { name: String(form.get("name")), centroid_lat: lat, centroid_lon: lon, bbox: [lon - .02, lat - .02, lon + .02, lat + .02] }; }
+  async function preview(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setBusy(true); setError(""); try { setCandidate(await apiRequest(`/api/stations/${stationId}/lake-candidates`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(value(event)) }, supabase)); } catch (e) { setError(e instanceof Error ? e.message : "Lake preview unavailable."); } finally { setBusy(false); } }
+  async function create(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setBusy(true); try { const result = await apiRequest<{ lake_id: string }>(`/api/stations/${stationId}/lakes`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(value(event)) }, supabase); navigate(`/lakes/${result.lake_id}`); } catch (e) { setError(e instanceof Error ? e.message : "Lake could not be added."); } finally { setBusy(false); } }
+  if (!allowed) return <main className="app-page"><AppHeader active="lakes"/><section className="workflow-shell"><h1>Add lake is unavailable</h1><p>This station has not granted you lake-creation access.</p></section></main>;
+  return <main className="app-page"><AppHeader active="lakes"/><section className="workflow-shell"><header className="page-heading"><p className="kicker">Station lake setup</p><h1>Add a lake</h1><p>LakeSafe validates a shoreline and queues operational setup after creation.</p></header><form className="workflow-card" onSubmit={candidate ? create : preview}><label>Lake name<input name="name" required maxLength={160}/></label><div className="form-grid form-grid--two"><label>Latitude<input name="lat" type="number" step="any" min="24" max="50" required/></label><label>Longitude<input name="lon" type="number" step="any" min="-125" max="-66" required/></label></div>{candidate && <p className={`coverage-notice coverage-notice--${candidate.data_source_status}`}>{candidate.data_source_status === "reviewed" ? "Reviewed coverage matched." : "Fallback coverage: no reviewed dataset was inferred."}</p>}<button disabled={busy}>{busy ? "Working…" : candidate ? "Create lake and queue setup" : "Preview lake"}</button>{error && <p className="form-error" role="alert">{error}</p>}</form></section></main>;
+}

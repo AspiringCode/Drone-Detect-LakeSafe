@@ -226,6 +226,21 @@ legend { padding: 0 0.4rem; font-weight: 700; }
 .form-success { display: flex; align-items: center; gap: 0.6rem; margin: 0; color: oklch(43% 0.11 150); font-size: 0.84rem; font-weight: 700; }
 .profile-actions { display: flex; justify-content: flex-end; padding-top: 0.35rem; }
 .profile-actions button { min-width: 9.5rem; }
+.workflow-shell { width: min(100%, 70rem); margin: 0 auto; padding: clamp(2rem, 6vw, 5rem) clamp(1rem, 4vw, 3rem); }
+.workflow-shell > .workflow-card { margin-top: 2rem; }
+.workflow-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-top: 2rem; }
+.workflow-grid .workflow-card, .workflow-shell > .workflow-card { width: auto; }
+.workflow-card h2 { margin-bottom: .5rem; }
+.workflow-card details { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--border); color: var(--text-muted); line-height: 1.55; }
+.workflow-card summary { color: var(--primary-hover); cursor: pointer; font-weight: 700; }
+.status-label { display: inline-flex; align-items: center; min-height: 1.8rem; margin: .25rem 0 .75rem; padding: .28rem .65rem; border-radius: 999px; background: var(--surface-blue); color: var(--primary-hover); font-size: .76rem; font-weight: 750; text-transform: capitalize; }
+.status-label--rejected, .status-label--revoked { background: oklch(96% .04 25); color: var(--danger); }
+.status-label--expired { background: var(--warning-surface); color: oklch(43% .09 80); }
+.button-link { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; margin-top: 1rem; padding: .72rem 1rem; border: 1px solid var(--primary); border-radius: 12px; background: var(--primary); color: white; font-weight: 700; text-decoration: none; }
+.form-grid--two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.coverage-notice { margin: 0; padding: .8rem; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-muted); color: var(--text-muted); font-size: .85rem; line-height: 1.5; }
+.coverage-notice--fallback_coverage { background: var(--warning-surface); color: oklch(43% .09 80); }
+@media (max-width: 700px) { .workflow-grid, .form-grid--two { grid-template-columns: 1fr; } }
 
 .live-shell { display: grid; grid-template-rows: auto auto minmax(0, 1fr); height: 100dvh; min-height: 0; overflow: hidden; }
 .live-summary { min-height: 0; }
