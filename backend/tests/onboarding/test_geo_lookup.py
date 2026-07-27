@@ -163,7 +163,7 @@ def test_nearby_lakes_endpoint_returns_specified_candidate_contract(monkeypatch:
     }
 
 
-def test_organization_endpoint_uses_specified_body_and_never_accepts_a_body_user_id(monkeypatch: pytest.MonkeyPatch):
+def test_organization_endpoint_is_retired_in_favor_of_verified_station_workflow(monkeypatch: pytest.MonkeyPatch):
     from app.main import app
 
     expected = {"org_id": "org-1", "lake_id": "lake-1"}
@@ -188,9 +188,8 @@ def test_organization_endpoint_uses_specified_body_and_never_accepts_a_body_user
         "/api/onboarding/organizations", json=payload, headers={"Authorization": "Bearer signed-token"}
     )
 
-    assert response.status_code == 201
-    assert response.json() == expected
-    assert captured["owner_user_id"] == "8f0a7fa0-3924-4a76-8533-85028fd53917"
+    assert response.status_code == 410
+    assert not captured
 
     rejected = TestClient(app).post(
         "/api/onboarding/organizations",
@@ -200,7 +199,7 @@ def test_organization_endpoint_uses_specified_body_and_never_accepts_a_body_user
     assert rejected.status_code == 422
 
 
-def test_organization_endpoint_accepts_a_real_hs256_jwt(monkeypatch: pytest.MonkeyPatch):
+def test_organization_endpoint_remains_retired_for_a_real_hs256_jwt(monkeypatch: pytest.MonkeyPatch):
     main = _app_with_test_jwt_secret(monkeypatch)
     captured: dict[str, object] = {}
 
@@ -216,8 +215,8 @@ def test_organization_endpoint_accepts_a_real_hs256_jwt(monkeypatch: pytest.Monk
         headers={"Authorization": f"Bearer {_signed_jwt(TEST_JWT_SECRET)}"},
     )
 
-    assert response.status_code == 201
-    assert captured["owner_user_id"] == "8f0a7fa0-3924-4a76-8533-85028fd53917"
+    assert response.status_code == 410
+    assert not captured
 
 
 @pytest.mark.parametrize(
@@ -228,15 +227,10 @@ def test_organization_endpoint_accepts_a_real_hs256_jwt(monkeypatch: pytest.Monk
     ],
     ids=["invalid-signature", "non-hs256"],
 )
-def test_organization_endpoint_rejects_jwts_the_real_verifier_does_not_trust(
+def test_organization_endpoint_is_retired_before_token_processing(
     monkeypatch: pytest.MonkeyPatch, token: str
 ):
     main = _app_with_test_jwt_secret(monkeypatch)
-
-    def persistence_must_not_run(**_: object) -> dict[str, str]:
-        raise AssertionError("Persistence must not run for rejected bearer tokens")
-
-    monkeypatch.setattr(main, "create_organization_and_lake", persistence_must_not_run)
 
     response = TestClient(main.app, raise_server_exceptions=False).post(
         "/api/onboarding/organizations",
@@ -244,11 +238,11 @@ def test_organization_endpoint_rejects_jwts_the_real_verifier_does_not_trust(
         headers={"Authorization": f"Bearer {token}"},
     )
 
-    assert response.status_code == 401
+    assert response.status_code == 410
 
 
 @pytest.mark.parametrize("authorization", [None, "Bearer invalid-token"])
-def test_organization_endpoint_rejects_missing_or_invalid_bearer_token(
+def test_organization_endpoint_is_retired_without_a_bearer_token(
     monkeypatch: pytest.MonkeyPatch, authorization: str | None
 ):
     from app.main import app
@@ -267,4 +261,4 @@ def test_organization_endpoint_rejects_missing_or_invalid_bearer_token(
         headers=headers,
     )
 
-    assert response.status_code == 401
+    assert response.status_code == 410

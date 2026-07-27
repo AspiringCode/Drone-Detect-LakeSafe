@@ -8,8 +8,8 @@ class ConnectionHub:
     def __init__(self) -> None:
         self.clients: set = set()
 
-    async def connect(self, websocket) -> None:
-        await websocket.accept()
+    async def connect(self, websocket, *, subprotocol: str | None = None) -> None:
+        await websocket.accept(subprotocol=subprotocol)
         self.clients.add(websocket)
 
     def disconnect(self, websocket) -> None:

@@ -1,5 +1,7 @@
 import pytest
+from fastapi.testclient import TestClient
 
+from app.main import app
 from app.pipeline.ws import ConnectionHub, tick_loop
 
 
@@ -68,3 +70,25 @@ async def test_tick_loop_broadcasts_the_jsonified_state():
     )
 
     assert broadcasts == [{"wrapped": {"raw": "state"}}]
+
+
+def test_operational_websocket_requires_subprotocol_token():
+    with pytest.raises(Exception):
+        with TestClient(app).websocket_connect("/ws/lakes/lake-sammamish/positions") as ws:
+            ws.receive_json()
+
+
+def test_operational_websocket_closes_when_verification_is_revoked(monkeypatch):
+    class RevokedRepository:
+        def load_principal_state(self, user_id):
+            return {"account_class": "officer", "verification_status": "revoked", "memberships": [{
+                "station_id": "station-1", "station_name": "Demo", "membership_status": "active", "roles": ["viewer"],
+            }]}
+
+        def lake_station_id(self, lake_id): return "station-1"
+
+    monkeypatch.setattr("app.main.get_access_repository", lambda: RevokedRepository())
+    monkeypatch.setattr("app.main.verify_supabase_jwt", lambda token: {"sub": "user", "aal": "aal2"})
+    with pytest.raises(Exception):
+        with TestClient(app).websocket_connect("/ws/lakes/lake-sammamish/positions", subprotocols=["bearer.token"]) as ws:
+            ws.receive_json()

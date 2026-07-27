@@ -1,0 +1,52 @@
+from __future__ import annotations
+
+from functools import lru_cache
+from datetime import datetime, timezone
+
+from app.config import SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL
+
+
+class SupabaseAccessRepository:
+    """Reads authorization facts with the backend-only service credential."""
+
+    def __init__(self) -> None:
+        if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+            raise RuntimeError("Supabase service credentials are not configured")
+        from supabase import create_client
+
+        self.client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+    def load_principal_state(self, user_id: str) -> dict | None:
+        profile = self.client.table("profiles").select("account_class, display_name").eq("user_id", user_id).maybe_single().execute().data
+        if not profile:
+            return None
+        verification = self.client.table("officer_verifications").select("status, expires_at, revoked_at").eq("user_id", user_id).maybe_single().execute().data or {}
+        verification_status = verification.get("status")
+        expiry = verification.get("expires_at")
+        if verification.get("revoked_at") or (isinstance(expiry, str) and datetime.fromisoformat(expiry.replace("Z", "+00:00")) <= datetime.now(timezone.utc)):
+            verification_status = "expired"
+        memberships = self.client.table("station_memberships").select("station_id,status,stations(name,status),station_membership_roles(role)").eq("user_id", user_id).execute().data or []
+        normalized = []
+        for membership in memberships:
+            station = membership.get("stations") or {}
+            normalized.append({
+                "station_id": membership["station_id"],
+                "station_name": station.get("name"),
+                "membership_status": membership.get("status") if station.get("status") == "active" else "inactive_station",
+                "roles": [item["role"] for item in membership.get("station_membership_roles") or []],
+            })
+        return {
+            "email": None,
+            "account_class": profile.get("account_class"),
+            "verification_status": verification_status,
+            "memberships": normalized,
+        }
+
+    def lake_station_id(self, lake_id: str) -> str | None:
+        record = self.client.table("lakes").select("station_id").eq("lake_id", lake_id).maybe_single().execute().data
+        return str(record["station_id"]) if record else None
+
+
+@lru_cache(maxsize=1)
+def get_access_repository() -> SupabaseAccessRepository:
+    return SupabaseAccessRepository()

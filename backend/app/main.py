@@ -12,6 +12,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from supabase import create_client
 
 from app.auth import verify_supabase_jwt
+from app.access.policy import Permission, require_station_access
+from app.access.principal import Principal, _bearer_token, principal_from_claims
+from app.access.repository import get_access_repository
 from app.config import SUPABASE_KEY, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL
 from app.coordination.engine import SimulationEngine
 from app.detection.detector import ThermalDetector
@@ -138,6 +141,60 @@ def get_runtime(lake_id: str) -> LakeRuntime:
     return runtime
 
 
+def get_current_principal(authorization: str | None = Header(default=None)) -> Principal:
+    """Load authority from the database, never from client profile/JWT roles."""
+    try:
+        return principal_from_claims(
+            verify_supabase_jwt(_bearer_token(authorization)), get_access_repository()
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="Authorization service is unavailable") from exc
+
+
+def require_lake_permission(
+    lake_id: str, principal: Principal, permission: Permission
+) -> None:
+    # Check the in-memory demo lake first so unknown and cross-station IDs use
+    # the same response and do not disclose station ownership.
+    get_runtime(lake_id)
+    try:
+        station_id = get_access_repository().lake_station_id(lake_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="Authorization service is unavailable") from exc
+    if station_id is None:
+        raise HTTPException(status_code=404, detail="Lake not found")
+    try:
+        require_station_access(principal, station_id, permission)
+    except HTTPException as exc:
+        # Only a station mismatch is concealed as a missing lake.  MFA,
+        # verification, and role failures are actionable to a known member.
+        if exc.status_code == 403 and not any(
+            membership.station_id == station_id for membership in principal.memberships
+        ):
+            raise HTTPException(status_code=404, detail="Lake not found") from exc
+        raise
+
+
+def authorize_lake(
+    lake_id: str, authorization: str | None, permission: Permission
+) -> Principal:
+    # Resolve the resource before authentication so an unknown lake and a lake
+    # outside the caller's station are indistinguishable.
+    get_runtime(lake_id)
+    return_principal = get_current_principal(authorization)
+    require_lake_permission(lake_id, return_principal, permission)
+    return return_principal
+
+
+def authorize_operational_websocket(lake_id: str, token: str) -> Principal:
+    try:
+        principal = principal_from_claims(verify_supabase_jwt(token), get_access_repository())
+        require_lake_permission(lake_id, principal, Permission.READ_OPERATIONS)
+        return principal
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="Authorization service is unavailable") from exc
+
+
 def current_state(runtime: LakeRuntime) -> dict:
     return _jsonable(runtime.engine.step(0.1))
 
@@ -186,13 +243,10 @@ def nearby_lakes(request: NearbyLakesRequest):
 def create_organization(
     request: OrganizationCreateRequest, authorization: str | None = Header(default=None)
 ):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Bearer token is required")
-    claims = verify_supabase_jwt(authorization.removeprefix("Bearer "))
-    try:
-        return create_organization_and_lake(request=request, owner_user_id=claims["sub"])
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail="Organization storage is unavailable") from exc
+    # Organization-owner onboarding was superseded by verified station access.
+    # Station creation and lake administration are introduced in the station UI
+    # phase; retaining this endpoint would reintroduce owner-based authority.
+    raise HTTPException(status_code=410, detail="Use the verified station workflow")
 
 
 @app.get("/api/lakes/{lake_id}/riskmap")
@@ -211,7 +265,8 @@ def get_alerts(lake_id: str):
 
 
 @app.post("/api/lakes/{lake_id}/demo/trigger")
-def demo_trigger(lake_id: str):
+def demo_trigger(lake_id: str, authorization: str | None = Header(default=None)):
+    authorize_lake(lake_id, authorization, Permission.MANAGE_ALERTS)
     runtime = get_runtime(lake_id)
     at = runtime.zones[0].centroid
     runtime.engine.trigger_detection(runtime.zones[0].zone_id, at=at)
@@ -225,24 +280,18 @@ def demo_trigger(lake_id: str):
 
 
 @app.post("/api/lakes/{lake_id}/alerts/{alert_id}/escalate")
-def escalate_alert(lake_id: str, alert_id: str):
-    get_runtime(lake_id)
+def escalate_alert(lake_id: str, alert_id: str, authorization: str | None = Header(default=None)):
+    authorize_lake(lake_id, authorization, Permission.MANAGE_ALERTS)
     return {"alert_id": alert_id, "escalated": True}
 
 
 @app.post("/api/lakes/{lake_id}/drones/deploy", status_code=201)
 def deploy_drone(lake_id: str, authorization: str | None = Header(default=None)):
     runtime = get_runtime(lake_id)
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Bearer token is required")
-    claims = verify_supabase_jwt(authorization.removeprefix("Bearer "))
-    if claims.get("aal") != "aal2":
-        raise HTTPException(status_code=403, detail="MFA AAL2 is required")
+    principal = authorize_lake(lake_id, authorization, Permission.MANAGE_INVENTORY)
     metadata = get_lake_deployment_metadata(lake_id)
     if metadata is None:
         raise HTTPException(status_code=404, detail="Lake not found")
-    if metadata["owner_user_id"] != claims["sub"]:
-        raise HTTPException(status_code=403, detail="Lake ownership is required")
     if len(runtime.engine.drones) >= int(metadata["drone_inventory_cap"]):
         raise HTTPException(status_code=409, detail="Drone inventory cap reached")
     drone = Drone(f"deploy-{uuid4().hex[:8]}", runtime.shore_station, 1.0, DroneStatus.IDLE, None)
@@ -261,11 +310,29 @@ async def positions_ws(websocket: WebSocket, lake_id: str):
     if runtime is None:
         await websocket.close(code=1008)
         return
-    await runtime.hub.connect(websocket)
+    protocols = websocket.headers.get("sec-websocket-protocol", "").split(",")
+    token_protocol = next((protocol.strip() for protocol in protocols if protocol.strip().startswith("bearer.")), None)
+    if token_protocol is None:
+        await websocket.close(code=1008)
+        return
+    try:
+        principal = authorize_operational_websocket(lake_id, token_protocol.removeprefix("bearer."))
+    except (HTTPException, RuntimeError):
+        await websocket.close(code=1008)
+        return
+    await runtime.hub.connect(websocket, subprotocol=token_protocol)
     try:
         await websocket.send_json(current_state(runtime))
         while True:
-            await websocket.receive_text()
+            # Revocation/expiry is checked even when the dashboard is idle.
+            try:
+                await asyncio.wait_for(websocket.receive_text(), timeout=30)
+            except TimeoutError:
+                try:
+                    principal = authorize_operational_websocket(lake_id, token_protocol.removeprefix("bearer."))
+                except (HTTPException, RuntimeError):
+                    await websocket.close(code=1008)
+                    return
     except WebSocketDisconnect:
         pass
     finally:

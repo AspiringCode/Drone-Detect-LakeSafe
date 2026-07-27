@@ -11,6 +11,23 @@ from app.main import app, lake_runtimes
 LAKE_ID = "lake-sammamish"
 
 
+class FakeAccessRepository:
+    def load_principal_state(self, user_id):
+        station_id = "station-1" if user_id == "owner" else "station-2"
+        roles = ["viewer", "station_admin", "safety_supervisor"] if user_id == "owner" else ["viewer"]
+        return {"account_class": "officer", "verification_status": "verified", "memberships": [{
+            "station_id": station_id, "station_name": "Demo", "membership_status": "active", "roles": roles,
+        }]}
+
+    def lake_station_id(self, lake_id):
+        return "station-1" if lake_id == LAKE_ID else None
+
+
+@pytest.fixture(autouse=True)
+def fake_access_repository(monkeypatch):
+    monkeypatch.setattr("app.main.get_access_repository", lambda: FakeAccessRepository())
+
+
 def test_get_riskmap_returns_feature_collection():
     client = TestClient(app)
     response = client.get(f"/api/lakes/{LAKE_ID}/riskmap")
@@ -18,18 +35,20 @@ def test_get_riskmap_returns_feature_collection():
     assert response.json()["type"] == "FeatureCollection"
 
 
-def test_demo_trigger_creates_alert_retrievable():
+def test_demo_trigger_creates_alert_retrievable(monkeypatch):
+    monkeypatch.setattr("app.main.verify_supabase_jwt", lambda token: {"sub": "owner", "aal": "aal2"})
     client = TestClient(app)
-    response = client.post(f"/api/lakes/{LAKE_ID}/demo/trigger")
+    response = client.post(f"/api/lakes/{LAKE_ID}/demo/trigger", headers={"Authorization": "Bearer signed-token"})
     assert response.status_code == 200
     alert_id = response.json()["alert_id"]
     alerts = client.get(f"/api/lakes/{LAKE_ID}/alerts").json()
     assert any(alert["alert_id"] == alert_id for alert in alerts)
 
 
-def test_positions_ws_receives_state_with_source():
+def test_positions_ws_receives_state_with_source(monkeypatch):
+    monkeypatch.setattr("app.main.verify_supabase_jwt", lambda token: {"sub": "owner", "aal": "aal2"})
     client = TestClient(app)
-    with client.websocket_connect(f"/ws/lakes/{LAKE_ID}/positions") as ws:
+    with client.websocket_connect(f"/ws/lakes/{LAKE_ID}/positions", subprotocols=["bearer.signed-token"]) as ws:
         payload = ws.receive_json()
     assert payload["drones"]
     assert "source" in payload["drones"][0]
@@ -107,7 +126,7 @@ def test_deploy_rejects_non_owner(monkeypatch):
         f"/api/lakes/{LAKE_ID}/drones/deploy", headers={"Authorization": "Bearer signed-token"}
     )
 
-    assert response.status_code == 403
+    assert response.status_code == 404
 
 
 def test_deploy_rejects_owner_without_aal2(monkeypatch):
@@ -187,3 +206,22 @@ def test_deploy_allows_aal2_owner_when_tessellated_zones_are_fully_staffed(monke
     assert deployed["position"] == {"lat": 47.606, "lon": -122.09}
     runtime.engine.drones.pop()
     runtime.engine._initial_assign()
+
+
+def test_operational_routes_deny_civilian_and_inactive_access(monkeypatch):
+    class RestrictedRepository(FakeAccessRepository):
+        def load_principal_state(self, user_id):
+            state = super().load_principal_state(user_id)
+            state["account_class"] = "civilian"
+            return state
+
+    monkeypatch.setattr("app.main.get_access_repository", lambda: RestrictedRepository())
+    monkeypatch.setattr("app.main.verify_supabase_jwt", lambda token: {"sub": "owner", "aal": "aal2"})
+    response = TestClient(app).post(f"/api/lakes/{LAKE_ID}/demo/trigger", headers={"Authorization": "Bearer signed-token"})
+    assert response.status_code == 403
+
+
+def test_cross_station_operation_is_not_disclosed(monkeypatch):
+    monkeypatch.setattr("app.main.verify_supabase_jwt", lambda token: {"sub": "not-owner", "aal": "aal2"})
+    response = TestClient(app).post(f"/api/lakes/{LAKE_ID}/drones/deploy", headers={"Authorization": "Bearer signed-token"})
+    assert response.status_code == 404
