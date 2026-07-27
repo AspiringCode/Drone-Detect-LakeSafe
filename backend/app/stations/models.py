@@ -15,6 +15,7 @@ class VerificationSessionCreate:
     state_hash: str
     nonce_hash: str
     verifier_hash: str
+    encrypted_secrets: str
     user_id: str
     expires_at: datetime
 
@@ -25,6 +26,7 @@ class VerificationSession:
     state_hash: str
     nonce_hash: str
     verifier_hash: str
+    encrypted_secrets: str
     user_id: str
     status: VerificationSessionStatus
     expires_at: datetime
@@ -36,6 +38,7 @@ class VerificationSession:
             state_hash=str(value["state_hash"]),
             nonce_hash=str(value["nonce_hash"]),
             verifier_hash=str(value["verifier_hash"]),
+            encrypted_secrets=str(value["encrypted_secrets"]),
             user_id=str(value["user_id"]),
             status=value["status"],
             expires_at=_as_datetime(value["expires_at"]),

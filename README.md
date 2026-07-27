@@ -49,5 +49,7 @@ The FastAPI service begins ID.me OIDC verification at
 variables (never a `VITE_` browser variable): `IDME_CLIENT_ID`,
 `IDME_CLIENT_SECRET`, `IDME_REDIRECT_URI`, and `IDME_AUDIENCE`. Optional
 provider/environment overrides are `IDME_ISSUER`, `IDME_AUTHORIZATION_ENDPOINT`,
-`IDME_TOKEN_ENDPOINT`, `IDME_JWKS_URI`, `IDME_PROFILE_SUCCESS_URL`, and
-`IDME_PROFILE_FAILURE_URL`.
+`IDME_TOKEN_ENDPOINT`, `IDME_JWKS_URI`, `IDME_USERINFO_ENDPOINT`,
+`IDME_PROFILE_SUCCESS_URL`, and `IDME_PROFILE_FAILURE_URL`. Set the server-only
+`VERIFICATION_SESSION_ENCRYPTION_KEY` to a Fernet key so callback material can
+survive a worker restart without exposing it to the browser.

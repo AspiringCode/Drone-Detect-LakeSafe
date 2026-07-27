@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -10,6 +11,7 @@ from urllib.parse import urlencode
 
 import httpx
 import jwt
+from cryptography.fernet import Fernet, InvalidToken
 
 from app import config
 from app.stations.models import IdMeVerification, VerificationSession, VerificationSessionCreate
@@ -39,6 +41,7 @@ class IdMeSettings:
     authorization_endpoint: str
     token_endpoint: str
     jwks_uri: str
+    userinfo_endpoint: str
     success_url: str
     failure_url: str
 
@@ -57,6 +60,7 @@ class IdMeSettings:
             redirect_uri=str(config.IDME_REDIRECT_URI), issuer=config.IDME_ISSUER,
             audience=str(config.IDME_AUDIENCE), authorization_endpoint=config.IDME_AUTHORIZATION_ENDPOINT,
             token_endpoint=config.IDME_TOKEN_ENDPOINT, jwks_uri=config.IDME_JWKS_URI,
+            userinfo_endpoint=config.IDME_USERINFO_ENDPOINT,
             success_url=config.IDME_PROFILE_SUCCESS_URL, failure_url=config.IDME_PROFILE_FAILURE_URL,
         )
 
@@ -69,33 +73,34 @@ class SessionSecrets:
     expires_at: datetime
 
 
-class VerificationSecretStore:
-    """Short-lived process-local raw OIDC material; the database gets hashes only."""
-
-    def __init__(self) -> None:
-        self._values: dict[str, SessionSecrets] = {}
-
-    def create(self, now: datetime) -> SessionSecrets:
-        value = SessionSecrets(
-            state=secrets.token_urlsafe(32), nonce=secrets.token_urlsafe(32),
-            verifier=secrets.token_urlsafe(64), expires_at=now + timedelta(minutes=10),
-        )
-        self._values[_hash(value.state)] = value
-        return value
-
-    def take(self, state: str, now: datetime) -> SessionSecrets:
-        value = self._values.pop(_hash(state), None)
-        if value is None or value.expires_at <= now:
-            raise IdMeVerificationError("Verification session is invalid or expired")
-        return value
+def _fernet(key: str | None = None) -> Fernet:
+    try:
+        return Fernet((key or config.VERIFICATION_SESSION_ENCRYPTION_KEY or "").encode())
+    except (ValueError, TypeError) as exc:
+        raise IdMeVerificationError("Verification session encryption is not configured") from exc
 
 
-def start_authorization(user_id: str, repository: WorkflowRepository, settings: IdMeSettings, store: VerificationSecretStore, *, now: datetime | None = None) -> str:
+def _encrypt(secret: SessionSecrets, key: str | None = None) -> str:
+    return _fernet(key).encrypt(json.dumps({"nonce": secret.nonce, "verifier": secret.verifier}).encode()).decode()
+
+
+def _decrypt(ciphertext: str, key: str | None = None) -> tuple[str, str]:
+    try:
+        value = json.loads(_fernet(key).decrypt(ciphertext.encode()))
+        nonce, verifier = value["nonce"], value["verifier"]
+    except (InvalidToken, ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
+        raise IdMeVerificationError("Verification session cannot be recovered") from exc
+    if not isinstance(nonce, str) or not isinstance(verifier, str):
+        raise IdMeVerificationError("Verification session cannot be recovered")
+    return nonce, verifier
+
+
+def start_authorization(user_id: str, repository: WorkflowRepository, settings: IdMeSettings, *, now: datetime | None = None, encryption_key: str | None = None) -> str:
     now = now or datetime.now(timezone.utc)
-    secret = store.create(now)
+    secret = SessionSecrets(secrets.token_urlsafe(32), secrets.token_urlsafe(32), secrets.token_urlsafe(64), now + timedelta(minutes=10))
     repository.create_verification_session(VerificationSessionCreate(
         state_hash=_hash(secret.state), nonce_hash=_hash(secret.nonce), verifier_hash=_hash(secret.verifier),
-        user_id=user_id, expires_at=secret.expires_at,
+        encrypted_secrets=_encrypt(secret, encryption_key), user_id=user_id, expires_at=secret.expires_at,
     ))
     return f"{settings.authorization_endpoint}?{urlencode({
         'response_type': 'code', 'client_id': settings.client_id, 'redirect_uri': settings.redirect_uri,
@@ -119,7 +124,7 @@ def validate_id_token(token: str, settings: IdMeSettings, expected_nonce: str, *
         if header.get("alg") != "RS256" or not isinstance(header.get("kid"), str):
             raise IdMeVerificationError("ID.me token algorithm is not allowed")
         key_data = next(key for key in jwks_fetcher(settings.jwks_uri) if key.get("kid") == header["kid"] and key.get("kty") == "RSA")
-        claims = jwt.decode(token, jwt.PyJWK.from_dict(key_data).key, algorithms=["RS256"], issuer=settings.issuer, audience=settings.audience)
+        claims = jwt.decode(token, jwt.PyJWK.from_dict(key_data).key, algorithms=["RS256"], issuer=settings.issuer, audience=settings.audience, options={"require": ["exp", "sub", "iss", "aud", "nonce"]})
     except (jwt.PyJWTError, StopIteration, TypeError, ValueError, httpx.HTTPError) as exc:
         raise IdMeVerificationError("ID.me identity token is invalid") from exc
     if not secrets.compare_digest(str(claims.get("nonce", "")), expected_nonce):
@@ -127,35 +132,52 @@ def validate_id_token(token: str, settings: IdMeSettings, expected_nonce: str, *
     return claims
 
 
-def _identity_from_claims(claims: dict[str, object]) -> tuple[str, str, str]:
-    subject, name, agency = claims.get("sub"), claims.get("name"), claims.get("agency")
-    affiliations = claims.get("affiliations", claims.get("affiliation"))
-    valid_affiliation = affiliations == "us_law_enforcement" or (
-        isinstance(affiliations, list) and "us_law_enforcement" in affiliations
+def fetch_userinfo(access_token: str, settings: IdMeSettings) -> dict[str, object]:
+    response = httpx.get(settings.userinfo_endpoint, headers={"Authorization": f"Bearer {access_token}"}, timeout=10.0)
+    response.raise_for_status()
+    value = response.json()
+    if not isinstance(value, dict):
+        raise IdMeVerificationError("ID.me UserInfo response is invalid")
+    return value
+
+
+def _identity_from_userinfo(id_token_claims: dict[str, object], userinfo: dict[str, object]) -> tuple[str, str, str]:
+    subject = userinfo.get("sub")
+    if not isinstance(subject, str) or not secrets.compare_digest(subject, str(id_token_claims.get("sub", ""))):
+        raise IdMeVerificationError("ID.me UserInfo subject is invalid")
+    name, agency, affiliations = userinfo.get("name"), userinfo.get("agency"), userinfo.get("affiliations")
+    verified_us_le = isinstance(affiliations, list) and any(
+        isinstance(item, dict) and item.get("verified") is True
+        and str(item.get("country", "")).upper() == "US"
+        and str(item.get("type", item.get("value", ""))).strip().casefold() in {"law_enforcement", "us_law_enforcement"}
+        for item in affiliations
     )
-    if not all(isinstance(value, str) and value.strip() for value in (subject, name, agency)) or not valid_affiliation:
+    if not all(isinstance(value, str) and value.strip() for value in (name, agency)) or not verified_us_le:
         raise IdMeVerificationError("ID.me did not verify a US law-enforcement affiliation")
-    return subject, name, agency
+    return subject, name.strip(), agency.strip()
 
 
-def complete_authorization(*, state: str, code: str, repository: WorkflowRepository, settings: IdMeSettings, store: VerificationSecretStore, now: datetime | None = None, token_exchange: Callable[[str, str, IdMeSettings], dict] | None = None, jwks_fetcher: Callable[[str], list[dict]] = _jwks) -> None:
+def complete_authorization(*, state: str, code: str, repository: WorkflowRepository, settings: IdMeSettings, now: datetime | None = None, token_exchange: Callable[[str, str, IdMeSettings], dict] | None = None, userinfo_fetcher: Callable[[str, IdMeSettings], dict] = fetch_userinfo, jwks_fetcher: Callable[[str], list[dict]] = _jwks, encryption_key: str | None = None) -> None:
     now = now or datetime.now(timezone.utc)
-    secrets_value = store.take(state, now)
     try:
         session: VerificationSession = repository.consume_verification_session(_hash(state))
     except WorkflowConflict as exc:
         raise IdMeVerificationError("Verification session is invalid or expired") from exc
+    nonce, verifier = _decrypt(session.encrypted_secrets, encryption_key)
     if session.expires_at <= now or not (
-        secrets.compare_digest(session.nonce_hash, _hash(secrets_value.nonce))
-        and secrets.compare_digest(session.verifier_hash, _hash(secrets_value.verifier))
+        secrets.compare_digest(session.nonce_hash, _hash(nonce))
+        and secrets.compare_digest(session.verifier_hash, _hash(verifier))
     ):
         raise IdMeVerificationError("Verification session integrity check failed")
-    payload = (token_exchange or exchange_code)(code, secrets_value.verifier, settings)
+    payload = (token_exchange or exchange_code)(code, verifier, settings)
     token = payload.get("id_token")
     if not isinstance(token, str):
         raise IdMeVerificationError("ID.me did not return an identity token")
-    claims = validate_id_token(token, settings, secrets_value.nonce, jwks_fetcher=jwks_fetcher)
-    subject, legal_name, agency_name = _identity_from_claims(claims)
+    claims = validate_id_token(token, settings, nonce, jwks_fetcher=jwks_fetcher)
+    access_token = payload.get("access_token")
+    if not isinstance(access_token, str):
+        raise IdMeVerificationError("ID.me did not return an access token")
+    subject, legal_name, agency_name = _identity_from_userinfo(claims, userinfo_fetcher(access_token, settings))
     owner = repository.idme_subject_owner(subject)
     if owner is not None and owner != session.user_id:
         raise IdMeVerificationError("ID.me identity is already associated with another account")
