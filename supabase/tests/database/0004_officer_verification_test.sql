@@ -1,6 +1,6 @@
 begin;
 
-select plan(49);
+select plan(51);
 
 select has_table('public', 'officer_verifications', 'officer verifications table exists');
 select has_table('public', 'verification_reviews', 'verification reviews table exists');
@@ -142,6 +142,11 @@ select is((select verification_version from public.profiles where user_id = '000
 set local role authenticated;
 select tests.authenticate_as('00000000-0000-0000-0000-000000000203'::uuid, 'aal2');
 select throws_like(
+  $$ select public.review_officer_verification((select verification_id from public.officer_verifications where user_id = '00000000-0000-0000-0000-000000000203'), 'verified') $$,
+  '%reviewers cannot approve their own verification%',
+  'an active reviewer cannot approve their own verification through the review RPC'
+);
+select throws_like(
   $$ insert into public.verification_reviews (verification_id, reviewer_user_id, decision) select verification_id, '00000000-0000-0000-0000-000000000203'::uuid, 'verified' from public.officer_verifications where user_id = '00000000-0000-0000-0000-000000000203' $$,
   '%row-level security%',
   'a reviewer cannot directly review their own pending verification'
@@ -160,6 +165,7 @@ select ok((select relrowsecurity and relforcerowsecurity from pg_class where oid
 select ok((select relrowsecurity and relforcerowsecurity from pg_class where oid = 'public.verification_reviews'::regclass), 'reviews have forced RLS');
 select ok((select relrowsecurity and relforcerowsecurity from pg_class where oid = 'public.verification_evidence'::regclass), 'evidence has forced RLS');
 select ok((select prosecdef and proconfig @> array['search_path='] from pg_proc where oid = 'private.transition_officer_verification(uuid,text)'::regprocedure), 'transition helper is hardened');
+select ok((select prosecdef and proconfig @> array['search_path='] from pg_proc where oid = 'private.officer_verification_is_current(uuid)'::regprocedure), 'current verification helper is hardened');
 
 select * from finish();
 rollback;
