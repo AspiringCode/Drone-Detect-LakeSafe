@@ -1,18 +1,19 @@
 import { useEffect, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { supabase, type SupabaseLike } from "../lib/supabase";
 import type { Lake } from "../lib/types";
 import { useOrientation } from "../lib/useOrientation";
 import { AppHeader } from "../components/AppHeader";
 import { LakePreviewMap } from "../components/LakePreviewMap";
+import { useOptionalActiveStation } from "../hooks/useActiveStation";
 
 export function LakeGridPage({ client = supabase }: { client?: SupabaseLike }) {
   const ref = useOrientation();
-  const [searchParams] = useSearchParams();
   const [lakes, setLakes] = useState<Lake[]>([]);
-  const stationId = searchParams.get("station");
-  const visibleLakes = stationId ? lakes.filter((lake) => lake.org_id === stationId) : lakes;
-  useEffect(() => { void client.from("lakes").select("lake_id,org_id,name,centroid_lat,centroid_lon").order("name").then(({ data, error }: { data: Lake[]; error: unknown }) => { if (!error) setLakes(data ?? []); }); }, [client]);
+  const activeStation = useOptionalActiveStation();
+  const station = activeStation?.station ?? null;
+  const visibleLakes = station ? lakes.filter((lake) => (lake.station_id ?? lake.org_id) === station.station_id) : lakes;
+  useEffect(() => { void client.from("lakes").select("lake_id,station_id,org_id,name,centroid_lat,centroid_lon").order("name").then(({ data, error }: { data: Lake[]; error: unknown }) => { if (!error) setLakes(data ?? []); }); }, [client]);
   return (
     <main className="app-page workflow-page">
       <AppHeader active="lakes" contextLabel="Managed lakes" client={client} />

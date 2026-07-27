@@ -18,10 +18,7 @@ export function AlertPanel({ alert, onEscalate, apiBaseUrl = "" }: AlertPanelPro
 
   const mapsUrl = `https://www.google.com/maps?q=${alert.location.lat},${alert.location.lon}`;
 
-  const handleDispatch = () => {
-    const escalate = onEscalate ?? ((id: string) => defaultEscalate(id, apiBaseUrl));
-    void escalate(alert.alert_id);
-  };
+  const handleDispatch = () => { if (onEscalate) void onEscalate(alert.alert_id); };
 
   return (
     <div className="alert-panel">
@@ -43,9 +40,9 @@ export function AlertPanel({ alert, onEscalate, apiBaseUrl = "" }: AlertPanelPro
           before dispatch.
         </p>
       )}
-      <button type="button" className="alert-panel__dispatch" onClick={handleDispatch}>
+      {onEscalate && <button type="button" className="alert-panel__dispatch" onClick={handleDispatch}>
         Confirm &amp; Dispatch
-      </button>
+      </button>}
     </div>
   );
 }

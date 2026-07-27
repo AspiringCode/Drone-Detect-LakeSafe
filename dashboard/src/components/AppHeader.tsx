@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { supabase, type SupabaseLike } from "../lib/supabase";
+import { useOptionalPrincipal } from "../auth/PrincipalProvider";
+import { useOptionalActiveStation } from "../hooks/useActiveStation";
 
 type HeaderSection = "lakes" | "operations" | "alerts" | "reports" | "profile";
-type Station = { org_id: string; name: string };
 
 type AppHeaderProps = {
   active: HeaderSection;
@@ -12,12 +13,12 @@ type AppHeaderProps = {
   client?: SupabaseLike;
 };
 
-const STATION_STORAGE_KEY = "lakesafe-active-station";
-
 export function AppHeader({ active, contextLabel, operationsHref = "/lakes", client = supabase }: AppHeaderProps) {
   const navigate = useNavigate();
-  const [stations, setStations] = useState<Station[]>([]);
-  const [selectedStation, setSelectedStation] = useState("");
+  const principalContext = useOptionalPrincipal();
+  const activeContext = useOptionalActiveStation();
+  const stations = principalContext?.principal?.memberships.filter((membership) => membership.status === "active") ?? [];
+  const selectedStation = activeContext?.station?.station_id ?? "";
   const [accountInitial, setAccountInitial] = useState("O");
   const [menuOpen, setMenuOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
@@ -25,17 +26,6 @@ export function AppHeader({ active, contextLabel, operationsHref = "/lakes", cli
 
   useEffect(() => {
     let current = true;
-    if (typeof client.from === "function") {
-      const query = client.from("organizations").select("org_id,name");
-      void Promise.resolve(query).then(({ data }: { data?: Station[] | null }) => {
-        if (!current) return;
-        const nextStations = [...(data ?? [])].sort((a, b) => a.name.localeCompare(b.name));
-        const stored = window.localStorage.getItem(STATION_STORAGE_KEY);
-        const nextSelected = nextStations.some((station) => station.org_id === stored) ? stored! : nextStations[0]?.org_id ?? "";
-        setStations(nextStations);
-        setSelectedStation(nextSelected);
-      });
-    }
     if (typeof client.auth?.getUser === "function") {
       void client.auth.getUser().then(({ data }: { data: { user: any } }) => {
         if (!current || !data.user) return;
@@ -46,10 +36,9 @@ export function AppHeader({ active, contextLabel, operationsHref = "/lakes", cli
     return () => { current = false; };
   }, [client]);
 
-  function chooseStation(orgId: string) {
-    setSelectedStation(orgId);
-    window.localStorage.setItem(STATION_STORAGE_KEY, orgId);
-    navigate(`/lakes?station=${encodeURIComponent(orgId)}`);
+  function chooseStation(stationId: string) {
+    activeContext?.select(stationId);
+    navigate("/lakes");
   }
 
   async function signOut() {
@@ -58,7 +47,7 @@ export function AppHeader({ active, contextLabel, operationsHref = "/lakes", cli
     const { error } = await client.auth.signOut();
     setSigningOut(false);
     if (error) return setSignOutError("Could not sign out. Please try again.");
-    window.localStorage.removeItem(STATION_STORAGE_KEY);
+    window.localStorage.removeItem("lakesafe-active-station");
     navigate("/login", { replace: true });
   }
 
@@ -80,8 +69,8 @@ export function AppHeader({ active, contextLabel, operationsHref = "/lakes", cli
         <label className="station-picker">
           <span className="sr-only">Active station</span>
           <select aria-label="Active station" value={selectedStation} onChange={(event) => chooseStation(event.target.value)}>
-            {!stations.length && <option value="">{contextLabel ?? "Station"}</option>}
-            {stations.map((station) => <option value={station.org_id} key={station.org_id}>{station.name}</option>)}
+            {!stations.length && <option value="">{contextLabel ?? "No active station"}</option>}
+            {stations.map((station) => <option value={station.station_id} key={station.station_id}>{station.station_name}</option>)}
           </select>
         </label>
         <button className="account-trigger" type="button" aria-label="Open account menu" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>

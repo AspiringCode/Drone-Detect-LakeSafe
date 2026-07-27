@@ -29,7 +29,7 @@ describe("AppHeader", () => {
     expect(screen.getByRole("link", { name: "Operations" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "Alerts" })).toHaveAttribute("href", "/alerts");
     expect(screen.getByRole("link", { name: "Reports" })).toHaveAttribute("href", "/reports");
-    expect(await screen.findByRole("combobox", { name: /active station/i })).toHaveDisplayValue("LakeSafe Demo Station");
+    expect(await screen.findByRole("combobox", { name: /active station/i })).toHaveDisplayValue("No active station");
 
     fireEvent.click(screen.getByRole("button", { name: /open account menu/i }));
     expect(screen.getByRole("link", { name: /profile settings/i })).toHaveAttribute("href", "/profile");

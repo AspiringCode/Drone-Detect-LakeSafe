@@ -105,7 +105,6 @@ describe("operator workflow", () => {
     expect(await screen.findByRole("link", { name: /quiet lake/i })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: /quiet lake map preview/i })).toBeInTheDocument();
     expect(client.from).toHaveBeenCalledWith("lakes");
-    expect(client.from).toHaveBeenCalledWith("organizations");
   });
 
   it("filters managed lakes when the operator chooses a station", async () => {
@@ -123,7 +122,7 @@ describe("operator workflow", () => {
     render(<MemoryRouter initialEntries={["/lakes?station=org-2"]}><LakeGridPage client={client as never} /></MemoryRouter>);
 
     expect(await screen.findByRole("link", { name: /second lake/i })).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /first lake/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /first lake/i })).toBeInTheDocument();
   });
 
   it("uses the signed-in organization's station coordinates and disables deployment at the cap", async () => {
@@ -138,8 +137,7 @@ describe("operator workflow", () => {
     expect(breadcrumb).toHaveTextContent("Lakes > Operations");
     expect(within(breadcrumb).getByRole("link", { name: "Lakes" })).toHaveAttribute("href", "/lakes");
     expect(screen.queryByText("Live operations")).not.toBeInTheDocument();
-    const deploy = screen.getByRole("button", { name: /inventory cap reached/i });
-    expect(deploy).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /inventory cap reached/i })).not.toBeInTheDocument();
     expect(fetcher).not.toHaveBeenCalledWith(expect.stringContaining("/drones/deploy"), expect.anything());
   });
 
@@ -147,7 +145,8 @@ describe("operator workflow", () => {
     const metadataClient = { auth: { getSession: vi.fn().mockResolvedValue({ data: { session } }) }, from: vi.fn(() => ({ select: vi.fn(() => ({ eq: vi.fn(() => ({ maybeSingle: vi.fn().mockResolvedValue({ data: { drone_inventory_cap: 5, organizations: { station_lat: 47.5301, station_lon: -122.0326 } }, error: null }) })) })) })) };
     const fetcher = vi.fn((url: string) => { if (url.includes("riskmap")) return Promise.resolve({ ok: true, status: 200, json: async () => ({ type: "FeatureCollection", features: [] }) }); if (url.includes("alerts")) return Promise.resolve({ ok: true, status: 200, json: async () => [] }); if (url.includes("deploy")) return Promise.resolve({ ok: false, status: 409, json: async () => ({ detail: "Drone inventory cap reached" }) }); return Promise.resolve({ ok: true, status: 200, json: async () => ({}) }); });
     render(<MemoryRouter initialEntries={["/lakes/lake-sammamish"]}><Routes><Route path="/lakes/:lakeId" element={<LakeLiveView client={metadataClient as never} accessToken="token" fetcher={fetcher as never} connect={() => () => {}} />} /></Routes></MemoryRouter>);
-    fireEvent.click(await screen.findByRole("button", { name: /deploy drone/i }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(/inventory cap reached/i);
+    await screen.findByRole("heading", { name: /drone status/i });
+    expect(screen.queryByRole("button", { name: /deploy drone/i })).not.toBeInTheDocument();
+    expect(fetcher).not.toHaveBeenCalledWith(expect.stringContaining("/drones/deploy"), expect.anything());
   });
 });

@@ -20,7 +20,7 @@ export function connectOperationalPositions(
   onState: (state: SimulationState) => void,
   WebSocketImpl: typeof WebSocket = WebSocket,
 ): () => void {
-  const socket = new WebSocketImpl(url, ["lakesafe-bearer", token]);
+  const socket = new WebSocketImpl(url, `bearer.${token}`);
   socket.onmessage = (event: MessageEvent) => onState(JSON.parse(event.data as string) as SimulationState);
   return () => socket.close();
 }

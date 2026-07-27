@@ -30,6 +30,7 @@ export interface LatLon {
 export interface Lake {
   lake_id: string;
   org_id: string;
+  station_id?: string;
   name: string;
   centroid_lat: number;
   centroid_lon: number;

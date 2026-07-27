@@ -8,7 +8,7 @@ const ActiveStationContext = createContext<Value | null>(null);
 
 export function ActiveStationProvider({ children }: { children: ReactNode }) {
   const { principal } = usePrincipal();
-  const memberships = principal?.memberships ?? [];
+  const memberships = (principal?.memberships ?? []).filter((item) => item.status === "active");
   const [stationId, setStationId] = useState(() => localStorage.getItem(KEY) ?? "");
   useEffect(() => {
     const next = memberships.some((item) => item.station_id === stationId) ? stationId : memberships[0]?.station_id ?? "";
@@ -26,3 +26,5 @@ export function useActiveStation(): Value {
   if (!context) throw new Error("useActiveStation must be used within ActiveStationProvider");
   return context;
 }
+
+export function useOptionalActiveStation(): Value | null { return useContext(ActiveStationContext); }

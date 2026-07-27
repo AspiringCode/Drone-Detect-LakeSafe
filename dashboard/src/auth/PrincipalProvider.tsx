@@ -25,3 +25,6 @@ export function usePrincipal(): PrincipalContextValue {
   if (!context) throw new Error("usePrincipal must be used within PrincipalProvider");
   return context;
 }
+
+/** For legacy, injected page tests; application routes always provide a principal. */
+export function useOptionalPrincipal(): PrincipalContextValue | null { return useContext(PrincipalContext); }

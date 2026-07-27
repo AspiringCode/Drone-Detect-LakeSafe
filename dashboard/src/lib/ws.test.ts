@@ -5,7 +5,7 @@ import type { SimulationState } from "./types";
 class FakeWebSocket {
   onmessage: ((event: { data: string }) => void) | null = null;
   closed = false;
-  constructor(public url: string, public protocols?: string[]) {}
+  constructor(public url: string, public protocols?: string | string[]) {}
   close() {
     this.closed = true;
   }
@@ -63,11 +63,11 @@ describe("connectPositions", () => {
 describe("connectOperationalPositions", () => {
   it("sends its bearer token only through the WebSocket subprotocol", () => {
     let created: FakeWebSocket | null = null;
-    const Ctor = vi.fn((url: string, protocols: string[]) => (created = new FakeWebSocket(url, protocols)));
+    const Ctor = vi.fn((url: string, protocols: string) => (created = new FakeWebSocket(url, protocols)));
     const stop = connectOperationalPositions("wss://test/ws/positions", "secret-token", vi.fn(), Ctor as unknown as typeof WebSocket);
     expect(created!.url).toBe("wss://test/ws/positions");
     expect(created!.url).not.toContain("secret-token");
-    expect(created!.protocols).toEqual(["lakesafe-bearer", "secret-token"]);
+    expect(created!.protocols).toBe("bearer.secret-token");
     stop();
   });
 });
