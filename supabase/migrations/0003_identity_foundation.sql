@@ -35,6 +35,29 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure private.handle_new_user();
 
+create or replace function private.prevent_authenticated_profile_privilege_changes()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if current_user = 'authenticated'
+    and (
+      new.account_class is distinct from old.account_class
+      or new.verification_version is distinct from old.verification_version
+    ) then
+    raise exception 'authenticated users cannot change account class or verification version'
+      using errcode = '42501';
+  end if;
+
+  return new;
+end;
+$$;
+
+create trigger protect_profile_privilege_fields
+  before update on public.profiles
+  for each row execute procedure private.prevent_authenticated_profile_privilege_changes();
+
 create or replace function private.jwt_aal()
 returns text
 language sql
@@ -81,6 +104,7 @@ create policy profiles_update_own_display_name
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
 
+revoke all on public.profiles from public, anon, authenticated;
 grant select on public.profiles to authenticated;
 grant update (display_name) on public.profiles to authenticated;
 
