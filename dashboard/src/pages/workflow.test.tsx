@@ -7,7 +7,8 @@ import { LoginPage } from "./LoginPage";
 import { SignupPage } from "./SignupPage";
 import { VerifyOtpPage } from "./VerifyOtpPage";
 import { LakeGridPage } from "./LakeGridPage";
-import { LakeLiveView } from "./LakeLiveView";
+import { hasLakeCapability, LakeLiveView } from "./LakeLiveView";
+import type { Principal } from "../lib/types";
 import { OnboardingPage } from "./OnboardingPage";
 
 vi.mock("../components/LakeMap", () => ({
@@ -59,6 +60,14 @@ describe("OnboardingGate", () => {
 });
 
 describe("operator workflow", () => {
+  it("does not borrow a capability from a different station's membership", () => {
+    const principal: Principal = { user_id: "officer", email: "officer@example.gov", aal: "aal2", account_class: "officer", verification_status: "verified", reviewer: false, memberships: [
+      { station_id: "station-b", station_name: "B", status: "active", roles: ["station_admin"], capabilities: ["station.read", "inventory.manage", "alert.manage"] },
+    ] };
+    expect(hasLakeCapability(principal, "station-a", "station.read")).toBe(false);
+    expect(hasLakeCapability(principal, "station-a", "inventory.manage")).toBe(false);
+    expect(hasLakeCapability(principal, "station-b", "inventory.manage")).toBe(true);
+  });
   it("branches a password sign-in according to the session AAL", async () => {
     const auth = { signInWithPassword: vi.fn().mockResolvedValue({ data: { session }, error: null }), mfa: { getAuthenticatorAssuranceLevel: vi.fn().mockResolvedValue({ data: { currentLevel: "aal2" } }) } };
     render(<MemoryRouter><LoginPage client={{ auth } as never} /></MemoryRouter>);

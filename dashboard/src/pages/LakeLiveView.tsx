@@ -7,14 +7,18 @@ import { SimulatedBadge } from "../components/SimulatedBadge";
 import { supabase, type SupabaseLike } from "../lib/supabase";
 import { connectOperationalPositions, connectPositions } from "../lib/ws";
 import { useOrientation } from "../lib/useOrientation";
-import type { Alert, SimulationState } from "../lib/types";
+import type { Alert, Capability, Principal, SimulationState } from "../lib/types";
 import { AppHeader } from "../components/AppHeader";
 import { useOptionalPrincipal } from "../auth/PrincipalProvider";
 
 const API = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 const wsFor = (lakeId: string) => `${API.replace(/^http/, "ws")}/ws/lakes/${lakeId}/positions`;
 type Organization = { station_lat: number; station_lon: number };
-type LakeMetadata = { drone_inventory_cap: number; organizations: Organization | Organization[] | null };
+type LakeMetadata = { drone_inventory_cap: number; station_id?: string; org_id?: string; organizations: Organization | Organization[] | null };
+
+export function hasLakeCapability(principal: Principal | null | undefined, lakeStationId: string | null, capability: Capability): boolean {
+  return Boolean(lakeStationId && principal?.aal === "aal2" && principal.memberships.some((item) => item.station_id === lakeStationId && item.status === "active" && item.capabilities.includes(capability)));
+}
 
 export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, connect = connectPositions, connectOperational = connectOperationalPositions }: { client?: SupabaseLike; accessToken?: string; fetcher?: typeof fetch; connect?: typeof connectPositions; connectOperational?: typeof connectOperationalPositions }) {
   const { lakeId = "" } = useParams();
@@ -29,10 +33,11 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
   const [deploying, setDeploying] = useState(false);
   const [station, setStation] = useState<{ lat: number; lon: number } | null>(null);
   const [inventoryCap, setInventoryCap] = useState<number | null>(null);
+  const [lakeStationId, setLakeStationId] = useState<string | null>(null);
 
-  const canReadOperations = principal?.aal === "aal2" && principal.memberships.some((item) => item.status === "active" && item.capabilities.includes("station.read"));
-  const canDeploy = principal?.aal === "aal2" && principal.memberships.some((item) => item.status === "active" && item.capabilities.includes("inventory.manage"));
-  const canManageAlerts = principal?.aal === "aal2" && principal.memberships.some((item) => item.status === "active" && item.capabilities.includes("alert.manage"));
+  const canReadOperations = hasLakeCapability(principal, lakeStationId, "station.read");
+  const canDeploy = hasLakeCapability(principal, lakeStationId, "inventory.manage");
+  const canManageAlerts = hasLakeCapability(principal, lakeStationId, "alert.manage");
   useEffect(() => { let active = true; void fetcher(`${API}/api/lakes/${lakeId}/riskmap`).then(async (r) => { if (r.status === 404) return active && setNoLive(true); if (r.ok) setRiskmap(await r.json()); }).catch(() => active && setNoLive(true)); let stop = () => {}; if (canReadOperations) { void (async () => { const token = accessToken ?? (await client.auth.getSession()).data.session?.access_token; if (token && active) stop = connectOperational(wsFor(lakeId), token, (state) => setDrones(state.drones)); })(); } else if (!principalContext) stop = connect(wsFor(lakeId), (state) => setDrones(state.drones)); return () => { active = false; stop(); }; }, [lakeId, fetcher, connect, connectOperational, client, accessToken, canReadOperations, principalContext]);
   useEffect(() => { void fetcher(`${API}/api/lakes/${lakeId}/alerts`).then((r) => r.ok ? r.json() : []).then((alerts: Alert[]) => setAlert(alerts[0] ?? null)); }, [lakeId, fetcher]);
   useEffect(() => {
@@ -40,6 +45,7 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
     void client.from("lakes").select("drone_inventory_cap,organizations(station_lat,station_lon)").eq("lake_id", lakeId).maybeSingle().then(({ data, error }: { data: LakeMetadata | null; error: unknown }) => {
       if (error || !data || !active) return;
       const org = Array.isArray(data.organizations) ? data.organizations[0] : data.organizations;
+      setLakeStationId(data.station_id ?? data.org_id ?? null);
       if (!org) return;
       setStation({ lat: org.station_lat, lon: org.station_lon });
       setInventoryCap(data.drone_inventory_cap);
