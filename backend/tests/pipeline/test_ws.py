@@ -107,12 +107,16 @@ def test_message_sending_client_is_revalidated_and_closed_after_deadline(monkeyp
         def lake_station_id(self, lake_id): return "station-1"
 
     repository = Repository()
+    clock_values = iter([0.0, 0.0, 0.0, 29.0, 29.0, 31.0, 31.0])
     monkeypatch.setattr("app.main.get_access_repository", lambda: repository)
     monkeypatch.setattr("app.main.verify_supabase_jwt", lambda token: {"sub": "user", "aal": "aal2"})
-    monkeypatch.setattr("app.main.WS_REVALIDATION_SECONDS", 0.0)
+    monkeypatch.setattr("app.main.WS_REVALIDATION_CLOCK", lambda: next(clock_values))
     with TestClient(app).websocket_connect("/ws/lakes/lake-sammamish/positions", subprotocols=["bearer.token"]) as ws:
         ws.receive_json()
+        ws.send_text("keepalive")
+        ws.send_text("keepalive")
         ws.send_text("keepalive")
         with pytest.raises(Exception) as error:
             ws.receive_json()
     assert getattr(error.value, "code", None) == 1008
+    assert repository.calls == 2
