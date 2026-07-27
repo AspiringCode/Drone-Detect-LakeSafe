@@ -127,6 +127,36 @@ as $$
     );
 $$;
 
+create or replace function private.assert_station_has_verified_administrator(target_station_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if target_station_id is not null
+    and exists (
+      select 1 from public.stations where station_id = target_station_id and status = 'active'
+    ) and not exists (
+      select 1
+      from public.station_memberships as membership
+      join public.station_membership_roles as membership_role
+        on membership_role.membership_id = membership.membership_id
+      join public.officer_verifications as verification
+        on verification.user_id = membership.user_id
+      where membership.station_id = target_station_id
+        and membership.status = 'active'
+        and membership_role.role = 'station_admin'
+        and verification.status = 'verified'
+        and verification.revoked_at is null
+        and (verification.expires_at is null or verification.expires_at > now())
+    ) then
+    raise exception 'active station % must retain an active verified station administrator', target_station_id
+      using errcode = '23514';
+  end if;
+end;
+$$;
+
 create or replace function private.enforce_active_station_administrator()
 returns trigger
 language plpgsql
@@ -137,75 +167,27 @@ declare
   affected_station_id uuid;
 begin
   if tg_table_name = 'stations' then
-    select station_id into affected_station_id
-    from public.stations
-    where station_id = coalesce(new.station_id, old.station_id);
+    perform private.assert_station_has_verified_administrator(old.station_id);
+    perform private.assert_station_has_verified_administrator(new.station_id);
   elsif tg_table_name = 'station_memberships' then
-    affected_station_id := coalesce(new.station_id, old.station_id);
+    perform private.assert_station_has_verified_administrator(old.station_id);
+    perform private.assert_station_has_verified_administrator(new.station_id);
   elsif tg_table_name = 'station_membership_roles' then
-    select station_id into affected_station_id
-    from public.station_memberships
-    where membership_id = coalesce(new.membership_id, old.membership_id);
+    for affected_station_id in
+      select distinct membership.station_id
+      from public.station_memberships as membership
+      where membership.membership_id in (old.membership_id, new.membership_id)
+    loop
+      perform private.assert_station_has_verified_administrator(affected_station_id);
+    end loop;
   elsif tg_table_name = 'officer_verifications' then
     for affected_station_id in
-      select distinct station_id
-      from public.station_memberships
-      where user_id = coalesce(new.user_id, old.user_id)
+      select distinct membership.station_id
+      from public.station_memberships as membership
+      where membership.user_id in (old.user_id, new.user_id)
     loop
-      if exists (
-        select 1 from public.stations where station_id = affected_station_id and status = 'active'
-      ) and not exists (
-        select 1
-        from public.station_memberships as membership
-        join public.station_membership_roles as membership_role
-          on membership_role.membership_id = membership.membership_id
-        join public.officer_verifications as verification
-          on verification.user_id = membership.user_id
-        where membership.station_id = affected_station_id
-          and membership.status = 'active'
-          and membership_role.role = 'station_admin'
-          and verification.status = 'verified'
-          and verification.revoked_at is null
-          and (verification.expires_at is null or verification.expires_at > now())
-      ) then
-        raise exception 'active station % must retain an active verified station administrator', affected_station_id
-          using errcode = '23514';
-      end if;
+      perform private.assert_station_has_verified_administrator(affected_station_id);
     end loop;
-    if tg_op = 'DELETE' then
-      return old;
-    end if;
-    return new;
-  end if;
-
-  if affected_station_id is null then
-    if tg_op = 'DELETE' then
-      return old;
-    end if;
-    return new;
-  end if;
-
-  if exists (
-    select 1
-    from public.stations as station
-    where station.station_id = affected_station_id
-      and station.status = 'active'
-  ) and not exists (
-    select 1
-    from public.station_memberships as membership
-    join public.station_membership_roles as membership_role
-      on membership_role.membership_id = membership.membership_id
-    join public.officer_verifications as verification
-      on verification.user_id = membership.user_id
-    where membership.station_id = affected_station_id
-      and membership.status = 'active'
-      and membership_role.role = 'station_admin'
-      and verification.status = 'verified'
-      and verification.revoked_at is null
-      and (verification.expires_at is null or verification.expires_at > now())
-  ) then
-    raise exception 'active station % must retain an active verified station administrator', affected_station_id
-      using errcode = '23514';
   end if;
 
   if tg_op = 'DELETE' then
@@ -253,8 +235,7 @@ revoke all on public.stations, public.station_requests, public.station_membershi
   from public, anon, authenticated;
 
 revoke all on function private.prevent_station_invitation_reuse() from public, anon, authenticated;
+revoke all on function private.assert_station_has_verified_administrator(uuid) from public, anon, authenticated;
 revoke all on function private.enforce_active_station_administrator() from public, anon, authenticated;
-revoke all on function private.is_active_station_member(uuid, uuid) from public, anon;
-revoke all on function private.has_station_role(uuid, text[]) from public, anon;
-grant execute on function private.is_active_station_member(uuid, uuid) to authenticated;
-grant execute on function private.has_station_role(uuid, text[]) to authenticated;
+revoke all on function private.is_active_station_member(uuid, uuid) from public, anon, authenticated;
+revoke all on function private.has_station_role(uuid, text[]) from public, anon, authenticated;

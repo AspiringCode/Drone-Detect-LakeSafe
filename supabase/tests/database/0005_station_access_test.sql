@@ -1,6 +1,6 @@
 begin;
 
-select plan(33);
+select plan(36);
 
 select has_table('public', 'stations', 'stations table exists');
 select has_table('public', 'station_requests', 'station requests table exists');
@@ -19,7 +19,8 @@ values
   ('00000000-0000-0000-0000-000000000301', 'authenticated', 'authenticated', 'admin@example.test', 'not-used', now(), '{}'::jsonb, '{}'::jsonb, now(), now()),
   ('00000000-0000-0000-0000-000000000302', 'authenticated', 'authenticated', 'member@example.test', 'not-used', now(), '{}'::jsonb, '{}'::jsonb, now(), now()),
   ('00000000-0000-0000-0000-000000000303', 'authenticated', 'authenticated', 'unassigned@example.test', 'not-used', now(), '{}'::jsonb, '{}'::jsonb, now(), now()),
-  ('00000000-0000-0000-0000-000000000304', 'authenticated', 'authenticated', 'expired@example.test', 'not-used', now(), '{}'::jsonb, '{}'::jsonb, now(), now());
+  ('00000000-0000-0000-0000-000000000304', 'authenticated', 'authenticated', 'expired@example.test', 'not-used', now(), '{}'::jsonb, '{}'::jsonb, now(), now()),
+  ('00000000-0000-0000-0000-000000000305', 'authenticated', 'authenticated', 'moved-admin@example.test', 'not-used', now(), '{}'::jsonb, '{}'::jsonb, now(), now());
 
 insert into public.officer_verifications (user_id, provider, provider_subject, method, affiliation, status, expires_at)
 values
@@ -39,12 +40,15 @@ where user_id in (
 
 insert into public.stations (station_id, name, status)
 values ('00000000-0000-0000-0000-000000000311', 'Test Station', 'pending');
+insert into public.stations (station_id, name, status)
+values ('00000000-0000-0000-0000-000000000312', 'Pending Transfer Station', 'pending');
 
 insert into public.station_memberships (membership_id, station_id, user_id, status)
 values
   ('00000000-0000-0000-0000-000000000321', '00000000-0000-0000-0000-000000000311', '00000000-0000-0000-0000-000000000301', 'active'),
   ('00000000-0000-0000-0000-000000000322', '00000000-0000-0000-0000-000000000311', '00000000-0000-0000-0000-000000000302', 'active'),
-  ('00000000-0000-0000-0000-000000000323', '00000000-0000-0000-0000-000000000311', '00000000-0000-0000-0000-000000000304', 'active');
+  ('00000000-0000-0000-0000-000000000323', '00000000-0000-0000-0000-000000000311', '00000000-0000-0000-0000-000000000304', 'active'),
+  ('00000000-0000-0000-0000-000000000324', '00000000-0000-0000-0000-000000000312', '00000000-0000-0000-0000-000000000302', 'active');
 
 insert into public.station_membership_roles (membership_id, role)
 values
@@ -57,7 +61,7 @@ update public.stations
 set status = 'active'
 where station_id = '00000000-0000-0000-0000-000000000311';
 
-set local role authenticated;
+set local role postgres;
 select tests.authenticate_as('00000000-0000-0000-0000-000000000303'::uuid, 'aal2');
 select ok(
   not private.is_active_station_member('00000000-0000-0000-0000-000000000303', '00000000-0000-0000-0000-000000000311'),
@@ -120,6 +124,24 @@ select throws_ok(
   '23514',
   null,
   'revoking the final active verified station administrator fails'
+);
+select throws_ok(
+  $$ update public.station_memberships set station_id = '00000000-0000-0000-0000-000000000312' where membership_id = '00000000-0000-0000-0000-000000000321' $$,
+  '23514',
+  null,
+  'moving the final administrator preserves the old active station invariant'
+);
+select throws_ok(
+  $$ update public.station_membership_roles set membership_id = '00000000-0000-0000-0000-000000000324' where membership_id = '00000000-0000-0000-0000-000000000321' and role = 'station_admin' $$,
+  '23514',
+  null,
+  'moving the final administrator role preserves the old active station invariant'
+);
+select throws_ok(
+  $$ update public.officer_verifications set user_id = '00000000-0000-0000-0000-000000000305' where user_id = '00000000-0000-0000-0000-000000000301' $$,
+  '23514',
+  null,
+  'moving the final administrator verification preserves the old active station invariant'
 );
 
 set local role authenticated;
