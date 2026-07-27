@@ -3,6 +3,8 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { AuthGate } from "../auth/AuthGate";
 import { OnboardingGate } from "../auth/OnboardingGate";
+import { PrincipalProvider } from "../auth/PrincipalProvider";
+import { ActiveStationProvider } from "../hooks/useActiveStation";
 import { LoginPage } from "./LoginPage";
 import { SignupPage } from "./SignupPage";
 import { VerifyOtpPage } from "./VerifyOtpPage";
@@ -60,6 +62,16 @@ describe("OnboardingGate", () => {
 });
 
 describe("operator workflow", () => {
+  it("uses the authenticated operational connector only for the lake's matching station", async () => {
+    const principal: Principal = { user_id: "officer", email: "officer@example.gov", aal: "aal2", account_class: "officer", verification_status: "verified", reviewer: false, memberships: [{ station_id: "station-a", station_name: "A", status: "active", roles: ["station_admin"], capabilities: ["station.read", "inventory.manage"] }] };
+    const auth = { getSession: vi.fn().mockResolvedValue({ data: { session } }), onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } })) };
+    const client = { auth, from: vi.fn(() => ({ select: vi.fn(() => ({ eq: vi.fn(() => ({ maybeSingle: vi.fn().mockResolvedValue({ data: { station_id: "station-a", drone_inventory_cap: 5, organizations: { station_lat: 47.5, station_lon: -122.1 } }, error: null }) })) })) })) };
+    const operational = vi.fn(() => () => {});
+    const fetcher = vi.fn((url: string) => Promise.resolve({ ok: true, status: 200, json: async () => url.includes("alerts") ? [] : { type: "FeatureCollection", features: [] } }));
+    render(<PrincipalProvider client={client as never} request={(async () => principal) as never}><ActiveStationProvider><MemoryRouter initialEntries={["/lakes/lake-sammamish"]}><Routes><Route path="/lakes/:lakeId" element={<LakeLiveView client={client as never} fetcher={fetcher as never} connectOperational={operational as never} />} /></Routes></MemoryRouter></ActiveStationProvider></PrincipalProvider>);
+    expect(await screen.findByRole("button", { name: /deploy drone/i })).toBeInTheDocument();
+    await waitFor(() => expect(operational).toHaveBeenCalledWith(expect.stringContaining("/ws/lakes/lake-sammamish/positions"), "token", expect.any(Function)));
+  });
   it("does not borrow a capability from a different station's membership", () => {
     const principal: Principal = { user_id: "officer", email: "officer@example.gov", aal: "aal2", account_class: "officer", verification_status: "verified", reviewer: false, memberships: [
       { station_id: "station-b", station_name: "B", status: "active", roles: ["station_admin"], capabilities: ["station.read", "inventory.manage", "alert.manage"] },
