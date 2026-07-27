@@ -6,11 +6,12 @@ test data to keep a lake looking operational.
 """
 
 from .base import ConnectorFetch, NormalizedRiskPoint, SocrataConnector
-from .king_county import KingCountyIncidentConnector
+from .king_county import KingCountyIncidentConnector, ReviewedConnectorUnavailable
 
 __all__ = [
     "ConnectorFetch",
     "KingCountyIncidentConnector",
     "NormalizedRiskPoint",
+    "ReviewedConnectorUnavailable",
     "SocrataConnector",
 ]
