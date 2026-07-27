@@ -27,6 +27,7 @@ from app.risk_zones.tessellation import compute_tessellated_zones
 from app.onboarding.geo_lookup import AddressNotFoundError, lookup_nearby_lakes
 
 TICK_INTERVAL_S = 0.5
+WS_REVALIDATION_SECONDS = 30.0
 
 app = FastAPI(title="LakeSafe Initiative Demo API")
 
@@ -323,16 +324,25 @@ async def positions_ws(websocket: WebSocket, lake_id: str):
     await runtime.hub.connect(websocket, subprotocol=token_protocol)
     try:
         await websocket.send_json(current_state(runtime))
+        loop = asyncio.get_running_loop()
+        next_revalidation = loop.time() + WS_REVALIDATION_SECONDS
         while True:
-            # Revocation/expiry is checked even when the dashboard is idle.
+            # A deadline (rather than a receive timeout) prevents a chatty
+            # client from postponing revocation checks indefinitely.
             try:
-                await asyncio.wait_for(websocket.receive_text(), timeout=30)
+                await asyncio.wait_for(
+                    websocket.receive_text(),
+                    timeout=max(0.0, next_revalidation - loop.time()),
+                )
             except TimeoutError:
+                pass
+            if loop.time() >= next_revalidation:
                 try:
                     principal = authorize_operational_websocket(lake_id, token_protocol.removeprefix("bearer."))
                 except (HTTPException, RuntimeError):
                     await websocket.close(code=1008)
                     return
+                next_revalidation = loop.time() + WS_REVALIDATION_SECONDS
     except WebSocketDisconnect:
         pass
     finally:

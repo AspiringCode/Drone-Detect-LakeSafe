@@ -92,3 +92,27 @@ def test_operational_websocket_closes_when_verification_is_revoked(monkeypatch):
     with pytest.raises(Exception):
         with TestClient(app).websocket_connect("/ws/lakes/lake-sammamish/positions", subprotocols=["bearer.token"]) as ws:
             ws.receive_json()
+
+
+def test_message_sending_client_is_revalidated_and_closed_after_deadline(monkeypatch):
+    class Repository:
+        def __init__(self): self.calls = 0
+
+        def load_principal_state(self, user_id):
+            self.calls += 1
+            return {"account_class": "officer", "verification_status": "verified" if self.calls == 1 else "revoked", "memberships": [{
+                "station_id": "station-1", "station_name": "Demo", "membership_status": "active", "roles": ["viewer"],
+            }]}
+
+        def lake_station_id(self, lake_id): return "station-1"
+
+    repository = Repository()
+    monkeypatch.setattr("app.main.get_access_repository", lambda: repository)
+    monkeypatch.setattr("app.main.verify_supabase_jwt", lambda token: {"sub": "user", "aal": "aal2"})
+    monkeypatch.setattr("app.main.WS_REVALIDATION_SECONDS", 0.0)
+    with TestClient(app).websocket_connect("/ws/lakes/lake-sammamish/positions", subprotocols=["bearer.token"]) as ws:
+        ws.receive_json()
+        ws.send_text("keepalive")
+        with pytest.raises(Exception) as error:
+            ws.receive_json()
+    assert getattr(error.value, "code", None) == 1008
