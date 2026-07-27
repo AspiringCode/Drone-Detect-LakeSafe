@@ -14,27 +14,43 @@ from app.stations.repository import WorkflowConflict, get_workflow_repository
 router = APIRouter(prefix="/api/stations/{station_id}", tags=["lakes"])
 
 
+def reviewed_connector_for(name: str, latitude: float, longitude: float) -> str | None:
+    """Return an approved connector ID when the registry contains this lake.
+
+    The reviewed registry is intentionally empty until a jurisdiction's source
+    contract has been approved; absence is a fallback state, not a guessed ID.
+    """
+    del name, latitude, longitude
+    return None
+
+
+def _shoreline_with_status(value: LakeCreateRequest) -> tuple[dict, str]:
+    shoreline = normalize_shoreline(resolve_shoreline(value.name, value.centroid_lat, value.centroid_lon, value.bbox))
+    connector = reviewed_connector_for(value.name, value.centroid_lat, value.centroid_lon)
+    return shoreline, "reviewed" if connector else "fallback_coverage"
+
+
 @router.post("/lake-candidates")
 def lake_candidates(station_id: str, value: LakeCreateRequest, principal: Principal = Depends(get_principal)) -> dict:
     require_station_access(principal, station_id, Permission.ADD_LAKE)
     try:
-        geometry = normalize_shoreline(resolve_shoreline(value.name, value.centroid_lat, value.centroid_lon, value.bbox))
+        geometry, data_source_status = _shoreline_with_status(value)
     except ShorelineLookupError:
         return {"candidates": [], "data_source_status": "fallback_coverage"}
-    return {"candidates": [{"name": value.name, "shoreline": geometry}], "data_source_status": "reviewed"}
+    return {"candidates": [{"name": value.name, "shoreline": geometry}], "data_source_status": data_source_status}
 
 
 @router.post("/lakes", status_code=status.HTTP_201_CREATED)
 def create_lake(station_id: str, value: LakeCreateRequest, principal: Principal = Depends(get_principal)) -> dict:
     require_station_access(principal, station_id, Permission.ADD_LAKE)
     try:
-        shoreline = normalize_shoreline(resolve_shoreline(value.name, value.centroid_lat, value.centroid_lon, value.bbox))
+        shoreline, data_source_status = _shoreline_with_status(value)
     except ShorelineLookupError as exc:
         raise HTTPException(status_code=503, detail="Authoritative shoreline data is unavailable") from exc
     lake_id = f"lake-{uuid4()}"
     try:
-        lake = get_workflow_repository().create_lake(LakeCreate(lake_id, station_id, value.name.strip(), value.centroid_lat, value.centroid_lon, shoreline, principal.user_id))
+        lake = get_workflow_repository().create_lake(LakeCreate(lake_id, station_id, value.name.strip(), value.centroid_lat, value.centroid_lon, shoreline, principal.user_id, data_source_status))
     except WorkflowConflict as exc:
         raise HTTPException(status_code=409, detail="Lake cannot be created") from exc
     # No unreviewed Socrata dataset is implied.  Queue coverage setup explicitly.
-    return {"lake_id": lake.lake_id, "station_id": lake.station_id, "name": lake.name, "setup_status": "queued", "data_source_status": "fallback_coverage"}
+    return {"lake_id": lake.lake_id, "station_id": lake.station_id, "name": lake.name, "setup_status": "queued", "data_source_status": data_source_status}

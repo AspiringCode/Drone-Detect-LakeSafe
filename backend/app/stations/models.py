@@ -145,6 +145,7 @@ class LakeCreate:
     centroid_lon: float
     shoreline_geojson: dict
     created_by: str
+    data_source_status: Literal["reviewed", "fallback_coverage"] = "fallback_coverage"
 
 
 @dataclass(frozen=True)

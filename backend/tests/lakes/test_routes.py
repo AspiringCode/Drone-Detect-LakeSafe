@@ -35,3 +35,12 @@ def test_viewer_cannot_create_lake():
     client, _ = _client(StationRole.VIEWER)
     response = client.post("/api/stations/station-1/lakes", json={"name": "Lake Demo", "centroid_lat": 47.6, "centroid_lon": -122.1, "bbox": [-122.2, 47.5, -122.0, 47.7]})
     assert response.status_code == 403
+
+
+def test_reviewed_connector_status_is_persisted_and_returned(monkeypatch):
+    client, repository = _client(StationRole.STATION_ADMIN)
+    monkeypatch.setattr(routes, "reviewed_connector_for", lambda *_: "king-county-water")
+    response = client.post("/api/stations/station-1/lakes", json={"name": "Lake Demo", "centroid_lat": 47.6, "centroid_lon": -122.1, "bbox": [-122.2, 47.5, -122.0, 47.7]})
+    assert response.status_code == 201
+    assert response.json()["data_source_status"] == "reviewed"
+    assert repository.value.data_source_status == "reviewed"

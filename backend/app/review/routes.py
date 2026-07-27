@@ -22,7 +22,7 @@ def is_reviewer(principal: Principal) -> bool:
     try:
         row = get_access_repository().client.table("platform_staff_roles").select("role").eq(
             "user_id", principal.user_id
-        ).eq("active", True).in_("role", ["verification_reviewer", "system_admin"]).execute().data or []
+        ).eq("active", True).eq("role", "system_admin").execute().data or []
     except RuntimeError:
         return False
     return bool(row)

@@ -62,7 +62,9 @@ def principal_from_claims(claims: dict[str, object], repository) -> Principal:
     amr = tuple(item for item in raw_amr if isinstance(item, dict)) if isinstance(raw_amr, list) else ()
     return Principal(
         user_id=user_id,
-        email=profile.get("email") if isinstance(profile.get("email"), str) else None,
+        # Supabase signs the email claim.  It is needed for invitation-address
+        # matching; profile state intentionally does not duplicate auth email.
+        email=claims.get("email") if isinstance(claims.get("email"), str) else None,
         aal=claims.get("aal") if isinstance(claims.get("aal"), str) else None,
         account_class=str(profile.get("account_class") or "civilian"),
         verification_status=profile.get("verification_status") if isinstance(profile.get("verification_status"), str) else None,

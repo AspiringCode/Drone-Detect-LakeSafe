@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.access.principal import Principal, StationMembership, StationRole, get_principal
+from app.access.principal import principal_from_claims
 from app.stations import routes
 from app.stations.models import JoinRequest, StationMembership as WorkflowMembership, StationRequest
 
@@ -64,3 +65,13 @@ def test_aal1_cannot_create_invitation():
         "/api/stations/station-1/invitations", json={"email": "officer@example.gov"}
     )
     assert response.status_code == 403
+
+
+def test_authenticated_jwt_email_is_used_when_accepting_an_invitation():
+    repository = Repository()
+    principal = principal_from_claims(
+        {"sub": "user-1", "email": "Officer@Example.Gov", "aal": "aal2"},
+        type("Access", (), {"load_principal_state": lambda *_: {"account_class": "officer", "verification_status": "verified", "memberships": []}})(),
+    )
+    response = _client(principal, repository).post("/api/invitations/accept", json={"token": "a" * 43})
+    assert response.status_code == 200

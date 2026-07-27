@@ -114,7 +114,7 @@ class SupabaseWorkflowRepository:
             "p_lake_id": value.lake_id, "p_station_id": value.station_id,
             "p_name": value.name, "p_centroid_lat": value.centroid_lat,
             "p_centroid_lon": value.centroid_lon, "p_shoreline_geojson": value.shoreline_geojson,
-            "p_created_by": value.created_by,
+            "p_created_by": value.created_by, "p_data_source_status": value.data_source_status,
         }, "Unable to create lake"))
 
     def append_audit(self, value: AuditEventCreate) -> None:
