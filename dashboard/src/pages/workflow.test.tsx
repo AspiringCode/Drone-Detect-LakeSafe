@@ -39,8 +39,8 @@ function onboardingGated(client: unknown) {
 
 describe("AuthGate", () => {
   it("redirects a visitor without a session to login", async () => { const { client } = authClient({ hasSession: false }); render(gated(client)); expect(await screen.findByText("Login")).toBeInTheDocument(); });
-  it("redirects an AAL1 session to TOTP verification", async () => { const { client } = authClient({ currentLevel: "aal1" }); render(gated(client)); expect(await screen.findByText("Verify")).toBeInTheDocument(); });
-  it("redirects a verified user without an organization to onboarding", async () => { const { client } = authClient({ orgs: [] }); render(gated(client)); expect(await screen.findByText("Onboarding")).toBeInTheDocument(); });
+  it("permits an AAL1 civilian session into the public workspace", async () => { const { client } = authClient({ currentLevel: "aal1" }); render(gated(client)); expect(await screen.findByText("Protected lakes")).toBeInTheDocument(); });
+  it("permits a civilian without an organization into the public workspace", async () => { const { client } = authClient({ orgs: [] }); render(gated(client)); expect(await screen.findByText("Protected lakes")).toBeInTheDocument(); });
   it("permits an AAL2 user with an organization and listens for auth changes", async () => { const { client, unsubscribe } = authClient(); const { unmount } = render(gated(client)); expect(await screen.findByText("Protected lakes")).toBeInTheDocument(); expect(client.auth.onAuthStateChange).toHaveBeenCalledOnce(); unmount(); expect(unsubscribe).toHaveBeenCalledOnce(); });
 });
 

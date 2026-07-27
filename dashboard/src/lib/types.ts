@@ -1,5 +1,27 @@
 export type Source = "real" | "simulated";
 
+export type Capability =
+  | "station.read" | "alert.manage" | "autonomy.manage"
+  | "lake.create" | "inventory.manage" | "member.manage";
+
+export interface StationMembership {
+  station_id: string;
+  station_name: string;
+  status: "active" | "invited" | "suspended" | "revoked" | "inactive_station" | string;
+  roles: string[];
+  capabilities: Capability[];
+}
+
+export interface Principal {
+  user_id: string;
+  email: string;
+  aal: "aal1" | "aal2" | string;
+  account_class: "civilian" | "officer";
+  verification_status: "not_started" | "pending" | "verified" | "rejected" | "expired" | "revoked" | string;
+  reviewer: boolean;
+  memberships: StationMembership[];
+}
+
 export interface LatLon {
   lat: number;
   lon: number;

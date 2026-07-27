@@ -10,10 +10,12 @@ import { LakeLiveView } from "./pages/LakeLiveView";
 import { ProfileSettingsPage } from "./pages/ProfileSettingsPage";
 import { AlertsPage } from "./pages/AlertsPage";
 import { ReportsPage } from "./pages/ReportsPage";
+import { PrincipalProvider } from "./auth/PrincipalProvider";
+import { ActiveStationProvider } from "./hooks/useActiveStation";
 import "./styles.css";
 
 export default function App() {
-  return <BrowserRouter><Routes>
+  return <PrincipalProvider><ActiveStationProvider><BrowserRouter><Routes>
     <Route path="/login" element={<LoginPage />} />
     <Route path="/signup" element={<SignupPage />} />
     <Route path="/verify-2fa" element={<VerifyOtpPage />} />
@@ -28,5 +30,5 @@ export default function App() {
       <Route path="/reports" element={<ReportsPage />} />
     </Route>
     <Route path="*" element={<Navigate to="/lakes" replace />} />
-  </Routes></BrowserRouter>;
+  </Routes></BrowserRouter></ActiveStationProvider></PrincipalProvider>;
 }

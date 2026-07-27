@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Navigate, Outlet } from "react-router-dom";
 import { supabase, type SupabaseLike } from "../lib/supabase";
 
-type GateState = "loading" | "signed-out" | "needs-mfa" | "onboarding" | "ready";
+type GateState = "loading" | "signed-out" | "ready";
 
 export function AuthGate({ client = supabase }: { client?: SupabaseLike }) {
   const [state, setState] = useState<GateState>("loading");
@@ -11,12 +11,7 @@ export function AuthGate({ client = supabase }: { client?: SupabaseLike }) {
     const evaluate = async () => {
       const { data } = await client.auth.getSession();
       if (!data.session) return current && setState("signed-out");
-      const { data: assurance } = await client.auth.mfa.getAuthenticatorAssuranceLevel();
-      if (!current) return;
-      if (assurance?.currentLevel !== "aal2") return setState("needs-mfa");
-      const { data: orgs, error } = await client.from("organizations").select("org_id").limit(1);
-      if (!current) return;
-      setState(error || !orgs?.length ? "onboarding" : "ready");
+      if (current) setState("ready");
     };
     void evaluate();
     const { data: subscription } = client.auth.onAuthStateChange(() => { void evaluate(); });
@@ -24,7 +19,5 @@ export function AuthGate({ client = supabase }: { client?: SupabaseLike }) {
   }, [client]);
   if (state === "loading") return <main className="auth-loading" aria-live="polite">Preparing operator workspace…</main>;
   if (state === "signed-out") return <Navigate to="/login" replace />;
-  if (state === "needs-mfa") return <Navigate to="/verify-2fa" replace />;
-  if (state === "onboarding") return <Navigate to="/onboarding" replace />;
   return <Outlet />;
 }
