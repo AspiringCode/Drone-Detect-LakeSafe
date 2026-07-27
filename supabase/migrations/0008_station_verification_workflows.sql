@@ -173,7 +173,7 @@ $$;
 
 create or replace function public.create_station_join_request(p_station_id uuid, p_user_id uuid)
 returns jsonb language plpgsql security definer set search_path = '' as $$
-declare request_id uuid;
+declare request_row public.station_join_requests%rowtype;
 begin
   if not exists (
     select 1 from public.officer_verifications as verification
@@ -183,12 +183,16 @@ begin
     return null;
   end if;
   insert into public.station_join_requests (station_id, user_id)
-  values (p_station_id, p_user_id) returning station_join_request_id into request_id;
+  values (p_station_id, p_user_id) returning * into request_row;
   perform private.record_workflow_audit(p_user_id, p_station_id, null,
     'station_join_request.create', 'allowed', 'pending join request created', null,
-    jsonb_build_object('station_join_request_id', request_id));
-  return jsonb_build_object('station_request_id', request_id, 'requested_by', p_user_id,
-    'requested_name', '', 'requested_address', null, 'status', 'pending');
+    jsonb_build_object('station_join_request_id', request_row.station_join_request_id));
+  return jsonb_build_object(
+    'station_join_request_id', request_row.station_join_request_id,
+    'station_id', request_row.station_id, 'user_id', request_row.user_id,
+    'status', request_row.status, 'created_at', request_row.created_at,
+    'updated_at', request_row.updated_at
+  );
 exception when unique_violation then
   return null;
 end;

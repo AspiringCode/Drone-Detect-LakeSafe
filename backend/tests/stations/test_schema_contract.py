@@ -35,3 +35,13 @@ def test_rejected_station_review_returns_no_membership_and_invitation_binds_admi
     assert "if p_decision = 'rejected' then" in text
     assert "p_actor_user_id" in text
     assert "membership.user_id = p_actor_user_id" in text
+
+
+def test_join_request_rpc_returns_join_request_contract_not_station_request_fields():
+    text = MIGRATION.read_text().lower()
+    start = text.index("function public.create_station_join_request")
+    end = text.index("create or replace function public.create_station_invitation", start)
+    contract = text[start:end]
+    for key in ("station_join_request_id", "station_id", "user_id", "status", "created_at", "updated_at"):
+        assert f"'{key}'" in contract
+    assert "'station_request_id'" not in contract
