@@ -47,10 +47,10 @@ def get_me(principal: Principal = Depends(get_principal)) -> dict:
 
 @router.get("/stations")
 def search_stations(query: str = "", state: str | None = None) -> dict:
-    if state is not None and (len(state) != 2 or not state.isalpha()):
-        raise HTTPException(status_code=422, detail="State must be a USPS abbreviation")
+    if state is not None:
+        raise HTTPException(status_code=422, detail="State filtering is not available yet")
     # Station discovery is deliberately metadata-only; memberships remain server-authorized.
-    return {"stations": get_workflow_repository().search_stations(query[:160], state.upper() if state else None), "query": query[:160], "state": state.upper() if state else None}
+    return {"stations": get_workflow_repository().search_stations(query[:160]), "query": query[:160]}
 
 
 @router.post("/station-requests", status_code=status.HTTP_201_CREATED)

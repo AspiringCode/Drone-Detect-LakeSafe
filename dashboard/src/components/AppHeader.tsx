@@ -17,7 +17,7 @@ export function AppHeader({ active, contextLabel, operationsHref = "/lakes", cli
   const navigate = useNavigate();
   const principalContext = useOptionalPrincipal();
   const activeContext = useOptionalActiveStation();
-  const stations = principalContext?.principal?.memberships.filter((membership) => membership.status === "active") ?? [];
+  const stations = principalContext?.principal?.memberships?.filter((membership) => membership.status === "active") ?? [];
   const selectedStation = activeContext?.station?.station_id ?? "";
   const [accountInitial, setAccountInitial] = useState("O");
   const [menuOpen, setMenuOpen] = useState(false);

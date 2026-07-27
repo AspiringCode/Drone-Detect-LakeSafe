@@ -87,9 +87,13 @@ def test_authenticated_jwt_email_is_used_when_accepting_an_invitation():
 
 
 def test_search_and_workflow_queues_are_repository_backed():
-    response = _client(_principal(role=StationRole.STATION_ADMIN), Repository()).get("/api/stations?query=one&state=wa")
+    response = _client(_principal(role=StationRole.STATION_ADMIN), Repository()).get("/api/stations?query=one")
     assert response.status_code == 200
     assert response.json()["stations"][0]["station_id"] == "station-1"
     client = _client(_principal(role=StationRole.STATION_ADMIN), Repository())
     assert client.get("/api/station-requests/mine").json()["requests"][0]["station_request_id"] == "request-1"
     assert client.get("/api/stations/station-1/join-requests").json()["requests"][0]["station_join_request_id"] == "join-1"
+
+
+def test_station_search_rejects_unimplemented_state_filter():
+    assert _client(_principal(), Repository()).get("/api/stations?state=WA").status_code == 422
