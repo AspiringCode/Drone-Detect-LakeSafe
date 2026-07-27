@@ -17,6 +17,7 @@ import { StationAccessPage } from "./pages/StationAccessPage";
 import { StationAdminPage } from "./pages/StationAdminPage";
 import { AddLakePage } from "./pages/AddLakePage";
 import { ReviewConsolePage } from "./pages/ReviewConsolePage";
+import { InvitationAcceptPage } from "./pages/InvitationAcceptPage";
 import "./styles.css";
 
 export default function App() {
@@ -35,6 +36,7 @@ export default function App() {
       <Route path="/reports" element={<ReportsPage />} />
       <Route path="/verify-affiliation" element={<OfficerVerificationPage />} />
       <Route path="/station-access" element={<StationAccessPage />} />
+      <Route path="/invitations/accept" element={<InvitationAcceptPage />} />
       <Route path="/stations/:stationId/admin" element={<StationAdminPage />} />
       <Route path="/stations/:stationId/lakes/new" element={<AddLakePage />} />
       <Route path="/internal/reviews" element={<ReviewConsolePage />} />
