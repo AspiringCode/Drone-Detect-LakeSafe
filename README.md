@@ -40,3 +40,14 @@ cd dashboard && npm install && npm run dev
 ```
 
 Fire the demo: `POST /api/demo/trigger` → watch a detection become a confirmed, GPS-located alert on the dashboard.
+
+### ID.me officer verification
+
+The FastAPI service begins ID.me OIDC verification at
+`POST /api/verifications/idme/start` and receives its callback at
+`GET /api/verifications/idme/callback`. Configure backend-only environment
+variables (never a `VITE_` browser variable): `IDME_CLIENT_ID`,
+`IDME_CLIENT_SECRET`, `IDME_REDIRECT_URI`, and `IDME_AUDIENCE`. Optional
+provider/environment overrides are `IDME_ISSUER`, `IDME_AUTHORIZATION_ENDPOINT`,
+`IDME_TOKEN_ENDPOINT`, `IDME_JWKS_URI`, `IDME_PROFILE_SUCCESS_URL`, and
+`IDME_PROFILE_FAILURE_URL`.

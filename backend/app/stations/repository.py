@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from functools import lru_cache
 import re
 from typing import Protocol
 
@@ -21,6 +22,7 @@ class WorkflowRepository(Protocol):
     def create_verification_session(self, value: VerificationSessionCreate) -> None: ...
     def consume_verification_session(self, state_hash: str) -> VerificationSession: ...
     def upsert_idme_verification(self, value: IdMeVerification) -> None: ...
+    def idme_subject_owner(self, provider_subject: str) -> str | None: ...
     def create_station_request(self, value: StationRequestCreate) -> StationRequest: ...
     def create_join_request(self, value: JoinRequestCreate) -> JoinRequest: ...
     def create_invitation(self, value: InvitationCreate) -> None: ...
@@ -59,6 +61,12 @@ class SupabaseWorkflowRepository:
             "p_verified_at": value.verified_at.isoformat(),
             "p_expires_at": value.expires_at.isoformat() if value.expires_at else None,
         }, "Unable to record ID.me verification")
+
+    def idme_subject_owner(self, provider_subject: str) -> str | None:
+        record = self._client.table("officer_verifications").select("user_id").eq(
+            "provider", "id_me"
+        ).eq("provider_subject", provider_subject).maybe_single().execute().data
+        return str(record["user_id"]) if record else None
 
     def create_station_request(self, value: StationRequestCreate) -> StationRequest:
         return StationRequest.from_record(self._rpc_one("create_station_request", {
@@ -133,3 +141,8 @@ def _payload(value, **overrides) -> dict:
 def _require_sha256(value: str) -> None:
     if not re.fullmatch(r"[0-9a-f]{64}", value):
         raise ValueError("Expected a canonical lowercase SHA-256 hash")
+
+
+@lru_cache(maxsize=1)
+def get_workflow_repository() -> SupabaseWorkflowRepository:
+    return SupabaseWorkflowRepository()

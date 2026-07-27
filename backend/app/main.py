@@ -26,12 +26,14 @@ from app.pipeline.ws import ConnectionHub, tick_loop
 from app.risk_zones.heatmap import zones_to_geojson
 from app.risk_zones.tessellation import compute_tessellated_zones
 from app.onboarding.geo_lookup import AddressNotFoundError, lookup_nearby_lakes
+from app.verification.routes import router as idme_router
 
 TICK_INTERVAL_S = 0.5
 WS_REVALIDATION_SECONDS = 30.0
 WS_REVALIDATION_CLOCK = monotonic
 
 app = FastAPI(title="LakeSafe Initiative Demo API")
+app.include_router(idme_router)
 
 # Local-dev dashboard runs on Vite's default port; CAC judges run this locally,
 # not behind a shared origin, so permissive localhost/127.0.0.1 dev ports are fine.
