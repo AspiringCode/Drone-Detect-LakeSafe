@@ -50,7 +50,7 @@ def search_stations(query: str = "", state: str | None = None) -> dict:
     if state is not None and (len(state) != 2 or not state.isalpha()):
         raise HTTPException(status_code=422, detail="State must be a USPS abbreviation")
     # Station discovery is deliberately metadata-only; memberships remain server-authorized.
-    return {"stations": [], "query": query[:160], "state": state.upper() if state else None}
+    return {"stations": get_workflow_repository().search_stations(query[:160], state.upper() if state else None), "query": query[:160], "state": state.upper() if state else None}
 
 
 @router.post("/station-requests", status_code=status.HTTP_201_CREATED)
@@ -66,7 +66,7 @@ def create_station_request(value: StationRequestInput, principal: Principal = De
 @router.get("/station-requests/mine")
 def my_station_requests(principal: Principal = Depends(get_principal)) -> dict:
     _require_verified(principal)
-    return {"requests": []}
+    return {"requests": [item.__dict__ for item in get_workflow_repository().list_station_requests_for_user(principal.user_id)]}
 
 
 @router.post("/stations/{station_id}/join-requests", status_code=status.HTTP_201_CREATED)
@@ -108,7 +108,7 @@ def accept_invitation(value: InvitationAcceptInput, principal: Principal = Depen
 @router.get("/stations/{station_id}/join-requests")
 def list_join_requests(station_id: str, principal: Principal = Depends(get_principal)) -> dict:
     require_station_access(principal, station_id, Permission.MANAGE_MEMBERS)
-    return {"requests": []}
+    return {"requests": [item.__dict__ for item in get_workflow_repository().list_join_requests_for_station(station_id)]}
 
 
 @router.post("/stations/{station_id}/join-requests/{request_id}/decision")

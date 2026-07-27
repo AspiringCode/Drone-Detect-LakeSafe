@@ -30,6 +30,10 @@ class WorkflowRepository(Protocol):
     def review_station_request(self, value: StationReviewCreate) -> StationMembership | None: ...
     def review_join_request(self, value: JoinReviewCreate) -> StationMembership | None: ...
     def create_lake(self, value: LakeCreate) -> LakeRecord: ...
+    def search_stations(self, query: str, state: str | None = None) -> list[dict]: ...
+    def list_station_requests_for_user(self, user_id: str) -> list[StationRequest]: ...
+    def list_join_requests_for_station(self, station_id: str) -> list[JoinRequest]: ...
+    def list_station_requests_for_review(self) -> list[dict]: ...
     def append_audit(self, value: AuditEventCreate) -> None: ...
 
 
@@ -116,6 +120,32 @@ class SupabaseWorkflowRepository:
             "p_centroid_lon": value.centroid_lon, "p_shoreline_geojson": value.shoreline_geojson,
             "p_created_by": value.created_by, "p_data_source_status": value.data_source_status,
         }, "Unable to create lake"))
+
+    def search_stations(self, query: str, state: str | None = None) -> list[dict]:
+        request = self._client.table("stations").select("station_id,name,status").eq("status", "active").limit(25)
+        if query.strip():
+            request = request.ilike("name", f"%{query.strip()}%")
+        # Addresses are display metadata; a database deployment may expose a
+        # normalized state column later. Do not infer one from text.
+        del state
+        return request.execute().data or []
+
+    def list_station_requests_for_user(self, user_id: str) -> list[StationRequest]:
+        rows = self._client.table("station_requests").select(
+            "station_request_id,requested_by,requested_name,requested_address,status"
+        ).eq("requested_by", user_id).order("created_at", desc=True).execute().data or []
+        return [StationRequest.from_record(row) for row in rows]
+
+    def list_join_requests_for_station(self, station_id: str) -> list[JoinRequest]:
+        rows = self._client.table("station_join_requests").select(
+            "station_join_request_id,station_id,user_id,status"
+        ).eq("station_id", station_id).eq("status", "pending").order("created_at").execute().data or []
+        return [JoinRequest.from_record(row) for row in rows]
+
+    def list_station_requests_for_review(self) -> list[dict]:
+        return self._client.table("station_requests").select(
+            "station_request_id,requested_name,requested_address,status,created_at"
+        ).eq("status", "pending").order("created_at").execute().data or []
 
     def append_audit(self, value: AuditEventCreate) -> None:
         self._client.table("audit_events").insert(_payload(value)).execute()

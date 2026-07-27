@@ -27,6 +27,15 @@ class Repository:
     def accept_invitation(self, token_hash, user_id, email):
         return WorkflowMembership("membership-1", "station-1", user_id, "active", ("viewer",))
 
+    def search_stations(self, query, state=None):
+        return [{"station_id": "station-1", "name": "Station One", "state": "WA"}]
+
+    def list_station_requests_for_user(self, user_id):
+        return [StationRequest("request-1", user_id, "Station One", None, "pending")]
+
+    def list_join_requests_for_station(self, station_id):
+        return [JoinRequest("join-1", station_id, "user-2", "pending")]
+
 
 def _principal(*, role: StationRole | None = None, aal: str = "aal2") -> Principal:
     memberships = () if role is None else (StationMembership("station-1", "Station One", "active", frozenset({role})),)
@@ -75,3 +84,12 @@ def test_authenticated_jwt_email_is_used_when_accepting_an_invitation():
     )
     response = _client(principal, repository).post("/api/invitations/accept", json={"token": "a" * 43})
     assert response.status_code == 200
+
+
+def test_search_and_workflow_queues_are_repository_backed():
+    response = _client(_principal(role=StationRole.STATION_ADMIN), Repository()).get("/api/stations?query=one&state=wa")
+    assert response.status_code == 200
+    assert response.json()["stations"][0]["station_id"] == "station-1"
+    client = _client(_principal(role=StationRole.STATION_ADMIN), Repository())
+    assert client.get("/api/station-requests/mine").json()["requests"][0]["station_request_id"] == "request-1"
+    assert client.get("/api/stations/station-1/join-requests").json()["requests"][0]["station_join_request_id"] == "join-1"

@@ -36,7 +36,7 @@ def _require_reviewer(principal: Principal) -> None:
 @router.get("/station-requests")
 def list_station_requests(principal: Principal = Depends(get_principal)) -> dict:
     _require_reviewer(principal)
-    return {"requests": []}
+    return {"requests": get_workflow_repository().list_station_requests_for_review()}
 
 
 @router.post("/station-requests/{request_id}/decision")
