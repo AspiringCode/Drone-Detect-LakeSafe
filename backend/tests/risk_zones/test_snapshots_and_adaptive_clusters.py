@@ -58,6 +58,20 @@ def test_connector_failures_are_quarantined() -> None:
     assert snapshot.failure_reason == "connector_schema_failure"
 
 
+def test_malformed_normalized_row_is_quarantined() -> None:
+    malformed = NormalizedRiskPoint(
+        source_row_id="bad-time",
+        latitude=47.58,
+        longitude=-122.09,
+        occurred_at=datetime(2026, 7, 1),
+        weight=1.0,
+        source_payload={},
+    )
+    snapshot = build_snapshot("lake-1", "st-1", (_fetch(rows=(malformed,)),), "POLYGON EMPTY", NOW, NOW)
+    assert snapshot.status == "quarantined"
+    assert snapshot.failure_reason == "connector_schema_failure"
+
+
 def test_adaptive_count_is_deterministic() -> None:
     points = tuple(
         WeightedPoint(47.56 + group * 0.02 + item * 0.0001, -122.09, 1.0, "incidents")

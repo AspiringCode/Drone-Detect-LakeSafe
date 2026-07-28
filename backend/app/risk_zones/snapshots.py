@@ -108,15 +108,19 @@ def build_snapshot(
         if not isinstance(connector, ConnectorFetch):
             return _empty_snapshot(lake_id, station_id, boundary_wkt, utc_since, captured_at, "connector_schema_failure")
 
-    fetches = sorted(connectors, key=lambda item: (item.connector_key, item.connector_schema_version, item.attribution))
-    sources = tuple(SnapshotSource(item.connector_key, item.connector_schema_version, item.attribution) for item in fetches)
-    points = tuple(sorted(
-        (row for item in fetches for row in item.rows),
-        key=lambda row: (
-            _utc(row.occurred_at), row.source_row_id, row.latitude, row.longitude,
-            row.weight, json.dumps(row.source_payload, sort_keys=True, separators=(",", ":")),
-        ),
-    ))
+    try:
+        fetches = sorted(connectors, key=lambda item: (item.connector_key, item.connector_schema_version, item.attribution))
+        sources = tuple(SnapshotSource(item.connector_key, item.connector_schema_version, item.attribution) for item in fetches)
+        points = tuple(sorted(
+            (row for item in fetches for row in item.rows),
+            key=lambda row: (
+                _utc(row.occurred_at), row.source_row_id, row.latitude, row.longitude,
+                row.weight, json.dumps(row.source_payload, sort_keys=True, separators=(",", ":")),
+            ),
+        ))
+        point_payloads = [_point_payload(point) for point in points]
+    except (AttributeError, TypeError, ValueError, OverflowError):
+        return _empty_snapshot(lake_id, station_id, boundary_wkt, utc_since, captured_at, "connector_schema_failure")
     payload = {
         "lake_id": lake_id,
         "station_id": station_id,
@@ -129,7 +133,7 @@ def build_snapshot(
             {"connector_key": source.connector_key, "schema_version": source.schema_version, "attribution": source.attribution}
             for source in sources
         ],
-        "points": [_point_payload(point) for point in points],
+        "points": point_payloads,
     }
     canonical_json = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
     return RiskSnapshotInput(
