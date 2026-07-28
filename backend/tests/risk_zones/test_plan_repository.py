@@ -64,3 +64,12 @@ def test_worker_migration_reclaims_stale_claims_and_applies_failure_backoff() ->
     assert "claimed_at < now() - interval '10 minutes'" in sql
     assert "next_attempt_at" in sql
     assert "now() + interval '15 minutes'" in sql
+
+
+def test_claim_ownership_migration_requires_matching_opaque_token_for_completion() -> None:
+    sql = (Path(__file__).parents[3] / "supabase" / "migrations" / "0015_risk_refresh_claim_tokens.sql").read_text().lower()
+
+    assert "claim_token uuid" in sql
+    assert "p_claim_token uuid" in sql
+    assert "claim_token = p_claim_token" in sql
+    assert "returning job.lake_id, job.claim_token" in sql

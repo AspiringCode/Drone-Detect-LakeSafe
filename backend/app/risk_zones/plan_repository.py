@@ -133,17 +133,17 @@ class SupabaseRiskPlanRepository:
 
     def claim_queued_lakes(self, limit: int) -> tuple[str, ...]:
         data = self._client.rpc("claim_queued_risk_refreshes", {"p_limit": limit}).execute().data or []
-        return tuple(str(row["lake_id"]) for row in data)
+        return tuple({"lake_id": str(row["lake_id"]), "claim_token": str(row["claim_token"])} for row in data)
 
     def claim_due_source_lakes(self, limit: int) -> tuple[str, ...]:
         data = self._client.rpc("claim_due_risk_source_refreshes", {"p_limit": limit}).execute().data or []
-        return tuple(str(row["lake_id"]) for row in data)
+        return tuple({"lake_id": str(row["lake_id"]), "claim_token": str(row["claim_token"])} for row in data)
 
-    def complete_refresh(self, lake_id: str) -> None:
-        self._client.rpc("complete_risk_refresh", {"p_lake_id": lake_id}).execute()
+    def complete_refresh(self, lake_id: str, claim_token: str) -> bool:
+        return self._client.rpc("complete_risk_refresh", {"p_lake_id": lake_id, "p_claim_token": claim_token}).execute().data is True
 
-    def fail_refresh(self, lake_id: str, reason: str) -> None:
-        self._client.rpc("fail_risk_refresh", {"p_lake_id": lake_id, "p_reason": reason}).execute()
+    def fail_refresh(self, lake_id: str, claim_token: str, reason: str) -> bool:
+        return self._client.rpc("fail_risk_refresh", {"p_lake_id": lake_id, "p_claim_token": claim_token, "p_reason": reason}).execute().data is True
 
     def rebuild_context(self, lake_id: str) -> dict | None:
         result = self._client.rpc("risk_plan_rebuild_context", {"p_lake_id": lake_id}).execute().data

@@ -51,6 +51,42 @@ def test_failed_refresh_keeps_work_for_a_later_attempt_without_raising() -> None
     assert repository.failed == [("lake-1", "source unavailable"), ("lake-2", "source unavailable")]
 
 
+def test_reclaimed_claim_uses_its_opaque_token_so_late_workers_cannot_complete_newer_work() -> None:
+    class TokenRepository(Repository):
+        def __init__(self):
+            super().__init__()
+            self.queued, self.due, self.completed = ([{"lake_id": "lake-1", "claim_token": "new-token"}], [], [])
+
+        def complete_refresh(self, lake_id, claim_token):
+            self.completed.append((lake_id, claim_token))
+            return claim_token == "new-token"
+
+    repository = TokenRepository()
+    worker = RiskRefreshWorker(repository, lambda _: None)
+
+    assert worker.run_once() == ("lake-1",)
+    assert repository.completed == [("lake-1", "new-token")]
+
+
+def test_late_claim_token_cannot_overwrite_a_reclaimed_newer_lease() -> None:
+    class ReclaimedRepository(Repository):
+        def __init__(self):
+            super().__init__()
+            self.queued, self.due = ([{"lake_id": "lake-1", "claim_token": "old-token"}], [])
+            self.current_lease = "new-token"
+            self.attempts = []
+
+        def complete_refresh(self, lake_id, claim_token):
+            self.attempts.append((lake_id, claim_token))
+            return claim_token == self.current_lease
+
+    repository = ReclaimedRepository()
+    RiskRefreshWorker(repository, lambda _: None).run_once()
+
+    assert repository.current_lease == "new-token"
+    assert repository.attempts == [("lake-1", "old-token")]
+
+
 class ProductionShapeRepository(Repository):
     def __init__(self) -> None:
         super().__init__()

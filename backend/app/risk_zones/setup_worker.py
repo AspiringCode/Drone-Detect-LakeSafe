@@ -18,6 +18,22 @@ from app.risk_zones.snapshots import build_fallback_snapshot, build_snapshot
 logger = logging.getLogger(__name__)
 
 
+class RefreshClaim(tuple):
+    __slots__ = ()
+    def __new__(cls, lake_id: str, claim_token: str | None = None):
+        return tuple.__new__(cls, (lake_id, claim_token))
+    @property
+    def lake_id(self): return self[0]
+    @property
+    def claim_token(self): return self[1]
+
+
+def _claim(value) -> RefreshClaim:
+    if isinstance(value, dict):
+        return RefreshClaim(str(value["lake_id"]), str(value.get("claim_token") or "") or None)
+    return RefreshClaim(str(value))
+
+
 class _SodapyClient:
     """Narrow live client adapter; it never substitutes a fixture on failure."""
 
@@ -96,17 +112,28 @@ class RiskRefreshWorker:
         self._batch_size = batch_size
 
     def run_once(self) -> tuple[str, ...]:
-        queued = tuple(self._repository.claim_queued_lakes(self._batch_size))
-        due = tuple(self._repository.claim_due_source_lakes(self._batch_size))
+        queued = tuple(_claim(value) for value in self._repository.claim_queued_lakes(self._batch_size))
+        due = tuple(_claim(value) for value in self._repository.claim_due_source_lakes(self._batch_size))
         completed: list[str] = []
         # A lake can be both manually queued and source-due. Build it once.
-        for lake_id in dict.fromkeys((*queued, *due)):
+        claims_by_lake: dict[str, list[RefreshClaim]] = {}
+        for claim in (*queued, *due):
+            claims_by_lake.setdefault(claim.lake_id, []).append(claim)
+        for lake_id, lake_claims in claims_by_lake.items():
             try:
                 self._rebuild_lake(lake_id)
-                self._repository.complete_refresh(lake_id)
+                for claim in lake_claims:
+                    if claim.claim_token is None:
+                        self._repository.complete_refresh(lake_id)
+                    else:
+                        self._repository.complete_refresh(lake_id, claim.claim_token)
             except Exception as exc:  # retain the prior active plan, record a safe failure
                 logger.warning("risk refresh failed for lake %s: %s", lake_id, exc)
-                self._repository.fail_refresh(lake_id, str(exc)[:500] or exc.__class__.__name__)
+                for claim in lake_claims:
+                    if claim.claim_token is None:
+                        self._repository.fail_refresh(lake_id, str(exc)[:500] or exc.__class__.__name__)
+                    else:
+                        self._repository.fail_refresh(lake_id, claim.claim_token, str(exc)[:500] or exc.__class__.__name__)
             else:
                 completed.append(lake_id)
         return tuple(completed)
