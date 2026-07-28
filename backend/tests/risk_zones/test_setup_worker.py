@@ -87,6 +87,20 @@ def test_late_claim_token_cannot_overwrite_a_reclaimed_newer_lease() -> None:
     assert repository.attempts == [("lake-1", "old-token")]
 
 
+def test_stale_worker_cannot_persist_or_activate_after_claim_is_reclaimed() -> None:
+    repository = ProductionShapeRepository()
+    repository.claim_is_current = lambda lake_id, token: False
+
+    try:
+        RiskPlanSetupService(repository).rebuild_lake("lake-1", "old-token")
+    except RuntimeError as exc:
+        assert "claim" in str(exc)
+    else:
+        raise AssertionError("stale claim unexpectedly published a plan")
+    assert repository.persisted_snapshot is None
+    assert repository.persisted_candidate is None
+
+
 class ProductionShapeRepository(Repository):
     def __init__(self) -> None:
         super().__init__()

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import inspect
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
@@ -64,7 +65,9 @@ class RiskPlanSetupService:
         connector = KingCountyIncidentConnector(dataset_id)
         return connector.fetch(boundary_wkt, since, self._client_factory(domain))
 
-    def rebuild_lake(self, lake_id: str) -> PlanBuildResult:
+    def rebuild_lake(self, lake_id: str, claim_token: str | None = None) -> PlanBuildResult:
+        if claim_token is not None and not self._repository.claim_is_current(lake_id, claim_token):
+            raise RuntimeError("risk refresh claim is no longer current")
         context = self._repository.rebuild_context(lake_id)
         if not context or context.get("lake_id") != lake_id:
             raise RiskDataUnavailable("lake_not_found")
@@ -89,7 +92,11 @@ class RiskPlanSetupService:
             ),
             snapshot_id=snapshot_id,
         )
+        if claim_token is not None and not self._repository.claim_is_current(lake_id, claim_token):
+            raise RuntimeError("risk refresh claim is no longer current")
         self._repository.persist_candidate(candidate)
+        if claim_token is not None and not self._repository.claim_is_current(lake_id, claim_token):
+            raise RuntimeError("risk refresh claim is no longer current")
         if not self._repository.activate_candidate(lake_id, candidate.plan_id, context.get("prior_plan_id")):
             raise PlanConflict("active plan changed; candidate was not activated")
         return PlanBuildResult(
@@ -110,6 +117,7 @@ class RiskRefreshWorker:
         self._repository = repository
         self._rebuild_lake = rebuild_lake
         self._batch_size = batch_size
+        self._rebuild_accepts_token = len(inspect.signature(rebuild_lake).parameters) >= 2
 
     def run_once(self) -> tuple[str, ...]:
         queued = tuple(_claim(value) for value in self._repository.claim_queued_lakes(self._batch_size))
@@ -120,13 +128,17 @@ class RiskRefreshWorker:
         for claim in (*queued, *due):
             claims_by_lake.setdefault(claim.lake_id, []).append(claim)
         for lake_id, lake_claims in claims_by_lake.items():
+            completed_claim = False
             try:
-                self._rebuild_lake(lake_id)
+                self._rebuild_lake(lake_id, lake_claims[0].claim_token) if self._rebuild_accepts_token else self._rebuild_lake(lake_id)
                 for claim in lake_claims:
                     if claim.claim_token is None:
-                        self._repository.complete_refresh(lake_id)
+                        result = self._repository.complete_refresh(lake_id)
                     else:
-                        self._repository.complete_refresh(lake_id, claim.claim_token)
+                        result = self._repository.complete_refresh(lake_id, claim.claim_token)
+                    if result is False:
+                        continue
+                    completed_claim = True
             except Exception as exc:  # retain the prior active plan, record a safe failure
                 logger.warning("risk refresh failed for lake %s: %s", lake_id, exc)
                 for claim in lake_claims:
@@ -135,7 +147,8 @@ class RiskRefreshWorker:
                     else:
                         self._repository.fail_refresh(lake_id, claim.claim_token, str(exc)[:500] or exc.__class__.__name__)
             else:
-                completed.append(lake_id)
+                if completed_claim:
+                    completed.append(lake_id)
         return tuple(completed)
 
     async def run_forever(self, interval_seconds: float = 30.0) -> None:
