@@ -55,3 +55,12 @@ def test_database_rpc_serializes_version_and_rejects_incomplete_activation() -> 
     assert "zone_plan_cells where zone_plan_id = p_candidate_id" in sql
     assert "public.st_setsrid(public.st_geomfromtext" in sql
     assert "where snapshot_id = p_snapshot_id and lake_id = p_lake_id" in sql
+
+
+def test_worker_migration_reclaims_stale_claims_and_applies_failure_backoff() -> None:
+    sql = (Path(__file__).parents[3] / "supabase" / "migrations" / "0014_risk_refresh_worker_hardening.sql").read_text().lower()
+
+    assert "for update skip locked" in sql
+    assert "claimed_at < now() - interval '10 minutes'" in sql
+    assert "next_attempt_at" in sql
+    assert "now() + interval '15 minutes'" in sql

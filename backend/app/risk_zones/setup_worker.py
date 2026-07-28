@@ -5,8 +5,80 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable
+from dataclasses import replace
+from datetime import datetime, timedelta, timezone
+
+from shapely import wkt
+
+from app.risk_zones.connectors.king_county import KingCountyIncidentConnector
+from app.risk_zones.plan_builder import RiskDataUnavailable, build_candidate
+from app.risk_zones.plan_service import PlanBuildResult, PlanConflict
+from app.risk_zones.snapshots import build_fallback_snapshot, build_snapshot
 
 logger = logging.getLogger(__name__)
+
+
+class _SodapyClient:
+    """Narrow live client adapter; it never substitutes a fixture on failure."""
+
+    def __init__(self, domain: str) -> None:
+        from sodapy import Socrata
+        self._client = Socrata(domain, None, timeout=15)
+
+    def get(self, dataset_id: str, **query):
+        return self._client.get(dataset_id, **query)
+
+
+class RiskPlanSetupService:
+    """Concrete reviewed-source snapshot/build/persist/activate pipeline."""
+
+    def __init__(self, repository, *, now: Callable[[], datetime] | None = None, client_factory=_SodapyClient) -> None:
+        self._repository = repository
+        self._now = now or (lambda: datetime.now(timezone.utc))
+        self._client_factory = client_factory
+
+    def _fetch(self, source: dict, boundary_wkt: str, since: datetime):
+        key = source.get("connector_key")
+        if key != KingCountyIncidentConnector.connector_key:
+            raise RiskDataUnavailable("unrecognized_reviewed_connector")
+        dataset_id = source.get("dataset_id")
+        domain = source.get("domain")
+        if not isinstance(dataset_id, str) or not isinstance(domain, str):
+            raise RiskDataUnavailable("invalid_reviewed_connector")
+        connector = KingCountyIncidentConnector(dataset_id)
+        return connector.fetch(boundary_wkt, since, self._client_factory(domain))
+
+    def rebuild_lake(self, lake_id: str) -> PlanBuildResult:
+        context = self._repository.rebuild_context(lake_id)
+        if not context or context.get("lake_id") != lake_id:
+            raise RiskDataUnavailable("lake_not_found")
+        boundary_wkt = context["shoreline_wkt"]
+        shoreline = wkt.loads(boundary_wkt)
+        now = self._now()
+        since = now - timedelta(days=30)
+        sources = tuple(context.get("sources") or ())
+        if not sources and context.get("data_source_status") == "fallback_coverage":
+            snapshot = build_fallback_snapshot(lake_id, context["station_id"], boundary_wkt, since, now)
+        else:
+            fetches = tuple(self._fetch(source, boundary_wkt, since) for source in sources)
+            snapshot = build_snapshot(lake_id, context["station_id"], fetches, boundary_wkt, since, now)
+        source_fresh_through = now if snapshot.status == "ready" else None
+        snapshot_id = self._repository.persist_snapshot(snapshot, source_fresh_through)
+        if snapshot.status != "ready":
+            raise RiskDataUnavailable(snapshot.failure_reason or "risk_snapshot_unavailable")
+        candidate = replace(
+            build_candidate(
+                snapshot, shoreline, int(context.get("patrol_capacity") or 0),
+                int(context.get("safety_reserve") or 0), context.get("prior_plan_id"),
+            ),
+            snapshot_id=snapshot_id,
+        )
+        self._repository.persist_candidate(candidate)
+        if not self._repository.activate_candidate(lake_id, candidate.plan_id, context.get("prior_plan_id")):
+            raise PlanConflict("active plan changed; candidate was not activated")
+        return PlanBuildResult(
+            candidate.plan_id, sum(cell.kind == "hotspot" for cell in candidate.cells), len(candidate.cells), "active",
+        )
 
 
 class RiskRefreshWorker:

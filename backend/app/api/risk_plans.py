@@ -16,7 +16,7 @@ from app.risk_zones.plan_builder import RiskDataUnavailable
 from app.risk_zones.plan_repository import SupabaseRiskPlanRepository
 from app.risk_zones.plan_service import PlanConflict
 from app.risk_zones.validation import PlanValidationError
-from app.risk_zones.setup_worker import RiskRefreshWorker
+from app.risk_zones.setup_worker import RiskPlanSetupService, RiskRefreshWorker
 
 router = APIRouter(prefix="/api/stations/{station_id}/lakes/{lake_id}", tags=["risk-plans"])
 
@@ -38,8 +38,11 @@ def get_risk_refresh_worker() -> RiskRefreshWorker | None:
         repository = get_risk_plan_repository()
     except RuntimeError:
         return None
-    rebuild_lake = getattr(repository, "rebuild_lake", None)
-    return RiskRefreshWorker(repository, rebuild_lake) if callable(rebuild_lake) else None
+    required = ("claim_queued_lakes", "claim_due_source_lakes", "complete_refresh", "fail_refresh", "rebuild_context", "persist_snapshot")
+    if not all(callable(getattr(repository, name, None)) for name in required):
+        # Route-level fakes intentionally expose only read/queue methods.
+        return None
+    return RiskRefreshWorker(repository, RiskPlanSetupService(repository).rebuild_lake)
 
 
 def _require_owned_lake(repository, principal: Principal, station_id: str, lake_id: str, permission: Permission) -> None:

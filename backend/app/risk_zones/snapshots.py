@@ -84,6 +84,30 @@ def _empty_snapshot(
     )
 
 
+def build_fallback_snapshot(
+    lake_id: str, station_id: str, boundary: object, since: datetime, now: datetime
+) -> RiskSnapshotInput:
+    """Create the explicit no-activity input allowed for fallback-coverage lakes.
+
+    This is distinct from a missing reviewed connector: callers may use it only
+    when the lake itself was persisted with ``fallback_coverage`` status.
+    """
+    boundary_wkt = _canonical_boundary(boundary)
+    utc_since, captured_at = _utc(since), _utc(now)
+    payload = {
+        "lake_id": lake_id, "station_id": station_id, "boundary": boundary_wkt,
+        "since": utc_since.isoformat().replace("+00:00", "Z"),
+        "captured_at": captured_at.isoformat().replace("+00:00", "Z"),
+        "status": "ready", "failure_reason": None, "sources": [], "points": [],
+        "fallback_coverage": True,
+    }
+    canonical_json = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return RiskSnapshotInput(
+        lake_id, station_id, "ready", None, boundary_wkt, utc_since, captured_at, (), (), (),
+        canonical_json, hashlib.sha256(canonical_json.encode("utf-8")).hexdigest(),
+    )
+
+
 def build_snapshot(
     lake_id: str,
     station_id: str,

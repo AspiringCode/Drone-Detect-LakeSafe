@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import asdict
 from typing import Protocol
 
 from app.models import ZonePlanCandidate
+from app.risk_zones.snapshots import RiskSnapshotInput
 
 
 class RiskPlanRepository(Protocol):
@@ -142,3 +144,26 @@ class SupabaseRiskPlanRepository:
 
     def fail_refresh(self, lake_id: str, reason: str) -> None:
         self._client.rpc("fail_risk_refresh", {"p_lake_id": lake_id, "p_reason": reason}).execute()
+
+    def rebuild_context(self, lake_id: str) -> dict | None:
+        result = self._client.rpc("risk_plan_rebuild_context", {"p_lake_id": lake_id}).execute().data
+        if isinstance(result, list):
+            result = result[0] if result else None
+        return result if isinstance(result, dict) else None
+
+    def persist_snapshot(self, snapshot: RiskSnapshotInput, source_fresh_through) -> str:
+        result = self._client.rpc("persist_risk_snapshot", {
+            "p_lake_id": snapshot.lake_id, "p_station_id": snapshot.station_id,
+            "p_status": snapshot.status, "p_source_fresh_through": source_fresh_through.isoformat() if source_fresh_through else None,
+            "p_source_metadata": {
+                "sources": [asdict(source) for source in snapshot.sources],
+                "connector_versions": list(snapshot.connector_versions),
+            },
+            "p_canonical_payload": snapshot.canonical_json,
+            "p_payload_sha256": snapshot.sha256, "p_failure_reason": snapshot.failure_reason,
+        }).execute().data
+        if isinstance(result, list):
+            result = result[0] if result else None
+        if not result:
+            raise ValueError("risk snapshot was not persisted")
+        return str(result)
