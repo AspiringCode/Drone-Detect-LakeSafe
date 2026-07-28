@@ -118,14 +118,14 @@ class ProductionShapeRepository(Repository):
             "safety_reserve": 0, "prior_plan_id": None,
         }
 
-    def persist_snapshot(self, snapshot, source_fresh_through):
+    def persist_snapshot(self, snapshot, source_fresh_through, claim_token=None):
         self.persisted_snapshot = (snapshot, source_fresh_through)
         return "snapshot-1"
 
-    def persist_candidate(self, candidate):
+    def persist_candidate(self, candidate, claim_token=None):
         self.persisted_candidate = candidate
 
-    def activate_candidate(self, lake_id, candidate_id, expected_prior_id):
+    def activate_candidate(self, lake_id, candidate_id, expected_prior_id, claim_token=None):
         assert lake_id == "lake-1" and expected_prior_id is None
         self.active_id = candidate_id
         return True

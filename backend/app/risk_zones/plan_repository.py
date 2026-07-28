@@ -37,7 +37,7 @@ class InMemoryRiskPlanRepository:
         self.candidates: dict[str, ZonePlanCandidate] = {}
         self.cells = defaultdict(tuple)
 
-    def persist_candidate(self, candidate: ZonePlanCandidate) -> None:
+    def persist_candidate(self, candidate: ZonePlanCandidate, claim_token: str | None = None) -> None:
         if candidate.plan_id in self.candidates:
             raise ValueError("candidate plans are insert-only")
         self.candidates[candidate.plan_id] = candidate
@@ -62,7 +62,7 @@ class SupabaseRiskPlanRepository:
     def __init__(self, client) -> None:
         self._client = client
 
-    def persist_candidate(self, candidate: ZonePlanCandidate) -> None:
+    def persist_candidate(self, candidate: ZonePlanCandidate, claim_token: str | None = None) -> None:
         if not candidate.snapshot_id:
             raise ValueError("validated candidates require a persisted snapshot ID")
         cells = [
@@ -77,21 +77,27 @@ class SupabaseRiskPlanRepository:
             }
             for ordinal, cell in enumerate(candidate.cells)
         ]
-        result = self._client.rpc("persist_validated_zone_plan", {
+        function = "persist_validated_zone_plan_claimed" if claim_token else "persist_validated_zone_plan"
+        payload = {
             "p_plan_id": candidate.plan_id, "p_lake_id": candidate.lake_id,
             "p_station_id": candidate.station_id, "p_snapshot_id": candidate.snapshot_id,
             "p_prior_plan_id": candidate.prior_plan_id, "p_algorithm_version": "risk-zone-v1",
             "p_validation_payload": {"activity_data_unavailable": candidate.activity_data_unavailable},
             "p_cells": cells,
-        }).execute()
+        }
+        if claim_token: payload["p_claim_token"] = claim_token
+        result = self._client.rpc(function, payload).execute()
         if result.data not in (candidate.plan_id, [candidate.plan_id], {"zone_plan_id": candidate.plan_id}):
             raise ValueError("candidate plan was not persisted")
 
-    def activate_candidate(self, lake_id: str, candidate_id: str, expected_prior_id: str | None) -> bool:
-        result = self._client.rpc("activate_zone_plan", {
+    def activate_candidate(self, lake_id: str, candidate_id: str, expected_prior_id: str | None, claim_token: str | None = None) -> bool:
+        function = "activate_zone_plan_claimed" if claim_token else "activate_zone_plan"
+        payload = {
             "p_lake_id": lake_id, "p_candidate_id": candidate_id,
             "p_expected_prior_id": expected_prior_id,
-        }).execute()
+        }
+        if claim_token: payload["p_claim_token"] = claim_token
+        result = self._client.rpc(function, payload).execute()
         return result.data is True
 
     def active_plan_id(self, lake_id: str) -> str | None:
@@ -155,8 +161,9 @@ class SupabaseRiskPlanRepository:
             result = result[0] if result else None
         return result if isinstance(result, dict) else None
 
-    def persist_snapshot(self, snapshot: RiskSnapshotInput, source_fresh_through) -> str:
-        result = self._client.rpc("persist_risk_snapshot", {
+    def persist_snapshot(self, snapshot: RiskSnapshotInput, source_fresh_through, claim_token: str | None = None) -> str:
+        function = "persist_risk_snapshot_claimed" if claim_token else "persist_risk_snapshot"
+        payload = {
             "p_lake_id": snapshot.lake_id, "p_station_id": snapshot.station_id,
             "p_status": snapshot.status, "p_source_fresh_through": source_fresh_through.isoformat() if source_fresh_through else None,
             "p_source_metadata": {
@@ -165,7 +172,9 @@ class SupabaseRiskPlanRepository:
             },
             "p_canonical_payload": snapshot.canonical_json,
             "p_payload_sha256": snapshot.sha256, "p_failure_reason": snapshot.failure_reason,
-        }).execute().data
+        }
+        if claim_token: payload["p_claim_token"] = claim_token
+        result = self._client.rpc(function, payload).execute().data
         if isinstance(result, list):
             result = result[0] if result else None
         if not result:

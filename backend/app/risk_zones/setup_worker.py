@@ -82,7 +82,7 @@ class RiskPlanSetupService:
             fetches = tuple(self._fetch(source, boundary_wkt, since) for source in sources)
             snapshot = build_snapshot(lake_id, context["station_id"], fetches, boundary_wkt, since, now)
         source_fresh_through = now if snapshot.status == "ready" else None
-        snapshot_id = self._repository.persist_snapshot(snapshot, source_fresh_through)
+        snapshot_id = self._repository.persist_snapshot(snapshot, source_fresh_through, claim_token)
         if snapshot.status != "ready":
             raise RiskDataUnavailable(snapshot.failure_reason or "risk_snapshot_unavailable")
         candidate = replace(
@@ -92,12 +92,8 @@ class RiskPlanSetupService:
             ),
             snapshot_id=snapshot_id,
         )
-        if claim_token is not None and not self._repository.claim_is_current(lake_id, claim_token):
-            raise RuntimeError("risk refresh claim is no longer current")
-        self._repository.persist_candidate(candidate)
-        if claim_token is not None and not self._repository.claim_is_current(lake_id, claim_token):
-            raise RuntimeError("risk refresh claim is no longer current")
-        if not self._repository.activate_candidate(lake_id, candidate.plan_id, context.get("prior_plan_id")):
+        self._repository.persist_candidate(candidate, claim_token)
+        if not self._repository.activate_candidate(lake_id, candidate.plan_id, context.get("prior_plan_id"), claim_token):
             raise PlanConflict("active plan changed; candidate was not activated")
         return PlanBuildResult(
             candidate.plan_id, sum(cell.kind == "hotspot" for cell in candidate.cells), len(candidate.cells), "active",
