@@ -92,6 +92,8 @@ class RiskPlanSetupService:
             ),
             snapshot_id=snapshot_id,
         )
+        if claim_token is not None and not self._repository.claim_is_current(lake_id, claim_token):
+            raise RuntimeError("risk refresh claim is no longer current")
         self._repository.persist_candidate(candidate, claim_token)
         if not self._repository.activate_candidate(lake_id, candidate.plan_id, context.get("prior_plan_id"), claim_token):
             raise PlanConflict("active plan changed; candidate was not activated")

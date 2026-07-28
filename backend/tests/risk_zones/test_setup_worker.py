@@ -101,6 +101,35 @@ def test_stale_worker_cannot_persist_or_activate_after_claim_is_reclaimed() -> N
     assert repository.persisted_candidate is None
 
 
+def test_reclaim_between_atomic_snapshot_and_candidate_blocks_stale_publication() -> None:
+    repository = ProductionShapeRepository()
+    snapshot_written = False
+
+    def current_claim(lake_id, token):
+        return not snapshot_written
+
+    original_persist_snapshot = repository.persist_snapshot
+
+    def persist_snapshot(*args, **kwargs):
+        nonlocal snapshot_written
+        value = original_persist_snapshot(*args, **kwargs)
+        snapshot_written = True  # worker A is reclaimed immediately after its atomic snapshot write
+        return value
+
+    repository.claim_is_current = current_claim
+    repository.persist_snapshot = persist_snapshot
+
+    try:
+        RiskPlanSetupService(repository).rebuild_lake("lake-1", "claim-a")
+    except RuntimeError as exc:
+        assert "claim" in str(exc)
+    else:
+        raise AssertionError("reclaimed worker unexpectedly published a candidate")
+    assert repository.persisted_snapshot is not None
+    assert repository.persisted_candidate is None
+    assert repository.active_id is None
+
+
 class ProductionShapeRepository(Repository):
     def __init__(self) -> None:
         super().__init__()
