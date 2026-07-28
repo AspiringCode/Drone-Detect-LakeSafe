@@ -53,3 +53,5 @@ def test_database_rpc_serializes_version_and_rejects_incomplete_activation() -> 
     assert "candidate cell set is incomplete" in sql
     assert "'cell_count'" in sql
     assert "zone_plan_cells where zone_plan_id = p_candidate_id" in sql
+    assert "public.st_setsrid(public.st_geomfromtext" in sql
+    assert "where snapshot_id = p_snapshot_id and lake_id = p_lake_id" in sql

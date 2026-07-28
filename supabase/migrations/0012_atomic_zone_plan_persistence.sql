@@ -27,7 +27,7 @@ begin
     raise exception 'station must own lake' using errcode = '23514';
   end if;
   select station_id into snapshot_station_id from public.risk_snapshots
-    where snapshot_id = p_snapshot_id;
+    where snapshot_id = p_snapshot_id and lake_id = p_lake_id;
   if not found or snapshot_station_id is distinct from p_station_id then
     raise exception 'snapshot station must own lake' using errcode = '23514';
   end if;
@@ -55,8 +55,8 @@ begin
       (cell->>'ordinal')::integer,
       cell->>'kind',
       (cell->>'risk_score')::double precision,
-      st_setsrid(st_geomfromtext(cell->>'seed_wkt'), 4326),
-      st_setsrid(st_geomfromtext(cell->>'boundary_wkt'), 4326),
+      public.st_setsrid(public.st_geomfromtext(cell->>'seed_wkt'), 4326),
+      public.st_setsrid(public.st_geomfromtext(cell->>'boundary_wkt'), 4326),
       coalesce(cell->'metadata', '{}'::jsonb)
     );
   end loop;
