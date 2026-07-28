@@ -49,6 +49,9 @@ class WeightedKMeansStrategy:
     def refine(
         self, points: list[WeightedPoint], bbox: tuple[float, float, float, float]
     ) -> list[ClusterZone]:
+        # Canonical ordering keeps seeded k-means reproducible even when a
+        # connector returns the same immutable records in a different order.
+        points = sorted(points, key=lambda point: (point.lat, point.lon, point.category, point.weight))
         if not points:
             return []
         k = self.k or 1
@@ -96,7 +99,7 @@ class WeightedKMeansStrategy:
             radius = max(MIN_RADIUS_M, min(MAX_RADIUS_M, radius))
             category_weights = {cat: 0.0 for cat in CATEGORIES}
             for p in group:
-                category_weights[p.category] += p.weight
+                category_weights[p.category] = category_weights.get(p.category, 0.0) + p.weight
             zones.append(
                 ClusterZone(
                     centroid=centroid,
