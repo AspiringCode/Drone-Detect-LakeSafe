@@ -48,28 +48,29 @@ class SupabaseRiskPlanRepository:
         self._client = client
 
     def persist_candidate(self, candidate: ZonePlanCandidate) -> None:
-        version_row = self._client.table("zone_plans").select("version").eq(
-            "lake_id", candidate.lake_id
-        ).order("version", desc=True).limit(1).execute().data or []
-        version = int(version_row[0]["version"]) + 1 if version_row else 1
-        self._client.table("zone_plans").insert({
-            "zone_plan_id": candidate.plan_id, "lake_id": candidate.lake_id,
-            "snapshot_id": candidate.snapshot_id, "version": version, "status": "validated",
-            "algorithm_version": "risk-zone-v1", "prior_plan_id": candidate.prior_plan_id,
-            "validation_payload": {"activity_data_unavailable": candidate.activity_data_unavailable},
-        }).execute()
-        self._client.table("zone_plan_cells").insert([
+        if not candidate.snapshot_id:
+            raise ValueError("validated candidates require a persisted snapshot ID")
+        cells = [
             {
-                "zone_plan_id": candidate.plan_id, "ordinal": ordinal, "kind": cell.kind,
+                "ordinal": ordinal, "kind": cell.kind,
                 "risk_score": cell.risk_score,
-                "seed": f"SRID=4326;POINT({cell.seed.lon} {cell.seed.lat})",
-                "boundary": "SRID=4326;POLYGON((" + ",".join(
+                "seed_wkt": f"POINT({cell.seed.lon} {cell.seed.lat})",
+                "boundary_wkt": "POLYGON((" + ",".join(
                     f"{point.lon} {point.lat}" for point in cell.polygon
                 ) + "))",
                 "metadata": {"radius_m": cell.radius_m, "is_proxy": cell.is_proxy},
             }
             for ordinal, cell in enumerate(candidate.cells)
-        ]).execute()
+        ]
+        result = self._client.rpc("persist_validated_zone_plan", {
+            "p_plan_id": candidate.plan_id, "p_lake_id": candidate.lake_id,
+            "p_station_id": candidate.station_id, "p_snapshot_id": candidate.snapshot_id,
+            "p_prior_plan_id": candidate.prior_plan_id, "p_algorithm_version": "risk-zone-v1",
+            "p_validation_payload": {"activity_data_unavailable": candidate.activity_data_unavailable},
+            "p_cells": cells,
+        }).execute()
+        if result.data not in (candidate.plan_id, [candidate.plan_id], {"zone_plan_id": candidate.plan_id}):
+            raise ValueError("candidate plan was not persisted")
 
     def activate_candidate(self, lake_id: str, candidate_id: str, expected_prior_id: str | None) -> bool:
         result = self._client.rpc("activate_zone_plan", {

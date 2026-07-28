@@ -45,6 +45,7 @@ class ZonePlanCandidate:
 
     plan_id: str
     lake_id: str
+    station_id: str
     snapshot_id: str | None
     prior_plan_id: str | None
     activity_data_unavailable: bool

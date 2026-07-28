@@ -66,3 +66,9 @@ def test_rebuild_persists_then_activates_valid_candidate() -> None:
     assert result.status == "active"
     assert repository.active_id == result.plan_id
     assert len(repository.cells[result.plan_id]) == 1
+
+
+def test_candidate_carries_snapshot_station_id() -> None:
+    plan = build_candidate(_snapshot(), SHORELINE, patrol_capacity=0, reserve=0, prior_plan_id=None)
+
+    assert plan.station_id == "station-1"

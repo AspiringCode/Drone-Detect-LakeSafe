@@ -87,6 +87,7 @@ def build_candidate(snapshot, shoreline: Polygon, patrol_capacity: int, reserve:
         )
     require_valid_plan(cells, shoreline)
     return ZonePlanCandidate(
-        plan_id=str(uuid4()), lake_id=snapshot.lake_id, snapshot_id=getattr(snapshot, "snapshot_id", None),
+        plan_id=str(uuid4()), lake_id=snapshot.lake_id, station_id=snapshot.station_id,
+        snapshot_id=getattr(snapshot, "snapshot_id", None),
         prior_plan_id=prior_plan_id, activity_data_unavailable=unavailable, cells=cells,
     )
