@@ -14,6 +14,18 @@ class RiskPlanRepository(Protocol):
     def active_plan_id(self, lake_id: str) -> str | None: ...
 
 
+class RiskRefreshRepository(Protocol):
+    """Durable work queue boundary used by the setup worker."""
+
+    def lake_station_id(self, lake_id: str) -> str | None: ...
+    def active_plan(self, lake_id: str) -> dict | None: ...
+    def queue_lake(self, lake_id: str, reason: str = "manual") -> None: ...
+    def claim_queued_lakes(self, limit: int) -> tuple[str, ...]: ...
+    def claim_due_source_lakes(self, limit: int) -> tuple[str, ...]: ...
+    def complete_refresh(self, lake_id: str) -> None: ...
+    def fail_refresh(self, lake_id: str, reason: str) -> None: ...
+
+
 class InMemoryRiskPlanRepository:
     """Small deterministic repository used by service tests and local demos."""
 
@@ -84,3 +96,49 @@ class SupabaseRiskPlanRepository:
             "lake_id", lake_id
         ).eq("status", "active").maybe_single().execute().data
         return str(row["zone_plan_id"]) if row else None
+
+    def lake_station_id(self, lake_id: str) -> str | None:
+        row = self._client.table("lakes").select("station_id").eq("lake_id", lake_id).maybe_single().execute().data
+        return str(row["station_id"]) if row else None
+
+    def active_plan(self, lake_id: str) -> dict | None:
+        row = self._client.table("zone_plans").select(
+            "zone_plan_id,snapshot_id,algorithm_version,validation_payload,"
+            "risk_snapshots(source_fresh_through),"
+            "zone_plan_cells(kind,risk_score,seed,metadata)"
+        ).eq("lake_id", lake_id).eq("status", "active").maybe_single().execute().data
+        if not row:
+            return None
+        snapshot = row.get("risk_snapshots") or {}
+        if isinstance(snapshot, list):
+            snapshot = snapshot[0] if snapshot else {}
+        cells = []
+        for cell in row.get("zone_plan_cells") or []:
+            cells.append({
+                "kind": cell["kind"], "risk_score": cell["risk_score"],
+                "seed": cell.get("seed"), "metadata": cell.get("metadata") or {},
+            })
+        return {
+            "plan_id": str(row["zone_plan_id"]), "snapshot_id": str(row["snapshot_id"]),
+            "algorithm_version": row["algorithm_version"],
+            "source_fresh_through": snapshot.get("source_fresh_through"),
+            "activity_data_unavailable": bool((row.get("validation_payload") or {}).get("activity_data_unavailable")),
+            "cells": cells,
+        }
+
+    def queue_lake(self, lake_id: str, reason: str = "manual") -> None:
+        self._client.rpc("enqueue_risk_refresh", {"p_lake_id": lake_id, "p_reason": reason}).execute()
+
+    def claim_queued_lakes(self, limit: int) -> tuple[str, ...]:
+        data = self._client.rpc("claim_queued_risk_refreshes", {"p_limit": limit}).execute().data or []
+        return tuple(str(row["lake_id"]) for row in data)
+
+    def claim_due_source_lakes(self, limit: int) -> tuple[str, ...]:
+        data = self._client.rpc("claim_due_risk_source_refreshes", {"p_limit": limit}).execute().data or []
+        return tuple(str(row["lake_id"]) for row in data)
+
+    def complete_refresh(self, lake_id: str) -> None:
+        self._client.rpc("complete_risk_refresh", {"p_lake_id": lake_id}).execute()
+
+    def fail_refresh(self, lake_id: str, reason: str) -> None:
+        self._client.rpc("fail_risk_refresh", {"p_lake_id": lake_id, "p_reason": reason}).execute()

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 from time import monotonic
 from uuid import uuid4
 from dataclasses import asdict, dataclass, is_dataclass
@@ -30,16 +31,43 @@ from app.verification.routes import router as idme_router
 from app.stations.routes import router as station_router
 from app.review.routes import router as review_router
 from app.lakes.routes import router as lake_router
+from app.api.risk_plans import router as risk_plan_router
+from app.api.risk_plans import get_risk_refresh_worker
+from app.risk_zones.setup_worker import cancel_worker_task, start_worker_task
 
 TICK_INTERVAL_S = 0.5
 WS_REVALIDATION_SECONDS = 30.0
 WS_REVALIDATION_CLOCK = monotonic
 
-app = FastAPI(title="LakeSafe Initiative Demo API")
+@asynccontextmanager
+async def _lifespan(application: FastAPI):
+    # One lifespan owns every long-running task. This avoids duplicated loops
+    # under TestClient and makes shutdown cancellation deterministic.
+    application.state.tick_tasks = {
+        lake_id: asyncio.create_task(
+            tick_loop(runtime.engine, runtime.hub, _jsonable, interval=TICK_INTERVAL_S)
+        )
+        for lake_id, runtime in lake_runtimes.items()
+    }
+    start_worker_task(application, get_risk_refresh_worker())
+    try:
+        yield
+    finally:
+        await cancel_worker_task(application)
+        for task in getattr(application.state, "tick_tasks", {}).values():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        application.state.tick_tasks = {}
+
+app = FastAPI(title="LakeSafe Initiative Demo API", lifespan=_lifespan)
 app.include_router(idme_router)
 app.include_router(station_router)
 app.include_router(review_router)
 app.include_router(lake_router)
+app.include_router(risk_plan_router)
 
 # Local-dev dashboard runs on Vite's default port; CAC judges run this locally,
 # not behind a shared origin, so permissive localhost/127.0.0.1 dev ports are fine.
@@ -356,21 +384,6 @@ async def positions_ws(websocket: WebSocket, lake_id: str):
         pass
     finally:
         runtime.hub.disconnect(websocket)
+# Background-task shutdown is owned by the application lifespan above.
 
-
-@app.on_event("startup")
-async def _start_tick_loop() -> None:
-    app.state.tick_tasks = {
-        lake_id: asyncio.create_task(tick_loop(runtime.engine, runtime.hub, _jsonable, interval=TICK_INTERVAL_S))
-        for lake_id, runtime in lake_runtimes.items()
-    }
-
-
-@app.on_event("shutdown")
-async def _stop_tick_loop() -> None:
-    for task in getattr(app.state, "tick_tasks", {}).values():
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
+__all__ = ["app"]
