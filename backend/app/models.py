@@ -25,6 +25,32 @@ class RiskZone:
     radius_m: float | None = None
 
 
+@dataclass(frozen=True)
+class ZonePlanCell:
+    """An immutable, shoreline-clipped cell in a versioned zone plan."""
+
+    cell_id: str
+    kind: Literal["hotspot", "coverage", "fallback"]
+    seed: LatLon
+    centroid: LatLon
+    polygon: tuple[LatLon, ...]
+    radius_m: float
+    risk_score: float
+    is_proxy: bool
+
+
+@dataclass(frozen=True)
+class ZonePlanCandidate:
+    """A validated candidate kept separate from the lake's active plan pointer."""
+
+    plan_id: str
+    lake_id: str
+    snapshot_id: str | None
+    prior_plan_id: str | None
+    activity_data_unavailable: bool
+    cells: tuple[ZonePlanCell, ...]
+
+
 class DroneStatus(str, Enum):
     IDLE = "idle"
     EN_ROUTE = "en_route"
