@@ -14,3 +14,8 @@ class RealCapacityReconciler:
         if service is None or not callable(getattr(service, "reconcile_lake", None)):
             raise RuntimeError("real autonomy reconciliation service is unavailable")
         return service.reconcile_lake(lake_id, trigger, expected_plan_id)
+
+
+def has_real_autonomy_service(application) -> bool:
+    """Only start consumers when the actual reconciliation pipeline exists."""
+    return callable(getattr(getattr(application, "state", None), "real_autonomy_service", None) and getattr(application.state.real_autonomy_service, "reconcile_lake", None))

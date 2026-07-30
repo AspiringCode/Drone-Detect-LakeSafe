@@ -12,6 +12,7 @@ from app.devices.auth import canonical_request_bytes
 from app.devices.auth import DevicePrincipal
 from app.devices.heartbeat import HeartbeatService
 from app.devices.monitor import HeartbeatMonitor
+from app.devices.reconciler import has_real_autonomy_service
 
 
 class Repository:
@@ -116,6 +117,10 @@ def test_claimed_capacity_job_completes_only_after_actual_reconcile_call():
     assert HeartbeatMonitor(repository, autonomy).drain_reconciliations() == ("lake-1",)
     assert autonomy.calls == [("lake-1", "heartbeat_recovery")]
     assert completed == ["r-1"]
+
+
+def test_unconfigured_application_does_not_activate_real_capacity_worker():
+    assert has_real_autonomy_service(FastAPI()) is False
 
 
 def _signature(private, drone_id, timestamp, sequence, body):
