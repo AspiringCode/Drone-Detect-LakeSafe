@@ -10,6 +10,18 @@ CommandType = Literal["apply_assignment", "return_to_reserve", "safety_hold"]
 CommandStatus = Literal["pending", "claimed", "acknowledged", "failed"]
 
 
+def retry_schedule(*, attempts: int, maximum_attempts: int, now: float, expires_at: float) -> tuple[Literal["retry", "expired"], float | None]:
+    """Return bounded exponential retry timing without changing acknowledged state.
+
+    This is deliberately command-level delivery policy, not capacity planning:
+    an expired command is removed from pending work and triggers a later reduced
+    capacity reconciliation rather than pretending the drone is active.
+    """
+    if attempts >= maximum_attempts or now >= expires_at:
+        return "expired", None
+    return "retry", min(expires_at, now + 2 ** attempts)
+
+
 class StaleDesiredState(RuntimeError):
     """A command attempts to move a drone's desired state backward."""
 
@@ -70,4 +82,4 @@ class OutboxPublisher:
         return tuple(acknowledged)
 
 
-__all__ = ["CommandEnvelope", "OutboxPublisher", "StaleDesiredState"]
+__all__ = ["CommandEnvelope", "OutboxPublisher", "StaleDesiredState", "retry_schedule"]
