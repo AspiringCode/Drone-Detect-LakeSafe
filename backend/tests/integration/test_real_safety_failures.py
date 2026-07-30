@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -88,6 +88,19 @@ def test_verified_station_viewer_can_read_real_safety_status_without_secrets_or_
         "desired_state_version": 7, "acknowledged_state_version": 6,
     }
     assert not {"public_key", "credential_id", "serial", "coordinate", "route"} & payload.keys()
+
+
+def test_stale_or_missing_signed_heartbeat_is_not_eligible_for_real_fleet_status():
+    from app.autonomy.safety import real_heartbeat_status
+
+    now = datetime(2026, 7, 30, 12, 0, tzinfo=timezone.utc)
+    inventory = [
+        {"inventory_id": "fresh", "health": "healthy", "connectivity": "connected", "maintenance_due": False, "battery_percent": 90},
+        {"inventory_id": "stale", "health": "healthy", "connectivity": "connected", "maintenance_due": False, "battery_percent": 90},
+        {"inventory_id": "missing", "health": "healthy", "connectivity": "connected", "maintenance_due": False, "battery_percent": 90},
+    ]
+    heartbeat = {"fresh": now - timedelta(seconds=14), "stale": now - timedelta(seconds=16)}
+    assert real_heartbeat_status(inventory, heartbeat, now=now, minimum_battery=30) == (False, 14)
 
 
 def test_safety_supervisor_with_recent_mfa_changes_policy_audits_and_reconciles():

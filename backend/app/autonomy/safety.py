@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import Literal, Protocol
 
 from app.config import SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL
+from app.config import REAL_HEARTBEAT_TTL_SECONDS
 from app.stations.models import AuditEventCreate
 from app.stations.repository import get_workflow_repository
 
@@ -50,6 +51,38 @@ def mark_gateway_unavailable(current: RealFleetStatus) -> RealFleetStatus:
 
 def request_safe_return(current: RealFleetStatus) -> RealFleetStatus:
     return replace(current, autonomy="safe_return_requested")
+
+
+def real_heartbeat_status(
+    inventory: list[dict], latest_heartbeats: dict[str, datetime], *, now: datetime,
+    minimum_battery: int, heartbeat_ttl_seconds: int = REAL_HEARTBEAT_TTL_SECONDS,
+) -> tuple[bool | None, int | None]:
+    """Evaluate every real device against the same heartbeat TTL used by capacity.
+
+    A current heartbeat for one aircraft never makes another stale or missing
+    aircraft eligible.  The displayed age is the newest signed heartbeat only;
+    eligibility remains an all-fleet safety decision.
+    """
+    rows = [row for row in inventory if isinstance(row, dict)]
+    if not rows:
+        return None, None
+    ages: list[int] = []
+    eligible = True
+    for row in rows:
+        received = latest_heartbeats.get(str(row.get("inventory_id")))
+        if received is None:
+            eligible = False
+        else:
+            if received.tzinfo is None:
+                received = received.replace(tzinfo=timezone.utc)
+            age = max(0, int((now - received).total_seconds()))
+            ages.append(age)
+            if age > heartbeat_ttl_seconds:
+                eligible = False
+        if (row.get("health") != "healthy" or row.get("connectivity") != "connected"
+                or bool(row.get("maintenance_due")) or int(row.get("battery_percent") or 0) < minimum_battery):
+            eligible = False
+    return eligible, min(ages) if ages else None
 
 
 class SafetyRepository(Protocol):
@@ -99,24 +132,21 @@ class SupabaseSafetyRepository:
                 received = datetime.fromisoformat(row["received_at"].replace("Z", "+00:00"))
             except ValueError:
                 continue
-            newest.setdefault(row["drone_id"], received)
+            drone_id = row["drone_id"]
+            existing = newest.get(drone_id)
+            if existing is None or received > existing:
+                newest[drone_id] = received
         now = datetime.now(timezone.utc)
-        ages = [max(0, int((now - received).total_seconds())) for received in newest.values()]
         desired = max((int(row.get("desired_state_version") or 0) for row in inventory if isinstance(row, dict)), default=0)
         acknowledged = max((int(row.get("acknowledged_state_version") or 0) for row in inventory if isinstance(row, dict)), default=0)
         minimum_battery = int(fleet_policy.get("minimum_battery_percent") or 30) if isinstance(fleet_policy, dict) else 30
-        eligible = bool(inventory) and all(
-            row.get("health") == "healthy" and row.get("connectivity") == "connected"
-            and not bool(row.get("maintenance_due")) and int(row.get("battery_percent") or 0) >= minimum_battery
-            and str(row.get("inventory_id")) in newest
-            for row in inventory if isinstance(row, dict)
-        )
+        eligible, heartbeat_age = real_heartbeat_status(inventory, newest, now=now, minimum_battery=minimum_battery)
         state = policy.get("autonomy_state") if isinstance(policy, dict) else "paused"
         if state not in {"paused", "pending_ack", "active", "degraded", "safe_return_requested", "gateway_unavailable"}:
             state = "paused"
         return {
             "station_id": station_id, "lake_id": lake_id, "source": "real", "autonomy": state,
-            "heartbeat_age_seconds": min(ages) if ages else None, "eligible": eligible if inventory else None,
+            "heartbeat_age_seconds": heartbeat_age, "eligible": eligible,
             "desired_state_version": desired, "acknowledged_state_version": acknowledged,
             "active_assignments": [], "pending_assignments": [],
         }
