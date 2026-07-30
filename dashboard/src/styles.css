@@ -305,6 +305,8 @@ legend { padding: 0 0.4rem; font-weight: 700; }
 .source-badge--real { color: oklch(40% 0.11 150); background: oklch(95% 0.04 150); border-color: oklch(84% 0.07 150); }
 .data-freshness { display: inline-flex; align-items: center; min-height: 1.7rem; padding: 0.2rem 0.5rem; border-radius: 999px; background: oklch(94% 0.045 150); color: oklch(39% 0.1 150); font-size: 0.64rem; font-weight: 750; white-space: nowrap; }
 .data-freshness--unknown { background: var(--surface-muted); color: var(--text-muted); }
+.data-freshness--stale { background: var(--warning-surface); color: oklch(43% 0.09 80); }
+.operations-data-error { margin: 0; padding: 0.65rem 0.75rem; border: 1px solid oklch(85% 0.065 40); border-radius: 12px; background: oklch(96% 0.035 40); color: oklch(43% 0.13 30); font-size: 0.72rem; font-weight: 700; line-height: 1.45; }
 .plan-card, .inventory-card, .autonomy-card { padding: 0.9rem 1rem; }
 .plan-card .panel-heading, .inventory-card .panel-heading, .autonomy-card .panel-heading { margin-bottom: 0.55rem; }
 .plan-details { display: grid; grid-template-columns: 1.3fr repeat(2, 1fr); gap: 0.55rem; margin: 0; }

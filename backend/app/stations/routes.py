@@ -22,9 +22,10 @@ def _require_verified(principal: Principal) -> None:
 
 def _capabilities(membership) -> list[str]:
     role_capabilities = {
-        "viewer": {"station.read"}, "dispatcher": {"alert.manage"},
-        "safety_supervisor": {"autonomy.manage"},
-        "station_admin": {"alert.manage", "lake.create", "inventory.manage", "member.manage"},
+        "viewer": {"station.read"},
+        "dispatcher": {"station.read", "alert.manage"},
+        "safety_supervisor": {"station.read", "autonomy.manage"},
+        "station_admin": {"station.read", "alert.manage", "lake.create", "inventory.manage", "autonomy.manage", "member.manage"},
     }
     values = set()
     for role in membership.roles:

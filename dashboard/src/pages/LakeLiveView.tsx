@@ -10,7 +10,7 @@ import { useOrientation } from "../lib/useOrientation";
 import type { Alert, Capability, FleetDrone, Principal, SimulationState, ZonePlanSummary } from "../lib/types";
 import { AppHeader } from "../components/AppHeader";
 import { useOptionalPrincipal } from "../auth/PrincipalProvider";
-import { loadFleet, loadZonePlan, requestCirculation } from "../lib/fleetData";
+import { applyReconcileStatus, loadFleet, loadZonePlan, requestCirculation } from "../lib/fleetData";
 import { AutonomyControls } from "../components/AutonomyControls";
 import { FleetInventoryPanel } from "../components/FleetInventoryPanel";
 import { ZonePlanStatus } from "../components/ZonePlanStatus";
@@ -41,6 +41,7 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
   const [pendingCirculationId, setPendingCirculationId] = useState<string | null>(null);
   const [reconciliationId, setReconciliationId] = useState<string | null>(null);
   const [circulationError, setCirculationError] = useState<string | null>(null);
+  const [operationsDataError, setOperationsDataError] = useState<string | null>(null);
 
   const canReadOperations = hasLakeCapability(principal, lakeStationId, "station.read");
   const canManageAlerts = hasLakeCapability(principal, lakeStationId, "alert.manage");
@@ -62,12 +63,13 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
   }, [client, lakeId]);
 
   useEffect(() => {
-    if (!canReadOperations || !lakeStationId) { setFleet([]); setZonePlan(null); return; }
+    if (!canReadOperations || !lakeStationId) { setFleet([]); setZonePlan(null); setOperationsDataError(null); return; }
     let active = true;
     void Promise.allSettled([loadFleet(lakeStationId, lakeId, client, fetcher), loadZonePlan(lakeStationId, lakeId, client, fetcher)]).then(([fleetResult, planResult]) => {
       if (!active) return;
       if (fleetResult.status === "fulfilled") setFleet(fleetResult.value);
       if (planResult.status === "fulfilled") setZonePlan(planResult.value);
+      if (fleetResult.status === "rejected" || planResult.status === "rejected") setOperationsDataError("Operational data could not be loaded. Existing live telemetry may still be available.");
     });
     return () => { active = false; };
   }, [canReadOperations, lakeStationId, lakeId, client, fetcher]);
@@ -79,7 +81,7 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
     try {
       const result = await requestCirculation(lakeStationId, lakeId, droneId, request, client, fetcher);
       setReconciliationId(result.reconciliationId);
-      setFleet((current) => current.map((drone) => drone.inventoryId === droneId ? { ...drone, lifecycle: request.eligible ? "circulating" : "available", desiredStateVersion: result.desiredStateVersion, acknowledgedStateVersion: result.acknowledgedStateVersion } : drone));
+      setFleet((current) => applyReconcileStatus(current, droneId, result));
     } catch { setCirculationError("The circulation change could not be queued. Try again."); }
     finally { setPendingCirculationId(null); }
   }
@@ -109,6 +111,7 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
           {station && <LakeMap riskmap={riskmap} drones={drones} stationLocation={station} />}
         </section>
         <aside className="side-panel" aria-label="Operations details">
+          {operationsDataError && <p className="operations-data-error" role="alert" aria-label="Operational data error">{operationsDataError}</p>}
           {canReadOperations && <ZonePlanStatus plan={zonePlan} />}
           <section className="panel-card fleet-card">
             <div className="panel-heading">

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { AutonomyControls } from "./AutonomyControls";
 import { FleetInventoryPanel } from "./FleetInventoryPanel";
 import type { FleetDrone } from "../lib/types";
+import { applyReconcileStatus } from "../lib/fleetData";
 
 const fleet: FleetDrone[] = [{
   inventoryId: "sim-1", source: "simulated", lifecycle: "available",
@@ -28,5 +29,12 @@ describe("autonomous fleet controls", () => {
     render(<AutonomyControls capabilities={["autonomy.manage"]} drones={fleet} onRequest={onRequest} />);
     fireEvent.click(screen.getByRole("button", { name: /add sim-1 to circulation/i }));
     expect(onRequest).toHaveBeenCalledWith("sim-1", { eligible: true, reason: "coverage" });
+  });
+
+  it("keeps the acknowledged lifecycle while a desired update is pending", () => {
+    const updated = applyReconcileStatus(fleet, "sim-1", { reconciliationId: "r1", desiredStateVersion: 5, acknowledgedStateVersion: 3 });
+    expect(updated[0].lifecycle).toBe("available");
+    expect(updated[0].desiredStateVersion).toBe(5);
+    expect(updated[0].acknowledgedStateVersion).toBe(3);
   });
 });

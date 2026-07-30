@@ -34,3 +34,13 @@ export async function requestCirculation(stationId: string, lakeId: string, dron
   );
   return { reconciliationId: payload.reconciliation_id, desiredStateVersion: payload.desired_state_version, acknowledgedStateVersion: payload.acknowledged_state_version };
 }
+
+/** A request changes desired state only.  The acknowledged runtime lifecycle
+ * remains server-reported until a later fleet refresh confirms the change. */
+export function applyReconcileStatus(drones: FleetDrone[], droneId: string, status: ReconcileStatus): FleetDrone[] {
+  return drones.map((drone) => drone.inventoryId === droneId ? {
+    ...drone,
+    desiredStateVersion: status.desiredStateVersion,
+    acknowledgedStateVersion: status.acknowledgedStateVersion,
+  } : drone);
+}

@@ -2,12 +2,15 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.access.principal import Principal, StationMembership, StationRole, get_principal
 from app.access.principal import principal_from_claims
 from app.stations import routes
+from app.review import routes as review_routes
 from app.stations.models import JoinRequest, StationMembership as WorkflowMembership, StationRequest
 
 
@@ -97,3 +100,20 @@ def test_search_and_workflow_queues_are_repository_backed():
 
 def test_station_search_rejects_unimplemented_state_filter():
     assert _client(_principal(), Repository()).get("/api/stations?state=WA").status_code == 422
+
+
+@pytest.mark.parametrize(("roles", "expected"), [
+    (frozenset({StationRole.VIEWER}), {"station.read"}),
+    (frozenset({StationRole.DISPATCHER}), {"station.read", "alert.manage"}),
+    (frozenset({StationRole.SAFETY_SUPERVISOR}), {"station.read", "autonomy.manage"}),
+    (frozenset({StationRole.STATION_ADMIN}), {"station.read", "alert.manage", "lake.create", "inventory.manage", "autonomy.manage", "member.manage"}),
+    (frozenset({StationRole.DISPATCHER, StationRole.SAFETY_SUPERVISOR}), {"station.read", "alert.manage", "autonomy.manage"}),
+])
+def test_me_capabilities_mirror_additive_policy_roles(monkeypatch, roles, expected):
+    principal = Principal("user-1", "officer@example.gov", "aal2", "officer", "verified", (
+        StationMembership("station-1", "Station One", "active", roles),
+    ))
+    monkeypatch.setattr(review_routes, "is_reviewer", lambda _: False)
+    response = _client(principal, Repository()).get("/api/me")
+    assert response.status_code == 200
+    assert set(response.json()["memberships"][0]["capabilities"]) == expected
