@@ -38,6 +38,28 @@ def test_simulated_adapter_rejects_real_inventory_before_mutating_engine():
     assert engine.acknowledged_desired_versions == {}
 
 
+def test_simulated_adapter_rejects_mixed_runtime_without_touching_real_drone():
+    from app.autonomy.adapters.simulated import SimulatedFleetAdapter
+    from app.autonomy.adapters.base import TransportIsolationError
+
+    engine = _engine()
+    real = Drone("r0", LatLon(47.57, -122.08), 0.5, DroneStatus.PATROLLING, "old", source="real")
+    engine.drones.append(real)
+    original_zones = engine.zones[:]
+    original_targets = dict(engine.targets)
+
+    adapter = SimulatedFleetAdapter(engine, {"d0": _inventory()})
+    with pytest.raises(TransportIsolationError, match="mixed"):
+        adapter.publish(_command(version=2))
+
+    assert engine.zones == original_zones
+    assert engine.targets == original_targets
+    assert real.assigned_zone == "old"
+    assert real.status == DroneStatus.PATROLLING
+    assert real.source == "real"
+    assert engine.acknowledged_desired_versions == {}
+
+
 def test_apply_plan_swaps_validated_state_atomically_and_acknowledges_after_success():
     engine = _engine()
     engine._patrol_waypoints["d0"] = [LatLon(47.58, -122.09)]

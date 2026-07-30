@@ -21,6 +21,12 @@ class SimulatedFleetAdapter:
         inventory = self._inventory.get(command.inventory_id)
         if inventory is None or inventory.source != "simulated":
             raise TransportIsolationError("simulated adapter accepts simulated inventory only")
+        # ``SimulationEngine.apply_plan`` owns its complete runtime list.  It
+        # cannot safely operate on a mixed runtime without overwriting real
+        # drones' assignments, targets, or status, so fail closed before even
+        # deriving a proposed assignment map.
+        if any(drone.source != "simulated" for drone in self._engine.drones):
+            raise TransportIsolationError("mixed runtime requires a separate real transport")
         if command.command_type != "apply_assignment":
             raise TransportIsolationError("simulated adapter only applies autonomous assignments")
         if inventory.station_id != command.station_id or inventory.lake_id != command.lake_id:
