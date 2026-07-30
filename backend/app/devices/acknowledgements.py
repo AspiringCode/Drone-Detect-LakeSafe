@@ -39,4 +39,3 @@ class AcknowledgementService:
         # completed states advance only through a monotonic database update.
         if status in {"accepted", "completed"} and not self._repository.advance_acknowledged_version(principal.drone_id, desired_state_version, command_id):
             raise StaleAcknowledgement("acknowledged state cannot move backward")
-

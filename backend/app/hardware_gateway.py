@@ -30,4 +30,3 @@ class HttpRealGatewayClient:
         import httpx
         response = httpx.post(url, content=payload, headers={"X-LakeSafe-Signature": signature}, timeout=5.0)
         response.raise_for_status()
-
