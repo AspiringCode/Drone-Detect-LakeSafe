@@ -25,6 +25,7 @@ create trigger reject_audit_update_delete
 
 revoke all on public.audit_events from public, anon, authenticated;
 revoke all on function private.reject_audit_mutation() from public, anon, authenticated;
+grant select on public.audit_events to authenticated;
 
 drop policy if exists audit_events_select_scoped on public.audit_events;
 create policy audit_events_select_scoped

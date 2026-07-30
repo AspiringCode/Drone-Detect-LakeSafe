@@ -110,22 +110,26 @@ def test_safety_supervisor_with_recent_mfa_changes_policy_audits_and_reconciles(
     )
     assert response.status_code == 202
     assert response.json()["autonomy"] == "pending_ack"
-    assert repository.calls[0][0] == "audit"
-    assert repository.calls[1][0] == "autonomy"
+    # The successful database RPC writes the single allowed audit event in the
+    # same transaction as the policy change; the HTTP layer must not duplicate it.
+    assert [call[0] for call in repository.calls] == ["autonomy"]
     assert reconciler.calls == [("lake-1", "real_safety_policy_changed")]
 
 
-def test_safety_change_fails_closed_when_pre_audit_is_unavailable():
-    class UnavailableAuditRepository(SafetyRepository):
-        def append_audit(self, event) -> None:
-            raise RuntimeError("audit database unavailable")
+def test_failed_safety_change_records_failed_audit_without_false_allowed_entry():
+    class FailedMutationRepository(SafetyRepository):
+        def set_real_autonomy(self, *args, **kwargs):
+            raise RuntimeError("gateway transaction unavailable")
 
-    repository = UnavailableAuditRepository()
+    repository = FailedMutationRepository()
     response = _client(_principal(StationRole.SAFETY_SUPERVISOR), repository, Reconciler()).post(
         "/api/stations/station-1/lakes/lake-1/safety/autonomy", json={"enabled": True, "reason": "shift start"}
     )
     assert response.status_code == 503
-    assert repository.calls == []
+    assert len(repository.calls) == 1
+    assert repository.calls[0][0] == "audit"
+    assert repository.calls[0][1].decision == "failed"
+    assert repository.calls[0][1].action == "real_fleet.autonomy"
 
 
 def test_safety_controls_require_reason_recent_mfa_and_exact_lake():
@@ -143,8 +147,7 @@ def test_safe_return_requests_fleet_policy_without_coordinates():
     )
     assert response.status_code == 202
     assert response.json()["autonomy"] == "safe_return_requested"
-    assert repository.calls[0][0] == "audit"
-    assert repository.calls[1][0] == "safe-return"
+    assert [call[0] for call in repository.calls] == ["safe-return"]
     assert reconciler.calls == [("lake-1", "real_safe_return_requested")]
     assert client_payload_rejects_coordinates(_client(_principal(StationRole.SAFETY_SUPERVISOR), SafetyRepository(), Reconciler()))
 
