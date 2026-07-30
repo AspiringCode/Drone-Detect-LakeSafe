@@ -29,3 +29,4 @@ IDME_PROFILE_FAILURE_URL = os.getenv("IDME_PROFILE_FAILURE_URL", "/profile?verif
 # Reviewed risk connectors are enabled only by a durable database review record.
 # Fixtures remain test-only and are never a production fallback for these values.
 RISK_CONNECTOR_REFRESH_HOURS = int(os.getenv("RISK_CONNECTOR_REFRESH_HOURS", "24"))
+DEVICE_CLOCK_SKEW_SECONDS = int(os.getenv("DEVICE_CLOCK_SKEW_SECONDS", "30"))

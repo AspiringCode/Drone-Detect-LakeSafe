@@ -838,6 +838,7 @@ name = "lakesafe-cac-backend"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "cryptography" },
     { name = "fastapi" },
     { name = "geopandas" },
     { name = "httpx" },
@@ -858,6 +859,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "cryptography" },
     { name = "fastapi" },
     { name = "geopandas" },
     { name = "httpx" },

@@ -16,6 +16,7 @@ dependencies = [
     "pydantic",
     "httpx",
     "PyJWT[crypto]",
+    "cryptography",
     "supabase",
     "pytest",
 ]
