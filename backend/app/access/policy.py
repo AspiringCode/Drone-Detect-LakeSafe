@@ -14,14 +14,15 @@ class Permission(StrEnum):
     ADD_LAKE = "add_lake"
     MANAGE_INVENTORY = "manage_inventory"
     CHANGE_FLEET_SAFETY = "change_fleet_safety"
+    CHANGE_SIMULATED_CIRCULATION = "change_simulated_circulation"
     MANAGE_MEMBERS = "manage_members"
 
 
 _ROLE_PERMISSIONS = {
     StationRole.VIEWER: frozenset({Permission.READ_OPERATIONS}),
-    StationRole.DISPATCHER: frozenset({Permission.MANAGE_ALERTS}),
-    StationRole.SAFETY_SUPERVISOR: frozenset({Permission.CHANGE_FLEET_SAFETY}),
-    StationRole.STATION_ADMIN: frozenset({Permission.MANAGE_ALERTS, Permission.ADD_LAKE, Permission.MANAGE_INVENTORY, Permission.MANAGE_MEMBERS}),
+    StationRole.DISPATCHER: frozenset({Permission.READ_OPERATIONS, Permission.MANAGE_ALERTS}),
+    StationRole.SAFETY_SUPERVISOR: frozenset({Permission.READ_OPERATIONS, Permission.CHANGE_FLEET_SAFETY, Permission.CHANGE_SIMULATED_CIRCULATION}),
+    StationRole.STATION_ADMIN: frozenset({Permission.READ_OPERATIONS, Permission.MANAGE_ALERTS, Permission.ADD_LAKE, Permission.MANAGE_INVENTORY, Permission.CHANGE_SIMULATED_CIRCULATION, Permission.MANAGE_MEMBERS}),
 }
 
 
