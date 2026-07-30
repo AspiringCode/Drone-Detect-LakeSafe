@@ -8,9 +8,19 @@ do $$
 declare relation record;
 begin
   for relation in
-    select quote_ident(schemaname) || '.' || quote_ident(tablename) as name
-    from pg_tables
-    where schemaname = 'public'
+    select quote_ident(namespace.nspname) || '.' || quote_ident(table_class.relname) as name
+    from pg_class as table_class
+    join pg_namespace as namespace on namespace.oid = table_class.relnamespace
+    where namespace.nspname = 'public'
+      and table_class.relkind in ('r', 'p')
+      -- PostGIS and other extension relations are not LakeSafe application
+      -- tables and must retain extension-managed security semantics.
+      and not exists (
+        select 1 from pg_depend as dependency
+        where dependency.classid = 'pg_class'::regclass
+          and dependency.objid = table_class.oid
+          and dependency.deptype = 'e'
+      )
   loop
     execute format('alter table %s enable row level security', relation.name);
     execute format('alter table %s force row level security', relation.name);

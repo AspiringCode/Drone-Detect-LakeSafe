@@ -7,11 +7,11 @@ join cannot disclose operational telemetry through the public API.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Protocol
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 from supabase import create_client
 
 from app.config import SUPABASE_KEY, SUPABASE_URL
@@ -48,6 +48,17 @@ class PublicPatrolPresence(BaseModel):
     public_state: str
     observed_bucket: datetime
     published_at: datetime
+
+    @model_validator(mode="after")
+    def enforce_minimum_publication_delay(self) -> "PublicPatrolPresence":
+        """Fail closed if an un-delayed patrol record reaches any public path."""
+        if self.observed_bucket.tzinfo is None or self.observed_bucket.utcoffset() is None:
+            raise ValueError("observed_bucket must include a timezone")
+        if self.published_at.tzinfo is None or self.published_at.utcoffset() is None:
+            raise ValueError("published_at must include a timezone")
+        if self.published_at < self.observed_bucket + timedelta(minutes=5):
+            raise ValueError("public patrol presence must be delayed by at least five minutes")
+        return self
 
 
 class PublicProjectionRepository(Protocol):

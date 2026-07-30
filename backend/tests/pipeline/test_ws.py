@@ -183,3 +183,29 @@ async def test_public_hub_broadcasts_only_validated_projection_payloads():
     assert set(client.sent) == {
         "lake_id", "generalized_zone", "public_state", "observed_bucket", "published_at",
     }
+
+
+@pytest.mark.anyio
+async def test_public_hub_rejects_fresh_patrol_presence_before_broadcast():
+    class Client:
+        sent = None
+
+        async def send_json(self, payload):
+            self.sent = payload
+
+    client = Client()
+    hub = lake_runtimes["lake-sammamish"].public_hub
+    hub.clients.add(client)
+    try:
+        with pytest.raises(ValueError, match="at least five minutes"):
+            await publish_public_patrol_presence("lake-sammamish", {
+                "lake_id": "lake-sammamish",
+                "generalized_zone": "north basin",
+                "public_state": "patrolling",
+                "observed_bucket": "2026-07-30T12:00:00Z",
+                "published_at": "2026-07-30T12:00:00Z",
+            })
+    finally:
+        hub.clients.discard(client)
+
+    assert client.sent is None
