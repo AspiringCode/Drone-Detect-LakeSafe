@@ -70,7 +70,7 @@ describe("operator workflow", () => {
     const fetcher = vi.fn((url: string) => Promise.resolve({ ok: true, status: 200, json: async () => url.includes("alerts") ? [] : { type: "FeatureCollection", features: [] } }));
     render(<PrincipalProvider client={client as never} request={(async () => principal) as never}><ActiveStationProvider><MemoryRouter initialEntries={["/lakes/lake-sammamish"]}><Routes><Route path="/lakes/:lakeId" element={<LakeLiveView client={client as never} fetcher={fetcher as never} connectOperational={operational as never} />} /></Routes></MemoryRouter></ActiveStationProvider></PrincipalProvider>);
     expect(await screen.findByRole("button", { name: /deploy drone/i })).toBeInTheDocument();
-    await waitFor(() => expect(operational).toHaveBeenCalledWith(expect.stringContaining("/ws/lakes/lake-sammamish/positions"), "token", expect.any(Function)));
+    await waitFor(() => expect(operational).toHaveBeenCalledWith(expect.stringContaining("/ws/operations/lakes/lake-sammamish"), "token", expect.any(Function)));
   });
   it("does not borrow a capability from a different station's membership", () => {
     const principal: Principal = { user_id: "officer", email: "officer@example.gov", aal: "aal2", account_class: "officer", verification_status: "verified", reviewer: false, memberships: [

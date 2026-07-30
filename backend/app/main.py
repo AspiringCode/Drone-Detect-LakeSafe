@@ -38,7 +38,7 @@ from app.api.inventory import router as simulated_autonomy_router
 from app.api.device_admin import router as device_admin_router
 from app.api.devices import router as devices_router
 from app.api.safety import router as safety_router
-from app.public_api import router as public_router
+from app.public_api import PublicPatrolPresence, router as public_router
 from app.evidence import router as evidence_router
 from app.devices.monitor import HeartbeatMonitor, monitor_loop
 from app.devices.repository import DeviceRepositoryError, get_device_repository
@@ -122,7 +122,10 @@ class LakeRuntime:
     engine: SimulationEngine
     alerts: AlertRepository
     alert_backend: InMemoryBackend
+    # Operational state is intentionally never multiplexed with public
+    # projections.  These hubs have distinct routes and payload contracts.
     hub: ConnectionHub
+    public_hub: ConnectionHub
     shore_station: LatLon
 
 
@@ -136,7 +139,8 @@ def _build_sammamish_runtime() -> LakeRuntime:
     return LakeRuntime(
         lake_id="lake-sammamish", zones=zones,
         engine=SimulationEngine(drones, zones, shore_stations=[shore_station]),
-        alerts=AlertRepository(backend), alert_backend=backend, hub=ConnectionHub(), shore_station=shore_station,
+        alerts=AlertRepository(backend), alert_backend=backend, hub=ConnectionHub(),
+        public_hub=ConnectionHub(), shore_station=shore_station,
     )
 
 
@@ -275,6 +279,26 @@ def current_state(runtime: LakeRuntime) -> dict:
     return _jsonable(runtime.engine.step(0.1))
 
 
+def public_patrol_payload(payload: object) -> dict[str, object]:
+    """Validate and serialize the only payload public sockets may broadcast."""
+    return PublicPatrolPresence.model_validate(payload).model_dump(mode="json")
+
+
+async def publish_public_patrol_presence(lake_id: str, payload: object) -> None:
+    """Broadcast a persisted public projection; never derive it from telemetry."""
+    projection = public_patrol_payload(payload)
+    if projection["lake_id"] != lake_id:
+        raise ValueError("Public patrol projection lake does not match its channel")
+    await get_runtime(lake_id).public_hub.broadcast(projection)
+
+
+def websocket_has_url_credentials(websocket: WebSocket) -> bool:
+    return any(
+        key.lower() in {"token", "access_token", "authorization"}
+        for key in websocket.query_params
+    )
+
+
 def get_lake_deployment_metadata(lake_id: str) -> dict[str, object] | None:
     credential = SUPABASE_SERVICE_ROLE_KEY or SUPABASE_KEY
     if not SUPABASE_URL or not credential:
@@ -383,10 +407,27 @@ def deploy_drone(lake_id: str, authorization: str | None = Header(default=None))
     }
 
 
-@app.websocket("/ws/lakes/{lake_id}/positions")
-async def positions_ws(websocket: WebSocket, lake_id: str):
+@app.websocket("/ws/public/lakes/{lake_id}")
+async def public_positions_ws(websocket: WebSocket, lake_id: str):
+    """Anonymous channel for delayed, projection-only patrol presence."""
     runtime = lake_runtimes.get(lake_id)
-    if runtime is None:
+    if runtime is None or websocket_has_url_credentials(websocket):
+        await websocket.close(code=1008)
+        return
+    await runtime.public_hub.connect(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        runtime.public_hub.disconnect(websocket)
+
+
+@app.websocket("/ws/operations/lakes/{lake_id}")
+async def operations_positions_ws(websocket: WebSocket, lake_id: str):
+    runtime = lake_runtimes.get(lake_id)
+    if runtime is None or websocket_has_url_credentials(websocket):
         await websocket.close(code=1008)
         return
     protocols = websocket.headers.get("sec-websocket-protocol", "").split(",")

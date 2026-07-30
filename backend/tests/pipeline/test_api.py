@@ -62,7 +62,7 @@ def test_demo_trigger_creates_alert_retrievable(monkeypatch):
 def test_positions_ws_receives_state_with_source(monkeypatch):
     monkeypatch.setattr("app.main.verify_supabase_jwt", lambda token: {"sub": "owner", "aal": "aal2"})
     client = TestClient(app)
-    with client.websocket_connect(f"/ws/lakes/{LAKE_ID}/positions", subprotocols=["bearer.signed-token"]) as ws:
+    with client.websocket_connect(f"/ws/operations/lakes/{LAKE_ID}", subprotocols=["bearer.signed-token"]) as ws:
         payload = ws.receive_json()
     assert payload["drones"]
     assert "source" in payload["drones"][0]

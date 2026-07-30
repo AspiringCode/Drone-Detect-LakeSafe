@@ -18,7 +18,7 @@ import { RealFleetSafetyPanel } from "../components/RealFleetSafetyPanel";
 import { ApiError } from "../lib/apiClient";
 
 const API = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
-const wsFor = (lakeId: string) => `${API.replace(/^http/, "ws")}/ws/lakes/${lakeId}/positions`;
+const wsFor = (lakeId: string) => `${API.replace(/^http/, "ws")}/ws/operations/lakes/${lakeId}`;
 type Organization = { station_lat: number; station_lon: number };
 type LakeMetadata = { drone_inventory_cap: number; station_id?: string; organizations: Organization | Organization[] | null };
 
@@ -52,7 +52,7 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
   const canManageAlerts = hasLakeCapability(principal, lakeStationId, "alert.manage");
   const canManageAutonomy = hasLakeCapability(principal, lakeStationId, "autonomy.manage");
   const stationCapabilities = lakeStationId ? principal?.memberships.find((item) => item.station_id === lakeStationId && item.status === "active")?.capabilities ?? [] : [];
-  useEffect(() => { let active = true; void fetcher(`${API}/api/lakes/${lakeId}/riskmap`).then(async (r) => { if (r.status === 404) return active && setNoLive(true); if (r.ok) setRiskmap(await r.json()); }).catch(() => active && setNoLive(true)); let stop = () => {}; if (canReadOperations) { void (async () => { const token = accessToken ?? (await client.auth.getSession()).data.session?.access_token; if (token && active) stop = connectOperational(wsFor(lakeId), token, (state) => setDrones(state.drones)); })(); } else if (!principalContext) stop = connect(wsFor(lakeId), (state) => setDrones(state.drones)); return () => { active = false; stop(); }; }, [lakeId, fetcher, connect, connectOperational, client, accessToken, canReadOperations, principalContext]);
+  useEffect(() => { let active = true; void fetcher(`${API}/api/lakes/${lakeId}/riskmap`).then(async (r) => { if (r.status === 404) return active && setNoLive(true); if (r.ok) setRiskmap(await r.json()); }).catch(() => active && setNoLive(true)); let stop = () => {}; if (canReadOperations) { void (async () => { const token = accessToken ?? (await client.auth.getSession()).data.session?.access_token; if (token && active) stop = connectOperational(wsFor(lakeId), token, (state) => setDrones(state.drones)); })(); } return () => { active = false; stop(); }; }, [lakeId, fetcher, connectOperational, client, accessToken, canReadOperations]);
   useEffect(() => { void fetcher(`${API}/api/lakes/${lakeId}/alerts`).then((r) => r.ok ? r.json() : []).then((alerts: Alert[]) => setAlert(alerts[0] ?? null)); }, [lakeId, fetcher]);
   useEffect(() => {
     let active = true;
