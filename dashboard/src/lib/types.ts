@@ -90,3 +90,33 @@ export interface SimulationState {
   altitudes?: Record<string, number>;
   confirmed?: boolean;
 }
+
+export type FleetLifecycle = "available" | "circulating" | "charging" | "maintenance" | "reserved" | string;
+
+export interface FleetDrone {
+  inventoryId: string;
+  source: "simulated";
+  lifecycle: FleetLifecycle;
+  batteryPercent: number | null;
+  health: string;
+  connectivity: string;
+  maintenanceDue?: string | null;
+  desiredStateVersion: number;
+  acknowledgedStateVersion: number;
+}
+
+export interface ZonePlanSummary {
+  planId: string;
+  snapshotId: string;
+  algorithmVersion: string;
+  sourceFreshThrough: string | null;
+  activityDataUnavailable: boolean;
+  hotspotCells: number;
+  coverageCells: number;
+}
+
+export interface ReconcileStatus {
+  reconciliationId: string;
+  desiredStateVersion: number;
+  acknowledgedStateVersion: number;
+}
