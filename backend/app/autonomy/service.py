@@ -48,7 +48,7 @@ class AutonomyService:
                 _idempotency_key(plan.plan_id, assignment.inventory_id, assignment.desired_state_version),
                 assignment.inventory_id, state.station_id, lake_id, assignment.desired_state_version,
                 "apply_assignment", assignment.inventory_id + ":" + assignment.zone_id,
-                {"zone_id": assignment.zone_id, "plan_id": plan.plan_id},
+                {"zone_plan_cell_id": assignment.zone_id, "plan_id": plan.plan_id},
             ) for assignment in assignments)
             if self._repository.commit_plan_commands(expected, plan.plan_id, assignments, commands):
                 self._publish()

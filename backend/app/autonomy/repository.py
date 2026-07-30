@@ -108,17 +108,33 @@ class SupabaseAutonomyRepository:
         lake_ids = {command.lake_id for command in commands}
         if len(lake_ids) != 1:
             raise ValueError("a reconciliation may cover exactly one lake")
+        normalized_assignments = [
+            dict(item) if isinstance(item, dict) else {
+                "inventory_id": item.inventory_id,
+                "zone_plan_cell_id": item.zone_id,
+                "desired_state_version": item.desired_state_version,
+            }
+            for item in assignments
+        ]
+        assignment_keys = {
+            (str(item.get("inventory_id")), int(item.get("desired_state_version", 0)))
+            for item in normalized_assignments
+        }
+        command_keys = {(item.inventory_id, item.desired_state_version) for item in commands}
+        if len(assignment_keys) != len(normalized_assignments) or len(command_keys) != len(commands):
+            raise ValueError("assignments and commands must be unique")
+        if assignment_keys != command_keys or any(item.command_type != "apply_assignment" for item in commands):
+            raise ValueError("every assignment requires exactly one matching apply command")
+        assignment_cells = {
+            (str(item["inventory_id"]), int(item["desired_state_version"])): str(item["zone_plan_cell_id"])
+            for item in normalized_assignments
+        }
+        if any(item.payload.get("zone_plan_cell_id") != assignment_cells[(item.inventory_id, item.desired_state_version)] for item in commands):
+            raise ValueError("commands must match their assignment cell")
         payload = {
             "p_lake_id": lake_ids.pop(), "p_expected_plan_id": expected_plan_id,
             "p_candidate_plan_id": candidate_plan_id,
-            "p_assignments": [
-                dict(item) if isinstance(item, dict) else {
-                    "inventory_id": item.inventory_id,
-                    "zone_plan_cell_id": item.zone_id,
-                    "desired_state_version": item.desired_state_version,
-                }
-                for item in assignments
-            ],
+            "p_assignments": normalized_assignments,
             "p_commands": [{
                 "inventory_id": item.inventory_id, "zone_assignment_id": item.assignment_id,
                 "desired_state_version": item.desired_state_version, "command_type": item.command_type,
