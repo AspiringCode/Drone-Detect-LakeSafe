@@ -39,6 +39,7 @@ from app.api.device_admin import router as device_admin_router
 from app.api.devices import router as devices_router
 from app.api.safety import router as safety_router
 from app.public_api import router as public_router
+from app.evidence import router as evidence_router
 from app.devices.monitor import HeartbeatMonitor, monitor_loop
 from app.devices.repository import DeviceRepositoryError, get_device_repository
 from app.devices.reconciler import RealCapacityReconciler, configure_real_autonomy_service, has_real_autonomy_service
@@ -103,6 +104,7 @@ app.include_router(device_admin_router)
 app.include_router(devices_router)
 app.include_router(safety_router)
 app.include_router(public_router)
+app.include_router(evidence_router)
 
 # Local-dev dashboard runs on Vite's default port; CAC judges run this locally,
 # not behind a shared origin, so permissive localhost/127.0.0.1 dev ports are fine.
