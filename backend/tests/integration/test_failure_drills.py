@@ -18,6 +18,7 @@ from app.access.principal import Principal, StationMembership, StationRole
 from app.autonomy.outbox import CommandEnvelope, OutboxPublisher
 from app.autonomy.repository import InMemoryAutonomyRepository
 from app.autonomy.safety import RealFleetStatus, classify_real_fleet_status, real_heartbeat_status
+from app.devices.monitor import HeartbeatMonitor
 from app.risk_zones.plan_builder import RiskDataUnavailable
 from app.risk_zones.plan_repository import InMemoryRiskPlanRepository
 from app.risk_zones.plan_service import PlanBuildRequest, RiskPlanService
@@ -63,22 +64,61 @@ def test_schema_drift_quarantines_only_the_new_snapshot() -> None:
 
 
 def test_heartbeat_loss_removes_pending_capacity_and_marks_coverage_degraded() -> None:
-    inventory = [
-        {"inventory_id": "drone-1", "health": "healthy", "connectivity": "connected", "maintenance_due": False, "battery_percent": 90},
-        {"inventory_id": "drone-2", "health": "healthy", "connectivity": "connected", "maintenance_due": False, "battery_percent": 90},
-    ]
-    eligible, _ = real_heartbeat_status(
-        inventory, {"drone-1": NOW - timedelta(seconds=2)}, now=NOW, minimum_battery=30
-    )
-    status = classify_real_fleet_status(
-        RealFleetStatus("pending_ack", active_assignments=("drone-1",), pending_assignments=("drone-2",)),
-        expired_drone_ids=("drone-2",), safe_return_required=False,
-    )
+    class CapacityRepository:
+        def __init__(self) -> None:
+            self.inventory = [
+                {"inventory_id": "drone-1", "health": "healthy", "connectivity": "connected", "maintenance_due": False, "battery_percent": 90},
+                {"inventory_id": "drone-2", "health": "healthy", "connectivity": "connected", "maintenance_due": False, "battery_percent": 90},
+            ]
+            self.heartbeats = {"drone-1": NOW - timedelta(seconds=2), "drone-2": NOW - timedelta(seconds=2)}
+            self.jobs: list[dict[str, str]] = []
+            self.expired_drone_ids: tuple[str, ...] = ()
 
-    assert eligible is False
-    assert status.autonomy == "degraded"
-    assert status.active_assignments == ("drone-1",)
-    assert status.pending_assignments == ()
+        def expire_stale_eligible_real(self, now: datetime, ttl_seconds: int) -> tuple[str, ...]:
+            expired = tuple(
+                row["inventory_id"] for row in self.inventory
+                if (now - self.heartbeats[row["inventory_id"]]).total_seconds() > ttl_seconds
+            )
+            if expired:
+                self.expired_drone_ids = expired
+                self.inventory = [row for row in self.inventory if row["inventory_id"] not in expired]
+                self.jobs.append({"lake_id": "lake-1", "trigger": "heartbeat_expired"})
+            return ("lake-1",) if expired else ()
+
+        def claim_real_capacity_reconciliations(self) -> list[dict[str, str]]:
+            jobs, self.jobs = self.jobs, []
+            return jobs
+
+        def complete_real_capacity_reconciliation(self, item: dict[str, str]) -> bool:
+            return item["trigger"] == "heartbeat_expired"
+
+        def release_real_capacity_reconciliation(self, item: dict[str, str]) -> bool:
+            return False
+
+    class CapacityReconciler:
+        def __init__(self, repository: CapacityRepository) -> None:
+            self.repository, self.status = repository, None
+
+        def reconcile_lake(self, lake_id: str, trigger: str, expected_plan_id=None) -> None:
+            del lake_id, expected_plan_id
+            eligible, _ = real_heartbeat_status(self.repository.inventory, self.repository.heartbeats, now=NOW, minimum_battery=30)
+            self.status = classify_real_fleet_status(
+                RealFleetStatus("pending_ack", active_assignments=("drone-1",), pending_assignments=("drone-2",)),
+                expired_drone_ids=self.repository.expired_drone_ids if trigger == "heartbeat_expired" and eligible is True else (),
+                safe_return_required=False,
+            )
+
+    repository = CapacityRepository()
+    repository.heartbeats["drone-2"] = NOW - timedelta(seconds=16)
+    reconciler = CapacityReconciler(repository)
+
+    assert HeartbeatMonitor(repository, reconciler, ttl_seconds=15).scan(NOW) == ("lake-1",)
+    assert repository.expired_drone_ids == ("drone-2",)
+    assert [row["inventory_id"] for row in repository.inventory] == ["drone-1"]
+    assert reconciler.status is not None
+    assert reconciler.status.autonomy == "degraded"
+    assert reconciler.status.active_assignments == ("drone-1",)
+    assert reconciler.status.pending_assignments == ()
 
 
 def test_gateway_failure_releases_new_work_without_losing_acknowledged_state() -> None:
@@ -95,6 +135,8 @@ def test_gateway_failure_releases_new_work_without_losing_acknowledged_state() -
 
     assert OutboxPublisher(repository, FailingAdapter()).publish_pending() == ()
     assert repository.acknowledged_version("drone-1") == 3
+    assert [command.command_id for command in repository.pending()] == ["pending-4"]
+    assert repository.claim_pending(1)[0].command_id == "pending-4"
 
 
 def test_partial_acknowledgement_is_degraded_coverage_not_active() -> None:
