@@ -99,3 +99,22 @@ def test_simulated_adapter_applies_command_then_returns_receipt():
     assert receipt.inventory_id == "d0"
     assert receipt.desired_state_version == 3
     assert engine.acknowledged_desired_versions["d0"] == 3
+
+
+def test_simulated_adapter_applies_versioned_return_to_reserve_without_a_waypoint():
+    from app.autonomy.adapters.simulated import SimulatedFleetAdapter
+
+    engine = _engine()
+    engine.drones[0].status = DroneStatus.PATROLLING
+    engine.drones[0].assigned_zone = "old"
+    engine._patrol_waypoints["d0"] = [LatLon(47.58, -122.09)]
+    adapter = SimulatedFleetAdapter(engine, {"d0": _inventory()})
+    command = CommandEnvelope("return-2", "d0", "station-1", "lake-1", 2, "return_to_reserve", None, {"reconciliation_id": "r1"})
+
+    receipt = adapter.publish(command)
+
+    assert receipt.desired_state_version == 2
+    assert engine.drones[0].assigned_zone is None
+    assert engine.drones[0].status == DroneStatus.IDLE
+    assert "d0" not in engine._patrol_waypoints
+    assert engine.acknowledged_desired_versions["d0"] == 2

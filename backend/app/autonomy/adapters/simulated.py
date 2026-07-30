@@ -27,8 +27,15 @@ class SimulatedFleetAdapter:
         # deriving a proposed assignment map.
         if any(drone.source != "simulated" for drone in self._engine.drones):
             raise TransportIsolationError("mixed runtime requires a separate real transport")
+        if command.command_type == "return_to_reserve":
+            # The durable transition releases lake ownership before this
+            # command is published, so a reserve return is station-bound only.
+            if inventory.station_id != command.station_id:
+                raise TransportIsolationError("command does not belong to simulated inventory")
+            self._engine.return_to_reserve(command.inventory_id, command.desired_state_version)
+            return AdapterReceipt(command.inventory_id, command.desired_state_version, command.command_id)
         if command.command_type != "apply_assignment":
-            raise TransportIsolationError("simulated adapter only applies autonomous assignments")
+            raise TransportIsolationError("simulated adapter only applies autonomous assignments or safe return")
         if inventory.station_id != command.station_id or inventory.lake_id != command.lake_id:
             raise TransportIsolationError("command does not belong to simulated inventory")
         zone_id = command.payload.get("zone_plan_cell_id")

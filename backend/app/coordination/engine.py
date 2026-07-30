@@ -110,6 +110,29 @@ class SimulationEngine:
             drone.status = DroneStatus.EN_ROUTE if zone_id else DroneStatus.IDLE
         self.acknowledged_desired_versions.update(versions)
 
+    def return_to_reserve(self, drone_id: str, desired_state_version: int) -> None:
+        """Stop autonomous patrol for one simulated drone without steering it.
+
+        A reserve location is used only when the simulation has one configured;
+        otherwise the simulated runtime safely becomes idle.  No caller passes
+        a coordinate, heading, or waypoint.
+        """
+        drone = next((item for item in self.drones if item.drone_id == drone_id), None)
+        if drone is None:
+            raise ValueError(f"unknown drone: {drone_id}")
+        if desired_state_version < self.acknowledged_desired_versions.get(drone_id, 0):
+            raise ValueError(f"stale desired state version for {drone_id}")
+        drone.assigned_zone = None
+        self._patrol_waypoints.pop(drone_id, None)
+        self._patrol_index.pop(drone_id, None)
+        if self.shore_stations:
+            drone.status = DroneStatus.RETURNING
+            self.targets[drone_id] = min(self.shore_stations, key=lambda shore: haversine_m(drone.pos, shore))
+        else:
+            drone.status = DroneStatus.IDLE
+            self.targets.pop(drone_id, None)
+        self.acknowledged_desired_versions[drone_id] = desired_state_version
+
     def _move_toward(self, drone: Drone, target: LatLon, dt: float, speed_mps: float = 15.0) -> bool:
         dist = haversine_m(drone.pos, target)
         if dist <= speed_mps * dt or dist < 1.0:
