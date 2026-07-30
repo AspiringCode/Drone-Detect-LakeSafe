@@ -77,7 +77,7 @@ def _apply_high_impact(repository, principal: Principal, station_id: str, lake_i
         raise
     except Exception as exc:
         try:
-            committed = repository.find_safety_action(request_id, action)
+            committed = repository.find_safety_action(request_id, action, principal.user_id, station_id, lake_id)
         except Exception as reconciliation_error:
             raise HTTPException(status_code=503, detail="Real fleet safety result is indeterminate") from reconciliation_error
         if committed is not None:

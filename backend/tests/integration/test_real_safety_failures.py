@@ -44,7 +44,7 @@ class SafetyRepository:
     def append_audit(self, event) -> None:
         self.calls.append(("audit", event))
 
-    def find_safety_action(self, request_id: str, action: str):
+    def find_safety_action(self, request_id: str, action: str, actor_user_id: str, station_id: str, lake_id: str):
         return None
 
 
@@ -148,7 +148,7 @@ def test_timeout_after_committed_safety_action_reconciles_without_false_failed_a
             }
             raise TimeoutError("response lost after commit")
 
-        def find_safety_action(self, request_id: str, action: str):
+        def find_safety_action(self, request_id: str, action: str, actor_user_id: str, station_id: str, lake_id: str):
             return self.committed.get(request_id)
 
     repository, reconciler = TimeoutAfterCommitRepository(), Reconciler()
@@ -159,6 +159,32 @@ def test_timeout_after_committed_safety_action_reconciles_without_false_failed_a
     assert response.json()["autonomy"] == "pending_ack"
     assert [call[0] for call in repository.calls] == []
     assert reconciler.calls == [("lake-1", "real_safety_policy_changed")]
+
+
+def test_reconciliation_lookup_is_bound_to_the_same_actor_station_and_lake():
+    from app.autonomy.safety import SupabaseSafetyRepository
+
+    class Query:
+        def __init__(self): self.filters = []
+        def select(self, _columns): return self
+        def eq(self, key, value): self.filters.append((key, value)); return self
+        def maybe_single(self): return self
+        def execute(self): return type("Result", (), {"data": None})()
+    class Client:
+        def __init__(self): self.query = Query()
+        def table(self, name): assert name == "audit_events"; return self.query
+
+    client = Client()
+    assert SupabaseSafetyRepository(client).find_safety_action(
+        "00000000-0000-0000-0000-000000000099", "real_fleet.autonomy",
+        "00000000-0000-0000-0000-000000000002", "station-1", "lake-1",
+    ) is None
+    assert set(client.query.filters) == {
+        ("request_id", "00000000-0000-0000-0000-000000000099"),
+        ("action", "real_fleet.autonomy"), ("decision", "allowed"),
+        ("actor_user_id", "00000000-0000-0000-0000-000000000002"),
+        ("station_id", "station-1"), ("lake_id", "lake-1"),
+    }
 
 
 def test_safety_controls_require_reason_recent_mfa_and_exact_lake():

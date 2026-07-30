@@ -69,7 +69,6 @@ def get_rate_limit_repository() -> RateLimitRepository:
 # subject is station + authenticated actor, so one station cannot exhaust another.
 PRIVILEGED_LIMITS: dict[str, tuple[int, int]] = {
     "verification.start": (5, 3600),
-    "verification.callback": (10, 3600),
     "station.invitation.create": (20, 3600),
     "station.join.review": (40, 3600),
     "station.review": (40, 3600),

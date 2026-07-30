@@ -90,7 +90,7 @@ class SafetyRepository(Protocol):
     def real_fleet_status(self, station_id: str, lake_id: str) -> dict: ...
     def set_real_autonomy(self, station_id: str, lake_id: str, enabled: bool, reason: str, actor_user_id: str, request_id: str) -> dict: ...
     def request_safe_return(self, station_id: str, lake_id: str, reason: str, actor_user_id: str, request_id: str) -> dict: ...
-    def find_safety_action(self, request_id: str, action: str) -> dict | None: ...
+    def find_safety_action(self, request_id: str, action: str, actor_user_id: str, station_id: str, lake_id: str) -> dict | None: ...
     def append_audit(self, event: AuditEventCreate) -> None: ...
 
 
@@ -164,10 +164,12 @@ class SupabaseSafetyRepository:
             "p_reason": reason, "p_actor_user_id": actor_user_id, "p_request_id": request_id,
         })
 
-    def find_safety_action(self, request_id: str, action: str) -> dict | None:
+    def find_safety_action(self, request_id: str, action: str, actor_user_id: str, station_id: str, lake_id: str) -> dict | None:
         record = self._client.table("audit_events").select("resulting_state").eq(
             "request_id", request_id
-        ).eq("action", action).eq("decision", "allowed").maybe_single().execute().data
+        ).eq("action", action).eq("decision", "allowed").eq(
+            "actor_user_id", actor_user_id
+        ).eq("station_id", station_id).eq("lake_id", lake_id).maybe_single().execute().data
         state = record.get("resulting_state") if isinstance(record, dict) else None
         return state if isinstance(state, dict) else None
 

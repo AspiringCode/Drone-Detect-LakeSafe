@@ -97,3 +97,14 @@ def test_denied_limit_returns_retry_after_and_audits(monkeypatch):
     assert response.status_code == 429 and response.headers["Retry-After"] == "8"
     assert events[-1].decision == "denied"
     assert events[-1].request_id == UUID(response.headers[REQUEST_ID_HEADER])
+
+
+def test_hardening_migration_serializes_new_buckets_and_binds_safety_reconciliation_to_actor_resource():
+    from pathlib import Path
+
+    sql = (Path(__file__).parents[2] / "supabase" / "migrations" / "0035_rate_limit_and_safety_idempotency_hardening.sql").read_text()
+    assert "pg_advisory_xact_lock" in sql
+    assert "audit_events_allowed_request_actor_resource_idx" in sql
+    # A supplied request ID is correlation only. Reconciliation predicates
+    # must include its owner and exact target before returning stored state.
+    assert "actor_user_id = p_actor_user_id and station_id = p_station_id and lake_id = p_lake_id" in sql
