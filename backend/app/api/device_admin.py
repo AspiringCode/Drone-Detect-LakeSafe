@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-import base64
 from datetime import timedelta
 
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.access.policy import Permission, require_recent_mfa, require_station_access
 from app.access.principal import Principal, get_principal
 from app.devices.repository import DeviceRepositoryError, get_device_repository
+from app.devices.auth import DeviceAuthenticationError, decode_base64url
 
 router = APIRouter(prefix="/api/stations/{station_id}/inventory", tags=["real-device-inventory"])
 
@@ -32,9 +31,9 @@ def _access(principal: Principal, station_id: str) -> None:
 
 def _valid_key(value: str) -> bool:
     try:
-        Ed25519PublicKey.from_public_bytes(base64.urlsafe_b64decode(value + "=" * (-len(value) % 4)))
+        decode_base64url(value, expected_length=32)
         return True
-    except Exception:
+    except DeviceAuthenticationError:
         return False
 
 @router.post("/real", status_code=status.HTTP_201_CREATED)

@@ -15,6 +15,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from app.config import DEVICE_CLOCK_SKEW_SECONDS
 
 _RFC3339_UTC = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$")
+_BASE64URL = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 class DeviceAuthenticationError(RuntimeError):
@@ -41,13 +42,17 @@ def canonical_request_bytes(drone_id: str, timestamp: str, sequence: int, body: 
     return f"{drone_id}\n{timestamp}\n{sequence}\n{hashlib.sha256(body).hexdigest()}".encode("ascii")
 
 
-def _decode(value: str) -> bytes:
-    if not isinstance(value, str) or not value:
+def decode_base64url(value: str, *, expected_length: int) -> bytes:
+    """Decode a canonical unpadded base64url value of an exact byte length."""
+    if not isinstance(value, str) or not _BASE64URL.fullmatch(value):
         raise DeviceAuthenticationError()
     try:
-        return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+        decoded = base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
     except Exception as exc:
         raise DeviceAuthenticationError() from exc
+    if len(decoded) != expected_length:
+        raise DeviceAuthenticationError()
+    return decoded
 
 
 def _parse_timestamp(timestamp: str) -> datetime:
@@ -71,8 +76,8 @@ def verify_device_request(drone_id: str, timestamp: str, sequence: int, signatur
     if not isinstance(credential, dict):
         raise DeviceAuthenticationError()
     try:
-        Ed25519PublicKey.from_public_bytes(_decode(str(credential.get("public_key", "")))).verify(
-            _decode(signature), canonical_request_bytes(drone_id, timestamp, sequence, body)
+        Ed25519PublicKey.from_public_bytes(decode_base64url(str(credential.get("public_key", "")), expected_length=32)).verify(
+            decode_base64url(signature, expected_length=64), canonical_request_bytes(drone_id, timestamp, sequence, body)
         )
     except (InvalidSignature, ValueError, DeviceAuthenticationError) as exc:
         raise DeviceAuthenticationError() from exc

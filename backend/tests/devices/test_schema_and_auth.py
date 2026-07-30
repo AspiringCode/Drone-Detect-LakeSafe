@@ -32,3 +32,12 @@ def test_replay_and_bad_signatures_are_rejected():
 def test_non_utc_or_stale_clock_is_rejected():
     private=Ed25519PrivateKey.generate(); repo=Repo(private.public_key().public_bytes_raw())
     with pytest.raises(DeviceAuthenticationError): verify_device_request("d-1","2020-01-01T00:00:00Z",1,"x",b"{}",repo)
+
+@pytest.mark.parametrize("value", ["AAAA\n", "AAAA+AAA", "!!!!", "", "AAAA="])
+def test_noncanonical_base64url_signatures_are_rejected(value):
+    private=Ed25519PrivateKey.generate(); repo=Repo(private.public_key().public_bytes_raw()); timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    with pytest.raises(DeviceAuthenticationError): verify_device_request("d-1",timestamp,1,value,b"{}",repo)
+
+def test_wrong_length_signature_is_rejected():
+    private=Ed25519PrivateKey.generate(); repo=Repo(private.public_key().public_bytes_raw()); timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    with pytest.raises(DeviceAuthenticationError): verify_device_request("d-1",timestamp,1,"AAAA",b"{}",repo)

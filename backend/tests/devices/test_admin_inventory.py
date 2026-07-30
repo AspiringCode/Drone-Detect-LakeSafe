@@ -20,3 +20,9 @@ def test_only_station_admin_can_register_real_inventory():
 def test_admin_registers_public_key_without_private_material():
     response=_client(StationRole.STATION_ADMIN).post("/api/stations/st-1/inventory/real",json={"manufacturer":"Acme","serial":"SN-1","public_key":_key()})
     assert response.status_code == 201 and "private" not in response.text.lower() and response.json()["source"] == "real"
+
+def test_registration_rejects_noncanonical_or_wrong_length_public_keys():
+    client = _client(StationRole.STATION_ADMIN)
+    for value in ("AAAA\n", "AAAA+AAA", "!!!!", "", "AAAA=", "AAAA"):
+        response=client.post("/api/stations/st-1/inventory/real",json={"manufacturer":"Acme","serial":"SN-1","public_key":value})
+        assert response.status_code in {422}
