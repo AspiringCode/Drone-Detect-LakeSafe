@@ -20,13 +20,13 @@ class SafetyRepository:
     def lake_belongs_to_station(self, station_id: str, lake_id: str) -> bool:
         return station_id == "station-1" and lake_id == "lake-1"
 
-    def set_real_autonomy(self, station_id: str, lake_id: str, enabled: bool, reason: str, actor_user_id: str):
-        self.calls.append(("autonomy", (station_id, lake_id, enabled, reason, actor_user_id)))
+    def set_real_autonomy(self, station_id: str, lake_id: str, enabled: bool, reason: str, actor_user_id: str, request_id: str):
+        self.calls.append(("autonomy", (station_id, lake_id, enabled, reason, actor_user_id, request_id)))
         self.status = {**self.status, "autonomy": "pending_ack" if enabled else "safe_return_requested"}
         return self.status
 
-    def request_safe_return(self, station_id: str, lake_id: str, reason: str, actor_user_id: str):
-        self.calls.append(("safe-return", (station_id, lake_id, reason, actor_user_id)))
+    def request_safe_return(self, station_id: str, lake_id: str, reason: str, actor_user_id: str, request_id: str):
+        self.calls.append(("safe-return", (station_id, lake_id, reason, actor_user_id, request_id)))
         self.status = {**self.status, "autonomy": "safe_return_requested"}
         return self.status
 
@@ -43,6 +43,9 @@ class SafetyRepository:
 
     def append_audit(self, event) -> None:
         self.calls.append(("audit", event))
+
+    def find_safety_action(self, request_id: str, action: str):
+        return None
 
 
 class Reconciler:
@@ -130,6 +133,32 @@ def test_failed_safety_change_records_failed_audit_without_false_allowed_entry()
     assert repository.calls[0][0] == "audit"
     assert repository.calls[0][1].decision == "failed"
     assert repository.calls[0][1].action == "real_fleet.autonomy"
+
+
+def test_timeout_after_committed_safety_action_reconciles_without_false_failed_audit():
+    class TimeoutAfterCommitRepository(SafetyRepository):
+        def __init__(self) -> None:
+            super().__init__()
+            self.committed: dict[str, dict] = {}
+
+        def set_real_autonomy(self, station_id, lake_id, enabled, reason, actor_user_id, request_id):
+            self.committed[request_id] = {
+                "station_id": station_id, "lake_id": lake_id, "autonomy": "pending_ack",
+                "active_assignments": (), "pending_assignments": (), "last_acknowledged_versions": {},
+            }
+            raise TimeoutError("response lost after commit")
+
+        def find_safety_action(self, request_id: str, action: str):
+            return self.committed.get(request_id)
+
+    repository, reconciler = TimeoutAfterCommitRepository(), Reconciler()
+    response = _client(_principal(StationRole.SAFETY_SUPERVISOR), repository, reconciler).post(
+        "/api/stations/station-1/lakes/lake-1/safety/autonomy", json={"enabled": True, "reason": "shift start"}
+    )
+    assert response.status_code == 202
+    assert response.json()["autonomy"] == "pending_ack"
+    assert [call[0] for call in repository.calls] == []
+    assert reconciler.calls == [("lake-1", "real_safety_policy_changed")]
 
 
 def test_safety_controls_require_reason_recent_mfa_and_exact_lake():

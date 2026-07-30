@@ -68,7 +68,7 @@ def _rate_limit(principal: Principal, lake_id: str, action: str) -> None:
     queue.append(now)
 
 
-def _record_failed_action(repository, principal: Principal, station_id: str, lake_id: str, action: str, reason: str) -> None:
+def _record_failed_action(repository, principal: Principal, station_id: str, lake_id: str, request_id: str, action: str, reason: str) -> None:
     """A failed request never receives a false allowed audit event.
 
     The successful database RPC writes its own allowed event transactionally.
@@ -76,7 +76,7 @@ def _record_failed_action(repository, principal: Principal, station_id: str, lak
     """
     try:
         repository.append_audit(AuditEventCreate(
-            actor_user_id=principal.user_id, actor_device_id=None, request_id=str(uuid4()),
+            actor_user_id=principal.user_id, actor_device_id=None, request_id=request_id,
             action=action, decision="failed", reason=reason, station_id=station_id,
             lake_id=lake_id, source_context={"source": "real", "phase": "mutation"},
         ))
@@ -85,13 +85,20 @@ def _record_failed_action(repository, principal: Principal, station_id: str, lak
 
 
 def _apply_high_impact(repository, principal: Principal, station_id: str, lake_id: str, action: str, reason: str, mutation):
+    request_id = str(uuid4())
     try:
-        return mutation()
+        return mutation(request_id)
     except HTTPException:
-        _record_failed_action(repository, principal, station_id, lake_id, action, reason)
+        _record_failed_action(repository, principal, station_id, lake_id, request_id, action, reason)
         raise
     except Exception as exc:
-        _record_failed_action(repository, principal, station_id, lake_id, action, reason)
+        try:
+            committed = repository.find_safety_action(request_id, action)
+        except Exception as reconciliation_error:
+            raise HTTPException(status_code=503, detail="Real fleet safety result is indeterminate") from reconciliation_error
+        if committed is not None:
+            return committed
+        _record_failed_action(repository, principal, station_id, lake_id, request_id, action, reason)
         raise HTTPException(status_code=503, detail="Real fleet safety change is unavailable") from exc
 
 
@@ -136,7 +143,7 @@ def set_real_autonomy(station_id: str, lake_id: str, value: AutonomyPolicyInput,
     _rate_limit(principal, lake_id, "autonomy")
     outcome = _apply_high_impact(
         repository, principal, station_id, lake_id, "real_fleet.autonomy", value.reason,
-        lambda: repository.set_real_autonomy(station_id, lake_id, value.enabled, value.reason, principal.user_id),
+        lambda request_id: repository.set_real_autonomy(station_id, lake_id, value.enabled, value.reason, principal.user_id, request_id),
     )
     return _reconcile(get_real_capacity_reconciler(), lake_id, "real_safety_policy_changed", outcome)
 
@@ -151,6 +158,6 @@ def safe_return(station_id: str, lake_id: str, value: SafeReturnInput, principal
     _rate_limit(principal, lake_id, "safe_return")
     outcome = _apply_high_impact(
         repository, principal, station_id, lake_id, "real_fleet.safe_return", value.reason,
-        lambda: repository.request_safe_return(station_id, lake_id, value.reason, principal.user_id),
+        lambda request_id: repository.request_safe_return(station_id, lake_id, value.reason, principal.user_id, request_id),
     )
     return _reconcile(get_real_capacity_reconciler(), lake_id, "real_safe_return_requested", outcome)
