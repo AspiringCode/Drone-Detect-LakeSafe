@@ -12,9 +12,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.access.policy import Permission, require_recent_mfa, require_station_access
 from app.access.principal import Principal, get_principal
+from app.audit import AuditEvent, AuditUnavailable, record_high_impact
 from app.autonomy.safety import get_safety_repository, mark_gateway_unavailable
 from app.devices.reconciler import RealCapacityReconciler
-from app.stations.models import AuditEventCreate
 
 
 router = APIRouter(prefix="/api/stations/{station_id}/lakes/{lake_id}/safety", tags=["real-fleet-safety"])
@@ -68,12 +68,42 @@ def _rate_limit(principal: Principal, lake_id: str, action: str) -> None:
     queue.append(now)
 
 
-def _audit(repository, principal: Principal, station_id: str, lake_id: str, action: str, reason: str, resulting_state: dict) -> None:
-    repository.append_audit(AuditEventCreate(
-        actor_user_id=principal.user_id, actor_device_id=None, request_id=str(uuid4()),
-        action=action, decision="allowed", reason=reason, station_id=station_id,
-        lake_id=lake_id, resulting_state=resulting_state, source_context={"source": "real"},
-    ))
+class _RepositoryAuditSink:
+    """Adapts the service-only repository to the typed audit writer boundary."""
+
+    def __init__(self, repository) -> None:
+        self._repository = repository
+
+    def record(self, event: AuditEvent) -> None:
+        from app.stations.models import AuditEventCreate
+
+        try:
+            self._repository.append_audit(AuditEventCreate(
+                actor_user_id=str(event.actor_user_id) if event.actor_user_id else None,
+                actor_device_id=str(event.actor_device_id) if event.actor_device_id else None,
+                request_id=str(event.request_id), action=event.action, decision=event.decision,
+                reason=event.reason, station_id=str(event.station_id) if event.station_id else None,
+                lake_id=event.lake_id, session_reference=event.session_reference,
+                prior_state=event.prior_state, resulting_state=event.resulting_state,
+                source_context=event.source_context,
+            ))
+        except Exception as exc:
+            raise AuditUnavailable("Security audit persistence is unavailable") from exc
+
+
+def _high_impact_event(principal: Principal, station_id: str, lake_id: str, action: str, reason: str, request: dict) -> AuditEvent:
+    return AuditEvent(
+        actor_user_id=principal.user_id, request_id=uuid4(), action=action,
+        decision="allowed", reason=reason, station_id=station_id, lake_id=lake_id,
+        resulting_state={"requested": request}, source_context={"source": "real", "phase": "pre-mutation"},
+    )
+
+
+def _record_before_high_impact(repository, event: AuditEvent, mutation):
+    try:
+        return record_high_impact(_RepositoryAuditSink(repository), event, mutation)
+    except AuditUnavailable as exc:
+        raise HTTPException(status_code=503, detail="Security audit service is unavailable") from exc
 
 
 def _reconcile(reconciler, lake_id: str, trigger: str, outcome: dict) -> dict:
@@ -115,8 +145,11 @@ def set_real_autonomy(station_id: str, lake_id: str, value: AutonomyPolicyInput,
     if not repository.lake_belongs_to_station(station_id, lake_id):
         raise HTTPException(status_code=404, detail="Lake not found")
     _rate_limit(principal, lake_id, "autonomy")
-    outcome = repository.set_real_autonomy(station_id, lake_id, value.enabled, value.reason, principal.user_id)
-    _audit(repository, principal, station_id, lake_id, "real_fleet.autonomy", value.reason, outcome)
+    outcome = _record_before_high_impact(
+        repository,
+        _high_impact_event(principal, station_id, lake_id, "real_fleet.autonomy", value.reason, {"enabled": value.enabled}),
+        lambda: repository.set_real_autonomy(station_id, lake_id, value.enabled, value.reason, principal.user_id),
+    )
     return _reconcile(get_real_capacity_reconciler(), lake_id, "real_safety_policy_changed", outcome)
 
 
@@ -128,6 +161,9 @@ def safe_return(station_id: str, lake_id: str, value: SafeReturnInput, principal
     if not repository.lake_belongs_to_station(station_id, lake_id):
         raise HTTPException(status_code=404, detail="Lake not found")
     _rate_limit(principal, lake_id, "safe_return")
-    outcome = repository.request_safe_return(station_id, lake_id, value.reason, principal.user_id)
-    _audit(repository, principal, station_id, lake_id, "real_fleet.safe_return", value.reason, outcome)
+    outcome = _record_before_high_impact(
+        repository,
+        _high_impact_event(principal, station_id, lake_id, "real_fleet.safe_return", value.reason, {}),
+        lambda: repository.request_safe_return(station_id, lake_id, value.reason, principal.user_id),
+    )
     return _reconcile(get_real_capacity_reconciler(), lake_id, "real_safe_return_requested", outcome)

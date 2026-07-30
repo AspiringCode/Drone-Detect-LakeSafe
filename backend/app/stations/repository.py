@@ -148,7 +148,11 @@ class SupabaseWorkflowRepository:
         ).eq("status", "pending").order("created_at").execute().data or []
 
     def append_audit(self, value: AuditEventCreate) -> None:
-        self._client.table("audit_events").insert(_payload(value)).execute()
+        # This repository is constructed only from the service credential; the
+        # typed writer converts any storage failure into a fail-closed signal.
+        from app.audit import AuditEvent, AuditWriter
+
+        AuditWriter(self._client).record(AuditEvent(**_payload(value)))
 
     def _rpc_one(self, name: str, parameters: dict, message: str, *, allow_empty: bool = False) -> dict | None:
         result = self._client.rpc(name, parameters).execute()

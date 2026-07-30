@@ -55,7 +55,7 @@ class Reconciler:
 
 def _principal(role: StationRole, *, recent_mfa: bool = True, station_id: str = "station-1") -> Principal:
     amr = ({"method": "totp", "timestamp": datetime.now(timezone.utc).timestamp()},) if recent_mfa else ()
-    return Principal("user-1", "officer@example.gov", "aal2", "officer", "verified", (StationMembership(station_id, "Station", "active", frozenset({role})),), amr)
+    return Principal("00000000-0000-0000-0000-000000000001", "officer@example.gov", "aal2", "officer", "verified", (StationMembership(station_id, "Station", "active", frozenset({role})),), amr)
 
 
 def _client(principal: Principal, repository: SafetyRepository, reconciler: Reconciler) -> TestClient:
@@ -110,9 +110,22 @@ def test_safety_supervisor_with_recent_mfa_changes_policy_audits_and_reconciles(
     )
     assert response.status_code == 202
     assert response.json()["autonomy"] == "pending_ack"
-    assert repository.calls[0][0] == "autonomy"
-    assert repository.calls[1][0] == "audit"
+    assert repository.calls[0][0] == "audit"
+    assert repository.calls[1][0] == "autonomy"
     assert reconciler.calls == [("lake-1", "real_safety_policy_changed")]
+
+
+def test_safety_change_fails_closed_when_pre_audit_is_unavailable():
+    class UnavailableAuditRepository(SafetyRepository):
+        def append_audit(self, event) -> None:
+            raise RuntimeError("audit database unavailable")
+
+    repository = UnavailableAuditRepository()
+    response = _client(_principal(StationRole.SAFETY_SUPERVISOR), repository, Reconciler()).post(
+        "/api/stations/station-1/lakes/lake-1/safety/autonomy", json={"enabled": True, "reason": "shift start"}
+    )
+    assert response.status_code == 503
+    assert repository.calls == []
 
 
 def test_safety_controls_require_reason_recent_mfa_and_exact_lake():
@@ -130,7 +143,8 @@ def test_safe_return_requests_fleet_policy_without_coordinates():
     )
     assert response.status_code == 202
     assert response.json()["autonomy"] == "safe_return_requested"
-    assert repository.calls[0][0] == "safe-return"
+    assert repository.calls[0][0] == "audit"
+    assert repository.calls[1][0] == "safe-return"
     assert reconciler.calls == [("lake-1", "real_safe_return_requested")]
     assert client_payload_rejects_coordinates(_client(_principal(StationRole.SAFETY_SUPERVISOR), SafetyRepository(), Reconciler()))
 
