@@ -31,6 +31,7 @@ class DevicePrincipal:
     drone_id: str
     station_id: str
     credential_id: str
+    sequence: int | None = None
 
 
 class DeviceAuthRepository(Protocol):
@@ -67,7 +68,7 @@ def _parse_timestamp(timestamp: str) -> datetime:
     return value
 
 
-def verify_device_request(drone_id: str, timestamp: str, sequence: int, signature: str, body: bytes, repository: DeviceAuthRepository) -> DevicePrincipal:
+def verify_device_request(drone_id: str, timestamp: str, sequence: int, signature: str, body: bytes, repository: DeviceAuthRepository, *, claim_sequence: bool = True) -> DevicePrincipal:
     """Verify before parsing a device payload and atomically consume its sequence."""
     if not isinstance(sequence, int) or isinstance(sequence, bool) or sequence < 0 or not isinstance(body, bytes):
         raise DeviceAuthenticationError()
@@ -81,9 +82,9 @@ def verify_device_request(drone_id: str, timestamp: str, sequence: int, signatur
         )
     except (InvalidSignature, ValueError, DeviceAuthenticationError) as exc:
         raise DeviceAuthenticationError() from exc
-    if not repository.claim_sequence(drone_id, sequence):
+    if claim_sequence and not repository.claim_sequence(drone_id, sequence):
         raise DeviceReplayError()
     station_id, credential_id = credential.get("station_id"), credential.get("credential_id")
     if not isinstance(station_id, str) or not isinstance(credential_id, str):
         raise DeviceAuthenticationError()
-    return DevicePrincipal(drone_id, station_id, credential_id)
+    return DevicePrincipal(drone_id, station_id, credential_id, sequence)

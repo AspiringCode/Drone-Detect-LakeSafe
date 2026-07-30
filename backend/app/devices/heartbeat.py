@@ -41,11 +41,13 @@ class HeartbeatService:
 
     def record(self, principal: DevicePrincipal, heartbeat: dict | HeartbeatPayload, *, received_at: datetime | None = None) -> HeartbeatResult:
         value = heartbeat if isinstance(heartbeat, HeartbeatPayload) else HeartbeatPayload.model_validate(heartbeat)
+        if principal.sequence is None:
+            raise ValueError("heartbeat is missing its authenticated sequence")
         outcome = self._repository.record_heartbeat(principal, value, received_at or datetime.now(timezone.utc))
         eligible = bool(outcome.get("eligible"))
         lake_id = outcome.get("lake_id")
         transitioned = bool(outcome.get("eligibility_changed"))
         trigger = "heartbeat_recovery" if eligible and transitioned else None
-        if trigger and isinstance(lake_id, str):
-            self._autonomy.reconcile_lake(lake_id, trigger)
+        # The database transaction queues reconciliation together with the
+        # capacity transition.  A leased worker invokes autonomy after commit.
         return HeartbeatResult(eligible=eligible, reconcile_trigger=trigger)

@@ -47,6 +47,7 @@ class SupabaseDeviceRepository(DeviceAuthRepository):
         return self._one("record_real_heartbeat", {
             "p_drone_id": principal.drone_id, "p_station_id": principal.station_id,
             "p_credential_id": principal.credential_id, "p_battery_percent": heartbeat.battery_percent,
+            "p_sequence": principal.sequence,
             "p_health": heartbeat.health, "p_connected": heartbeat.connected,
             "p_received_at": received_at.isoformat(),
         })
@@ -61,6 +62,30 @@ class SupabaseDeviceRepository(DeviceAuthRepository):
     def request_real_capacity_reconciliation(self, lake_id: str, trigger: str) -> None:
         try:
             self._client.rpc("request_real_capacity_reconciliation", {"p_lake_id": lake_id, "p_trigger": trigger}).execute()
+        except Exception as exc:
+            raise DeviceRepositoryError("Device gateway is unavailable") from exc
+
+    def reconcile_real_capacity(self, lake_id: str, trigger: str) -> None:
+        try:
+            self._client.rpc("reconcile_real_capacity", {"p_lake_id": lake_id, "p_trigger": trigger}).execute()
+        except Exception as exc:
+            raise DeviceRepositoryError("Real capacity reconciliation is unavailable") from exc
+
+    def claim_real_capacity_reconciliations(self, limit: int = 20, lease_seconds: int = 30) -> tuple[dict, ...]:
+        try:
+            return tuple(self._client.rpc("claim_real_capacity_reconciliations", {"p_limit": limit, "p_lease_seconds": lease_seconds}).execute().data or [])
+        except Exception as exc:
+            raise DeviceRepositoryError("Device gateway is unavailable") from exc
+
+    def complete_real_capacity_reconciliation(self, item: dict) -> bool:
+        try:
+            return self._client.rpc("complete_real_capacity_reconciliation", {"p_reconciliation_id": item["reconciliation_id"], "p_claim_token": item["claim_token"], "p_generation": item["generation"]}).execute().data is True
+        except Exception as exc:
+            raise DeviceRepositoryError("Device gateway is unavailable") from exc
+
+    def release_real_capacity_reconciliation(self, item: dict) -> bool:
+        try:
+            return self._client.rpc("release_real_capacity_reconciliation", {"p_reconciliation_id": item["reconciliation_id"], "p_claim_token": item["claim_token"]}).execute().data is True
         except Exception as exc:
             raise DeviceRepositoryError("Device gateway is unavailable") from exc
 

@@ -22,9 +22,19 @@ class HeartbeatMonitor:
 
     def scan(self, now: datetime | None = None) -> tuple[str, ...]:
         lake_ids = tuple(dict.fromkeys(self._repository.expire_stale_eligible_real(now or datetime.now(timezone.utc), self._ttl_seconds)))
-        for lake_id in lake_ids:
-            self._autonomy.reconcile_lake(lake_id, "heartbeat_expired")
+        self.drain_reconciliations()
         return lake_ids
+
+    def drain_reconciliations(self) -> tuple[str, ...]:
+        completed: list[str] = []
+        for item in self._repository.claim_real_capacity_reconciliations():
+            try:
+                self._autonomy.reconcile_lake(item["lake_id"], item["trigger"])
+                if self._repository.complete_real_capacity_reconciliation(item):
+                    completed.append(item["lake_id"])
+            except Exception:
+                self._repository.release_real_capacity_reconciliation(item)
+        return tuple(completed)
 
 
 async def monitor_loop(monitor: HeartbeatMonitor, *, interval_seconds: float = 5.0) -> None:

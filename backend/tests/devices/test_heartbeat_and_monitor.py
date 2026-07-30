@@ -18,18 +18,32 @@ class Repository:
     def __init__(self) -> None:
         self.records: list[dict] = []
         self.expired = False
+        self.queue: list[dict] = []
 
     def record_heartbeat(self, principal, heartbeat, received_at):
         self.records.append({"principal": principal, "heartbeat": heartbeat, "received_at": received_at})
         recovered = self.expired
         self.expired = False
+        if recovered:
+            self.queue.append({"reconciliation_id": "r-1", "lake_id": "lake-1", "trigger": "heartbeat_recovery", "generation": 1, "claim_token": "c-1"})
         return {"eligible": True, "lake_id": "lake-1", "eligibility_changed": recovered}
+
+    def record_sequences(self, principals):
+        return [principal.sequence for principal in principals]
 
     def expire_stale_eligible_real(self, now, ttl_seconds):
         if self.expired:
             return ()
         self.expired = True
+        self.queue.append({"reconciliation_id": "r-1", "lake_id": "lake-1", "trigger": "heartbeat_expired", "generation": 1, "claim_token": "c-1"})
         return ("lake-1",)
+
+    def claim_real_capacity_reconciliations(self):
+        values, self.queue = self.queue, []
+        return values
+
+    def complete_real_capacity_reconciliation(self, item): return True
+    def release_real_capacity_reconciliation(self, item): return True
 
 
 class Autonomy:
@@ -65,11 +79,11 @@ def test_authenticated_recovery_triggers_replan():
     repository, autonomy = Repository(), Autonomy()
     repository.expired = True
     result = HeartbeatService(repository, autonomy).record(
-        DevicePrincipal("d-1", "station-1", "credential-1"), heartbeat()
+        DevicePrincipal("d-1", "station-1", "credential-1", 1), heartbeat()
     )
     assert result.eligible is True
     assert result.reconcile_trigger == "heartbeat_recovery"
-    assert autonomy.calls == [("lake-1", "heartbeat_recovery")]
+    assert autonomy.calls == []
 
 
 def test_stale_heartbeat_marks_offline_once():
@@ -99,3 +113,27 @@ def test_heartbeat_authenticates_raw_body_before_json_parsing(monkeypatch):
         headers={"X-Device-Timestamp": timestamp, "X-Device-Sequence": "1", "X-Device-Signature": "A" * 86},
     )
     assert response.status_code == 401
+
+
+def test_malformed_sequence_header_is_device_authentication_failure(monkeypatch):
+    app = FastAPI()
+    app.include_router(devices.router)
+    response = TestClient(app).post(
+        "/api/devices/d-1/heartbeat", content=b"not-json",
+        headers={"X-Device-Timestamp": "2026-01-01T00:00:00Z", "X-Device-Sequence": "1e2", "X-Device-Signature": "A" * 86},
+    )
+    assert response.status_code == 401
+
+
+def test_authenticated_sequences_remain_bound_to_their_heartbeat_records():
+    """Concurrent valid requests must not append a later credential sequence."""
+    from app.devices.auth import verify_device_request
+
+    private = Ed25519PrivateKey.generate()
+    repository = AuthRepository(private.public_key().public_bytes_raw())
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    principals = [
+        verify_device_request("d-1", timestamp, sequence, _signature(private, "d-1", timestamp, sequence, b"{}"), b"{}", repository, claim_sequence=False)
+        for sequence in (1, 2)
+    ]
+    assert repository.record_sequences(principals) == [1, 2]
