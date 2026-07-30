@@ -30,6 +30,9 @@ class SimulationEngine:
         self._confirmation: dict | None = None
         self._patrol_waypoints: dict[str, list[LatLon]] = {}
         self._patrol_index: dict[str, int] = {}
+        # This is intentionally an acknowledgement, not desired state.  It is
+        # advanced only by a successfully applied simulated command.
+        self.acknowledged_desired_versions: dict[str, int] = {}
         self._assign_patrol_params()
         self._initial_assign()
 
@@ -52,6 +55,60 @@ class SimulationEngine:
                 drone.assigned_zone = zone_id
                 drone.status = DroneStatus.EN_ROUTE
                 self.targets[drone.drone_id] = zone_by_id[zone_id].centroid
+
+    def apply_plan(
+        self,
+        zones: list[RiskZone],
+        assignments: dict[str, str],
+        desired_state_versions: dict[str, int] | None = None,
+    ) -> None:
+        """Atomically replace simulated zone/assignment state after validation.
+
+        All references are checked before touching the current engine.  Existing
+        patrol state is deliberately discarded because it belongs to the old
+        plan; the new plan starts every assigned drone en route to its new cell.
+        """
+        zone_by_id = {zone.zone_id: zone for zone in zones}
+        if len(zone_by_id) != len(zones):
+            raise ValueError("zone IDs must be unique")
+        drone_by_id = {drone.drone_id: drone for drone in self.drones}
+        if len(drone_by_id) != len(self.drones):
+            raise ValueError("drone IDs must be unique")
+        for drone_id, zone_id in assignments.items():
+            if drone_id not in drone_by_id:
+                raise ValueError(f"unknown drone: {drone_id}")
+            if zone_id not in zone_by_id:
+                raise ValueError(f"unknown zone: {zone_id}")
+        versions = desired_state_versions or {}
+        if not set(versions).issubset(assignments):
+            raise ValueError("versions require an assignment")
+        for drone_id, version in versions.items():
+            if not isinstance(version, int) or version < 1:
+                raise ValueError(f"invalid desired state version for {drone_id}")
+            if version < self.acknowledged_desired_versions.get(drone_id, 0):
+                raise ValueError(f"stale desired state version for {drone_id}")
+
+        circular_zones = [zone for zone in zones if zone.radius_m is not None]
+        count = len(circular_zones)
+        patrol_params = {
+            zone.zone_id: ((360.0 / count) * rank if count else 0.0, rank % 2 == 0)
+            for rank, zone in enumerate(circular_zones)
+        }
+        next_targets = {drone_id: zone_by_id[zone_id].centroid for drone_id, zone_id in assignments.items()}
+
+        # The assignments above have fully validated.  This is the sole mutation
+        # boundary so invalid plans cannot leave a partially applied runtime.
+        self.zones = list(zones)
+        self.targets = next_targets
+        self._zone_patrol_params = patrol_params
+        self._patrol_waypoints = {}
+        self._patrol_index = {}
+        self._confirmation = None
+        for drone in self.drones:
+            zone_id = assignments.get(drone.drone_id)
+            drone.assigned_zone = zone_id
+            drone.status = DroneStatus.EN_ROUTE if zone_id else DroneStatus.IDLE
+        self.acknowledged_desired_versions.update(versions)
 
     def _move_toward(self, drone: Drone, target: LatLon, dt: float, speed_mps: float = 15.0) -> bool:
         dist = haversine_m(drone.pos, target)
@@ -112,7 +169,6 @@ class SimulationEngine:
         self.altitudes = deconflict(self.drones, self.altitudes)
 
         for drone in self.drones:
-            drone.source = "simulated"
             if drone.status == DroneStatus.PATROLLING and drone.drone_id in self._patrol_waypoints:
                 self._advance_patrol(drone, dt)
                 continue

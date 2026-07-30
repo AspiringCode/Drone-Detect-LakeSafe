@@ -48,6 +48,15 @@ def test_step_deconflicts_altitudes():
     assert all(d.source == "simulated" for d in st["drones"])
 
 
+def test_step_does_not_rewrite_a_drone_transport_source():
+    eng = mk_engine(1)
+    eng.drones[0].source = "real"
+
+    eng.step(1.0)
+
+    assert eng.drones[0].source == "real"
+
+
 def mk_circular_zone(zone_id: str, at: LatLon, radius_m: float = 60.0) -> RiskZone:
     return RiskZone(zone_id, at, [at, at, at, at], 1.0, {}, is_proxy=False, radius_m=radius_m)
 
