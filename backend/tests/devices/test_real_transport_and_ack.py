@@ -43,6 +43,9 @@ class Inventory:
     def real_inventory(self, drone_id: str):
         return self.rows.get(drone_id)
 
+    def lake_station_id(self, lake_id: str):
+        return "station-1" if lake_id == "lake-1" else None
+
 
 def test_real_adapter_rejects_simulated_inventory():
     from app.autonomy.adapters.real import RealAdapter, TransportIsolationError
@@ -87,12 +90,40 @@ def test_known_key_reference_cannot_be_used_as_signing_secret():
 
 
 def test_ack_database_contract_checks_version_before_acknowledging_command():
-    sql = (Path(__file__).parents[3] / "supabase" / "migrations" / "0024_real_command_acknowledgements.sql").read_text().lower()
+    sql = (Path(__file__).parents[3] / "supabase" / "migrations" / "0025_real_outbox_claim_scope.sql").read_text().lower()
     function = sql.split("create or replace function public.record_real_command_acknowledgement", 1)[1]
     assert "p_version integer" in function
     assert "v_version <> p_version" in function
     assert function.index("v_version <> p_version") < function.index("insert into public.command_acknowledgements")
     assert function.index("v_version <> p_version") < function.index("status='acknowledged'")
+    assert "acknowledged_state_version" in function
+    assert function.index("from public.drone_inventory") < function.index("insert into public.command_acknowledgements")
+    assert function.index("v_acknowledged > p_version") < function.index("insert into public.command_acknowledgements")
+
+
+def test_real_claim_database_contract_is_source_and_lake_station_scoped():
+    sql = (Path(__file__).parents[3] / "supabase" / "migrations" / "0025_real_outbox_claim_scope.sql").read_text().lower()
+    assert "p_station_id uuid" in sql and "p_lake_id text" in sql
+    assert "inventory.source = 'real'" in sql
+    assert "command.station_id = p_station_id" in sql and "command.lake_id = p_lake_id" in sql
+
+
+def test_repository_claims_real_commands_with_exact_station_and_lake():
+    from app.autonomy.repository import SupabaseAutonomyRepository
+
+    class Result:
+        data = []
+
+    class Client:
+        def __init__(self): self.call = None
+        def rpc(self, name, payload):
+            self.call = (name, payload)
+            return self
+        def execute(self): return Result()
+
+    client = Client()
+    assert SupabaseAutonomyRepository(client).claim_real_pending("station-1", "lake-1", 7) == ()
+    assert client.call == ("claim_real_autonomy_outbox", {"p_station_id": "station-1", "p_lake_id": "lake-1", "p_limit": 7})
 
 
 def test_real_autonomy_publisher_stays_dormant_without_a_resolved_secret(monkeypatch):
@@ -117,7 +148,7 @@ def test_resolved_real_gateway_starts_real_only_publisher(monkeypatch):
     outbox = InMemoryAutonomyRepository(station_id="station-1")
     outbox.enqueue(command_for())
     assert reconciler.configure_real_autonomy_service(app, device_repository=Inventory(), secret_provider=Secrets(), gateway=gateway, autonomy_repository=outbox) is True
-    assert app.state.real_autonomy_service.reconcile_lake("lake-1", "heartbeat_recovery") == ()
+    assert app.state.real_autonomy_service.reconcile_lake("lake-1", "heartbeat_recovery") == ("c5",)
     assert len(gateway.calls) == 1
     assert outbox.acknowledged_version("d1") == 0
 

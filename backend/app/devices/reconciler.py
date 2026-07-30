@@ -29,12 +29,27 @@ def has_real_autonomy_service(application) -> bool:
 class RealAutonomyPublisher:
     """Publishes precomputed real commands; it never accepts steering input."""
 
-    def __init__(self, publisher) -> None:
-        self._publisher = publisher
+    def __init__(self, repository, adapter, lake_repository, *, batch_size: int = 20) -> None:
+        self._repository = repository
+        self._adapter = adapter
+        self._lake_repository = lake_repository
+        self._batch_size = batch_size
 
     def reconcile_lake(self, lake_id: str, trigger: str, expected_plan_id: str | None = None) -> tuple[str, ...]:
-        del lake_id, trigger, expected_plan_id
-        return self._publisher.publish_pending()
+        del trigger, expected_plan_id
+        station_id = self._lake_repository.lake_station_id(lake_id)
+        if not station_id:
+            raise RuntimeError("real capacity lake is unavailable")
+        published: list[str] = []
+        for command in self._repository.claim_real_pending(station_id, lake_id, self._batch_size):
+            try:
+                receipt = self._adapter.publish(command)
+            except Exception:
+                self._repository.release(command.command_id)
+                continue
+            if receipt.command_id:
+                published.append(receipt.command_id)
+        return tuple(published)
 
 
 def configure_real_autonomy_service(application, *, device_repository, secret_provider=None, gateway=None, autonomy_repository=None) -> bool:
@@ -47,14 +62,13 @@ def configure_real_autonomy_service(application, *, device_repository, secret_pr
         return False
     try:
         from app.autonomy.adapters.real import RealAdapter
-        from app.autonomy.outbox import OutboxPublisher
         from app.autonomy.repository import SupabaseAutonomyRepository
         repository = autonomy_repository or SupabaseAutonomyRepository(device_repository._client)
         adapter = RealAdapter(
             device_repository, gateway or HttpRealGatewayClient(), gateway_url=REAL_GATEWAY_URL,
             signing_key_ref=REAL_GATEWAY_SIGNING_KEY_REF, secret_provider=provider,
         )
-        application.state.real_autonomy_service = RealAutonomyPublisher(OutboxPublisher(repository, adapter))
+        application.state.real_autonomy_service = RealAutonomyPublisher(repository, adapter, device_repository)
     except (AttributeError, RuntimeError, ValueError):
         application.state.real_autonomy_service = None
         return False

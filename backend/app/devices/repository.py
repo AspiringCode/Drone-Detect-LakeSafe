@@ -75,6 +75,13 @@ class SupabaseDeviceRepository(DeviceAuthRepository):
         except Exception as exc:
             raise DeviceRepositoryError("Device gateway is unavailable") from exc
 
+    def lake_station_id(self, lake_id: str) -> str | None:
+        try:
+            row = self._client.table("lakes").select("station_id").eq("lake_id", lake_id).maybe_single().execute().data
+            return str(row["station_id"]) if isinstance(row, dict) and row.get("station_id") else None
+        except Exception as exc:
+            raise DeviceRepositoryError("Device gateway is unavailable") from exc
+
     def command_for_ack(self, command_id: str) -> dict | None:
         try:
             row = self._client.table("command_outbox").select("command_id,inventory_id,station_id,lake_id,desired_state_version,status,payload").eq("command_id", command_id).maybe_single().execute().data

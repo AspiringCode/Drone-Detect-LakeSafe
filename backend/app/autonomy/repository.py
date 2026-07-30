@@ -22,6 +22,7 @@ class AutonomyRepository(Protocol):
     def commit_plan_commands(self, expected_plan_id: str | None, candidate_plan_id: str, assignments, commands: tuple[CommandEnvelope, ...]) -> bool: ...
     def active_plan_id(self, lake_id: str) -> str | None: ...
     def claim_pending(self, limit: int) -> tuple[CommandEnvelope, ...]: ...
+    def claim_real_pending(self, station_id: str, lake_id: str, limit: int) -> tuple[CommandEnvelope, ...]: ...
     def acknowledge(self, command_id: str) -> bool: ...
     def release(self, command_id: str) -> bool: ...
 
@@ -74,6 +75,17 @@ class InMemoryAutonomyRepository:
         claimed: list[CommandEnvelope] = []
         for key, command in sorted(self._commands.items()):
             if len(claimed) >= limit or command.status != "pending":
+                continue
+            updated = CommandEnvelope(**{**command.__dict__, "command_id": command.command_id or key, "status": "claimed"})
+            self._commands[key] = updated
+            claimed.append(updated)
+        return tuple(claimed)
+
+    def claim_real_pending(self, station_id: str, lake_id: str, limit: int) -> tuple[CommandEnvelope, ...]:
+        claimed: list[CommandEnvelope] = []
+        for key, command in sorted(self._commands.items()):
+            if (len(claimed) >= limit or command.status != "pending" or command.station_id != station_id
+                    or command.lake_id != lake_id or command.payload.get("source") != "real"):
                 continue
             updated = CommandEnvelope(**{**command.__dict__, "command_id": command.command_id or key, "status": "claimed"})
             self._commands[key] = updated
@@ -145,6 +157,14 @@ class SupabaseAutonomyRepository:
 
     def claim_pending(self, limit: int) -> tuple[CommandEnvelope, ...]:
         rows = self._client.rpc("claim_autonomy_outbox", {"p_limit": limit}).execute().data or []
+        return self._commands_from_rows(rows)
+
+    def claim_real_pending(self, station_id: str, lake_id: str, limit: int) -> tuple[CommandEnvelope, ...]:
+        rows = self._client.rpc("claim_real_autonomy_outbox", {"p_station_id": station_id, "p_lake_id": lake_id, "p_limit": limit}).execute().data or []
+        return self._commands_from_rows(rows)
+
+    @staticmethod
+    def _commands_from_rows(rows) -> tuple[CommandEnvelope, ...]:
         return tuple(CommandEnvelope(
             row["idempotency_key"], str(row["inventory_id"]), str(row["station_id"]), row["lake_id"],
             row["desired_state_version"], row["command_type"], str(row["zone_assignment_id"]) if row.get("zone_assignment_id") else None,
