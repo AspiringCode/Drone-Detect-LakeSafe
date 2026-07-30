@@ -73,6 +73,7 @@ returns setof public.command_outbox language sql security definer set search_pat
       join public.drone_inventory inventory on inventory.inventory_id=command.inventory_id
       join public.drone_credentials credential on credential.drone_id=inventory.inventory_id and credential.station_id=command.station_id
       where command.station_id = p_station_id and command.lake_id = p_lake_id
+        and inventory.station_id = command.station_id and inventory.lake_id = command.lake_id
         and inventory.source = 'real' and credential.credential_state='active'
         and (command.status='pending' or (command.status='claimed' and command.claimed_at < now() - interval '5 minutes'))
       order by command.created_at,command.command_id for update of command skip locked limit greatest(1,least(p_limit,100))

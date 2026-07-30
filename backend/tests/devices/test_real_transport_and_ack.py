@@ -106,6 +106,8 @@ def test_real_claim_database_contract_is_source_and_lake_station_scoped():
     assert "p_station_id uuid" in sql and "p_lake_id text" in sql
     assert "inventory.source = 'real'" in sql
     assert "command.station_id = p_station_id" in sql and "command.lake_id = p_lake_id" in sql
+    assert "inventory.station_id = command.station_id" in sql
+    assert "inventory.lake_id = command.lake_id" in sql
 
 
 def test_repository_claims_real_commands_with_exact_station_and_lake():
