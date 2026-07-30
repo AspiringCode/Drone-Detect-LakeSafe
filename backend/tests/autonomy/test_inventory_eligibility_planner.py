@@ -83,3 +83,12 @@ def test_changed_assignment_advances_from_highest_known_version():
         (PriorAssignment("d1", "old", 8),),
     )
     assert desired[0].desired_state_version == 9
+
+
+def test_safe_survivor_uses_highest_known_version_without_regression():
+    desired = plan_assignments(
+        (drone("d1", desired_state_version=8),),
+        zone_plan(ZoneCell("z1", "hotspot", 1.0)),
+        (PriorAssignment("d1", "z1", 3),),
+    )
+    assert desired[0].desired_state_version == 8

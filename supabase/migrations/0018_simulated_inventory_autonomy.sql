@@ -55,7 +55,7 @@ create table public.zone_assignments (
 create table public.command_outbox (
   command_id uuid primary key default gen_random_uuid(),
   inventory_id uuid not null references public.drone_inventory(inventory_id) on delete restrict,
-  zone_assignment_id uuid not null references public.zone_assignments(zone_assignment_id) on delete restrict,
+  zone_assignment_id uuid references public.zone_assignments(zone_assignment_id) on delete restrict,
   station_id uuid not null references public.stations(station_id) on delete restrict,
   lake_id text not null references public.lakes(lake_id) on delete restrict,
   desired_state_version integer not null check (desired_state_version > 0),
@@ -67,6 +67,7 @@ create table public.command_outbox (
   claimed_at timestamptz,
   acknowledged_at timestamptz,
   unique (inventory_id, desired_state_version),
+  check ((command_type = 'apply_assignment') = (zone_assignment_id is not null)),
   check ((status = 'claimed') = (claimed_at is not null)),
   check ((status = 'acknowledged') = (acknowledged_at is not null))
 );
@@ -110,15 +111,18 @@ begin
       into inventory_station, inventory_lake, inventory_source, inventory_lifecycle, inventory_health, inventory_connectivity, inventory_maintenance, inventory_battery
       from public.drone_inventory where inventory_id = new.inventory_id;
     select station_id into lake_station from public.lakes where lake_id = new.lake_id;
-    select zone_plan_id, inventory_id, desired_state_version into assignment_plan, assignment_inventory, assignment_version from public.zone_assignments where zone_assignment_id = new.zone_assignment_id;
-    select status into plan_status from public.zone_plans where zone_plan_id = assignment_plan;
-    select minimum_battery_percent into minimum_battery from public.station_fleet_policies where station_id = new.station_id;
     if inventory_station is distinct from new.station_id or lake_station is distinct from new.station_id
-      or minimum_battery is null or inventory_lake is distinct from new.lake_id or inventory_source <> 'simulated'
-      or inventory_lifecycle <> 'circulating' or inventory_health <> 'healthy'
-      or inventory_connectivity <> 'connected' or inventory_maintenance or inventory_battery < minimum_battery
-      or assignment_inventory is distinct from new.inventory_id or assignment_version is distinct from new.desired_state_version or plan_status <> 'active'
-    then raise exception 'command requires eligible simulated inventory and active assignment' using errcode = '23514'; end if;
+      or inventory_lake is distinct from new.lake_id or inventory_source <> 'simulated'
+    then raise exception 'command requires simulated station-scoped inventory' using errcode = '23514'; end if;
+    if new.command_type = 'apply_assignment' then
+      select zone_plan_id, inventory_id, desired_state_version into assignment_plan, assignment_inventory, assignment_version from public.zone_assignments where zone_assignment_id = new.zone_assignment_id;
+      select status into plan_status from public.zone_plans where zone_plan_id = assignment_plan;
+      select minimum_battery_percent into minimum_battery from public.station_fleet_policies where station_id = new.station_id;
+      if minimum_battery is null or inventory_lifecycle <> 'circulating' or inventory_health <> 'healthy'
+        or inventory_connectivity <> 'connected' or inventory_maintenance or inventory_battery < minimum_battery
+        or assignment_inventory is distinct from new.inventory_id or assignment_version is distinct from new.desired_state_version or plan_status <> 'active'
+      then raise exception 'apply assignment requires eligible simulated inventory and active assignment' using errcode = '23514'; end if;
+    end if;
   end if;
   return new;
 end;

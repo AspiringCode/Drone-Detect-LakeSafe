@@ -31,7 +31,10 @@ def plan_assignments(
     for drone_id in sorted(drones_by_id):
         prior = prior_by_drone.get(drone_id)
         if prior and prior.zone_id in allowed_cells and prior.zone_id not in claimed_cells:
-            results.append(DesiredAssignment(drone_id, prior.zone_id, prior.desired_state_version))
+            results.append(DesiredAssignment(
+                drone_id, prior.zone_id,
+                max(drones_by_id[drone_id].desired_state_version, prior.desired_state_version),
+            ))
             claimed_cells.add(prior.zone_id)
 
     available_cells = sorted(
