@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass, is_dataclass
 from datetime import datetime, timezone
 
 import httpx
-from fastapi import FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 from supabase import create_client
@@ -43,6 +43,7 @@ from app.evidence import router as evidence_router
 from app.devices.monitor import HeartbeatMonitor, monitor_loop
 from app.devices.repository import DeviceRepositoryError, get_device_repository
 from app.devices.reconciler import RealCapacityReconciler, configure_real_autonomy_service, has_real_autonomy_service
+from app.correlation import REQUEST_ID_HEADER, request_id_from_header
 
 TICK_INTERVAL_S = 0.5
 WS_REVALIDATION_SECONDS = 30.0
@@ -114,6 +115,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def attach_request_correlation_id(request: Request, call_next):
+    """Generate/validate correlation IDs before any route or audit code runs."""
+    request.state.request_id = request_id_from_header(request.headers.get(REQUEST_ID_HEADER))
+    response = await call_next(request)
+    response.headers[REQUEST_ID_HEADER] = str(request.state.request_id)
+    return response
 
 @dataclass
 class LakeRuntime:

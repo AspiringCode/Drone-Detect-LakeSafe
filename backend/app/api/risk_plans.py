@@ -7,7 +7,7 @@ external data fetch or replace an operational plan.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.access.policy import Permission, require_station_access
 from app.access.principal import Principal, get_principal
@@ -17,6 +17,7 @@ from app.risk_zones.plan_repository import SupabaseRiskPlanRepository
 from app.risk_zones.plan_service import PlanConflict
 from app.risk_zones.validation import PlanValidationError
 from app.risk_zones.setup_worker import RiskPlanSetupService, RiskRefreshWorker
+from app.rate_limits import require_rate_limit
 
 router = APIRouter(prefix="/api/stations/{station_id}/lakes/{lake_id}", tags=["risk-plans"])
 
@@ -79,10 +80,11 @@ def active_zone_plan(station_id: str, lake_id: str, principal: Principal = Depen
 
 
 @router.post("/risk-refresh", status_code=status.HTTP_202_ACCEPTED)
-def request_risk_refresh(station_id: str, lake_id: str, principal: Principal = Depends(get_principal)) -> dict:
+def request_risk_refresh(station_id: str, lake_id: str, request: Request, principal: Principal = Depends(get_principal)) -> dict:
     try:
         repository = get_risk_plan_repository()
         _require_owned_lake(repository, principal, station_id, lake_id, Permission.MANAGE_INVENTORY)
+        require_rate_limit("lake.refresh", principal, request, station_id=station_id, lake_id=lake_id)
         repository.queue_lake(lake_id, "manual")
     except HTTPException:
         raise

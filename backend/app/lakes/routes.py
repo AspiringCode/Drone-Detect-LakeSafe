@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.access.policy import Permission, require_station_access
 from app.access.principal import Principal, get_principal
@@ -10,6 +10,7 @@ from app.lakes.schemas import LakeCreateRequest
 from app.onboarding.shoreline_lookup import ShorelineLookupError, normalize_shoreline, resolve_shoreline
 from app.stations.models import LakeCreate
 from app.stations.repository import WorkflowConflict, get_workflow_repository
+from app.rate_limits import require_rate_limit
 
 router = APIRouter(prefix="/api/stations/{station_id}", tags=["lakes"])
 
@@ -41,8 +42,9 @@ def lake_candidates(station_id: str, value: LakeCreateRequest, principal: Princi
 
 
 @router.post("/lakes", status_code=status.HTTP_201_CREATED)
-def create_lake(station_id: str, value: LakeCreateRequest, principal: Principal = Depends(get_principal)) -> dict:
+def create_lake(station_id: str, value: LakeCreateRequest, request: Request, principal: Principal = Depends(get_principal)) -> dict:
     require_station_access(principal, station_id, Permission.ADD_LAKE)
+    require_rate_limit("lake.create", principal, request, station_id=station_id)
     try:
         shoreline, data_source_status = _shoreline_with_status(value)
     except ShorelineLookupError as exc:

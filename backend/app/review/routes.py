@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.access.principal import Principal, get_principal
 from app.access.repository import get_access_repository
 from app.stations.models import StationReviewCreate
 from app.stations.repository import WorkflowConflict, get_workflow_repository
+from app.rate_limits import require_rate_limit
 
 router = APIRouter(prefix="/api/internal/reviews", tags=["reviews"])
 
@@ -40,8 +41,9 @@ def list_station_requests(principal: Principal = Depends(get_principal)) -> dict
 
 
 @router.post("/station-requests/{request_id}/decision")
-def decide_station_request(request_id: str, value: StationDecisionInput, principal: Principal = Depends(get_principal)) -> dict:
+def decide_station_request(request_id: str, value: StationDecisionInput, request: Request, principal: Principal = Depends(get_principal)) -> dict:
     _require_reviewer(principal)
+    require_rate_limit("station.review", principal, request)
     if value.decision not in {"approved", "rejected"}:
         raise HTTPException(status_code=422, detail="Unsupported decision")
     try:

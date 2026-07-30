@@ -1,17 +1,19 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import RedirectResponse
 
 from app.access.principal import Principal, get_principal
 from app.stations.repository import get_workflow_repository
 from app.verification.idme import IdMeSettings, complete_authorization, start_authorization
+from app.rate_limits import require_rate_limit
 
 router = APIRouter(prefix="/api/verifications/idme", tags=["verification"])
 
 
 @router.post("/start")
-def start_idme(principal: Principal = Depends(get_principal)):
+def start_idme(request: Request, principal: Principal = Depends(get_principal)):
+    require_rate_limit("verification.start", principal, request)
     url = start_authorization(principal.user_id, get_workflow_repository(), IdMeSettings.from_config())
     return {"authorization_url": url}
 

@@ -4,12 +4,13 @@ import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.access.policy import Permission, require_station_access
 from app.access.principal import Principal, get_principal
 from app.stations.models import InvitationCreate, JoinRequestCreate, JoinReviewCreate, StationRequestCreate
 from app.stations.repository import WorkflowConflict, get_workflow_repository
+from app.rate_limits import require_rate_limit
 from app.stations.schemas import InvitationAcceptInput, InvitationInput, JoinDecisionInput, StationRequestInput
 
 router = APIRouter(prefix="/api", tags=["stations"])
@@ -81,8 +82,9 @@ def create_join_request(station_id: str, principal: Principal = Depends(get_prin
 
 
 @router.post("/stations/{station_id}/invitations", status_code=status.HTTP_201_CREATED)
-def create_invitation(station_id: str, value: InvitationInput, principal: Principal = Depends(get_principal)) -> dict:
+def create_invitation(station_id: str, value: InvitationInput, request: Request, principal: Principal = Depends(get_principal)) -> dict:
     require_station_access(principal, station_id, Permission.MANAGE_MEMBERS)
+    require_rate_limit("station.invitation.create", principal, request, station_id=station_id)
     plaintext = secrets.token_urlsafe(32)
     expires_at = value.expires_at or datetime.now(timezone.utc) + timedelta(days=7)
     if expires_at <= datetime.now(timezone.utc):
@@ -113,8 +115,9 @@ def list_join_requests(station_id: str, principal: Principal = Depends(get_princ
 
 
 @router.post("/stations/{station_id}/join-requests/{request_id}/decision")
-def decide_join_request(station_id: str, request_id: str, value: JoinDecisionInput, principal: Principal = Depends(get_principal)) -> dict:
+def decide_join_request(station_id: str, request_id: str, value: JoinDecisionInput, request: Request, principal: Principal = Depends(get_principal)) -> dict:
     require_station_access(principal, station_id, Permission.MANAGE_MEMBERS)
+    require_rate_limit("station.join.review", principal, request, station_id=station_id)
     try:
         membership = get_workflow_repository().review_join_request(JoinReviewCreate(request_id, principal.user_id, value.decision, value.roles))
     except WorkflowConflict as exc:
