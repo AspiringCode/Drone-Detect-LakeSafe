@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi import FastAPI
@@ -166,3 +167,12 @@ def test_authenticated_sequences_remain_bound_to_their_heartbeat_records():
         for sequence in (1, 2)
     ]
     assert repository.record_sequences(principals) == [1, 2]
+
+
+def test_expired_real_command_reconciliation_is_a_permitted_and_durable_queue_trigger():
+    sql = (Path(__file__).parents[3] / "supabase" / "migrations" / "0028_real_command_expired_reconciliation.sql").read_text().lower()
+    assert "real_command_expired" in sql
+    assert "drop constraint if exists real_capacity_reconciliations_trigger_check" in sql
+    function = sql.split("create or replace function public.request_real_capacity_reconciliation", 1)[1]
+    assert "real_command_expired" in function
+    assert "private.enqueue_real_capacity_reconciliation(p_lake_id,p_trigger)" in function
