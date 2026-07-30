@@ -39,7 +39,7 @@ from app.api.device_admin import router as device_admin_router
 from app.api.devices import router as devices_router
 from app.devices.monitor import HeartbeatMonitor, monitor_loop
 from app.devices.repository import DeviceRepositoryError, get_device_repository
-from app.devices.reconciler import RealCapacityReconciler, has_real_autonomy_service
+from app.devices.reconciler import RealCapacityReconciler, configure_real_autonomy_service, has_real_autonomy_service
 
 TICK_INTERVAL_S = 0.5
 WS_REVALIDATION_SECONDS = 30.0
@@ -61,6 +61,7 @@ async def _lifespan(application: FastAPI):
         application.state.real_autonomy_service = None
     try:
         device_repository = get_device_repository()
+        configure_real_autonomy_service(application, device_repository=device_repository)
         if has_real_autonomy_service(application):
             application.state.device_heartbeat_task = asyncio.create_task(
                 monitor_loop(HeartbeatMonitor(device_repository, RealCapacityReconciler(application)))

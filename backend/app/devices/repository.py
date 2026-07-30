@@ -85,9 +85,9 @@ class SupabaseDeviceRepository(DeviceAuthRepository):
         except Exception as exc:
             raise DeviceRepositoryError("Device gateway is unavailable") from exc
 
-    def insert_acknowledgement(self, drone_id: str, command_id: str, sequence: int, status: str, detail: str | None) -> bool:
+    def insert_acknowledgement(self, drone_id: str, command_id: str, sequence: int, plan_id: str, version: int, status: str, detail: str | None) -> bool:
         try:
-            return self._client.rpc("record_real_command_acknowledgement", {"p_drone_id": drone_id, "p_command_id": command_id, "p_sequence": sequence, "p_status": status, "p_detail": detail}).execute().data is True
+            return self._client.rpc("record_real_command_acknowledgement", {"p_drone_id": drone_id, "p_command_id": command_id, "p_sequence": sequence, "p_plan_id": plan_id, "p_version": version, "p_status": status, "p_detail": detail}).execute().data is True
         except Exception as exc:
             raise DeviceRepositoryError("Device gateway is unavailable") from exc
 

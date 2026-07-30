@@ -8,7 +8,7 @@ from typing import Protocol
 
 from app.autonomy.adapters.base import AdapterReceipt, TransportIsolationError
 from app.autonomy.outbox import CommandEnvelope
-from app.hardware_gateway import HmacGatewaySigner
+from app.hardware_gateway import HmacGatewaySigner, SecretProvider
 
 
 class RealInventoryRepository(Protocol):
@@ -16,11 +16,14 @@ class RealInventoryRepository(Protocol):
 
 
 class RealAdapter:
-    def __init__(self, repository: RealInventoryRepository, gateway, *, gateway_url: str, signing_key_ref: str) -> None:
+    def __init__(self, repository: RealInventoryRepository, gateway, *, gateway_url: str, signing_key_ref: str, secret_provider: SecretProvider) -> None:
         if not gateway_url:
             raise ValueError("real gateway URL is not configured")
+        secret = secret_provider.resolve(signing_key_ref)
+        if secret is None:
+            raise ValueError("real gateway signing secret is unavailable")
         self._repository, self._gateway, self._gateway_url = repository, gateway, gateway_url
-        self._signer = HmacGatewaySigner(signing_key_ref)
+        self._signer = HmacGatewaySigner(secret)
 
     def publish(self, command: CommandEnvelope) -> AdapterReceipt:
         if command.payload.get("source") != "real":

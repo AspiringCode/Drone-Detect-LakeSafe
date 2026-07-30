@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -27,6 +28,14 @@ class Gateway:
         self.calls.append({"url": url, "payload": payload, "signature": signature})
 
 
+class Secrets:
+    def __init__(self, values: dict[str, bytes] | None = None) -> None:
+        self.values = values or {"gateway-key-ref": b"actual-server-secret"}
+
+    def resolve(self, reference: str) -> bytes | None:
+        return self.values.get(reference)
+
+
 class Inventory:
     def __init__(self) -> None:
         self.rows = {"d1": {"source": "real", "station_id": "station-1", "lake_id": "lake-1", "credential_state": "active"}}
@@ -39,7 +48,7 @@ def test_real_adapter_rejects_simulated_inventory():
     from app.autonomy.adapters.real import RealAdapter, TransportIsolationError
 
     gateway = Gateway()
-    adapter = RealAdapter(Inventory(), gateway, gateway_url="https://gateway.test", signing_key_ref="test-signing-key")
+    adapter = RealAdapter(Inventory(), gateway, gateway_url="https://gateway.test", signing_key_ref="gateway-key-ref", secret_provider=Secrets())
     with pytest.raises(TransportIsolationError):
         adapter.publish(command_for(source="simulated"))
     assert gateway.calls == []
@@ -49,7 +58,7 @@ def test_real_adapter_signs_and_publishes_real_command_only():
     from app.autonomy.adapters.real import RealAdapter
 
     gateway = Gateway()
-    adapter = RealAdapter(Inventory(), gateway, gateway_url="https://gateway.test", signing_key_ref="test-signing-key")
+    adapter = RealAdapter(Inventory(), gateway, gateway_url="https://gateway.test", signing_key_ref="gateway-key-ref", secret_provider=Secrets())
     receipt = adapter.publish(command_for())
     assert receipt.command_id == "c5"
     assert gateway.calls[0]["url"] == "https://gateway.test"
@@ -64,10 +73,53 @@ def test_real_transport_publish_does_not_acknowledge_outbox_state():
 
     repository, gateway = InMemoryAutonomyRepository(station_id="station-1"), Gateway()
     repository.enqueue(command_for())
-    publisher = OutboxPublisher(repository, RealAdapter(Inventory(), gateway, gateway_url="https://gateway.test", signing_key_ref="test-signing-key"))
+    publisher = OutboxPublisher(repository, RealAdapter(Inventory(), gateway, gateway_url="https://gateway.test", signing_key_ref="gateway-key-ref", secret_provider=Secrets()))
     assert publisher.publish_pending() == ()
     assert len(gateway.calls) == 1
     assert repository.acknowledged_version("d1") == 0
+
+
+def test_known_key_reference_cannot_be_used_as_signing_secret():
+    from app.hardware_gateway import HmacGatewaySigner
+
+    with pytest.raises(ValueError):
+        HmacGatewaySigner("gateway-key-ref")
+
+
+def test_ack_database_contract_checks_version_before_acknowledging_command():
+    sql = (Path(__file__).parents[3] / "supabase" / "migrations" / "0024_real_command_acknowledgements.sql").read_text().lower()
+    function = sql.split("create or replace function public.record_real_command_acknowledgement", 1)[1]
+    assert "p_version integer" in function
+    assert "v_version <> p_version" in function
+    assert function.index("v_version <> p_version") < function.index("insert into public.command_acknowledgements")
+    assert function.index("v_version <> p_version") < function.index("status='acknowledged'")
+
+
+def test_real_autonomy_publisher_stays_dormant_without_a_resolved_secret(monkeypatch):
+    from fastapi import FastAPI
+    from app.devices import reconciler
+
+    monkeypatch.setattr(reconciler, "REAL_GATEWAY_URL", "https://gateway.test")
+    monkeypatch.setattr(reconciler, "REAL_GATEWAY_SIGNING_KEY_REF", "gateway-key-ref")
+    app = FastAPI()
+    assert reconciler.configure_real_autonomy_service(app, device_repository=Inventory(), secret_provider=Secrets({})) is False
+    assert getattr(app.state, "real_autonomy_service", None) is None
+
+
+def test_resolved_real_gateway_starts_real_only_publisher(monkeypatch):
+    from fastapi import FastAPI
+    from app.autonomy.repository import InMemoryAutonomyRepository
+    from app.devices import reconciler
+
+    monkeypatch.setattr(reconciler, "REAL_GATEWAY_URL", "https://gateway.test")
+    monkeypatch.setattr(reconciler, "REAL_GATEWAY_SIGNING_KEY_REF", "gateway-key-ref")
+    app, gateway = FastAPI(), Gateway()
+    outbox = InMemoryAutonomyRepository(station_id="station-1")
+    outbox.enqueue(command_for())
+    assert reconciler.configure_real_autonomy_service(app, device_repository=Inventory(), secret_provider=Secrets(), gateway=gateway, autonomy_repository=outbox) is True
+    assert app.state.real_autonomy_service.reconcile_lake("lake-1", "heartbeat_recovery") == ()
+    assert len(gateway.calls) == 1
+    assert outbox.acknowledged_version("d1") == 0
 
 
 class AckRepository:
@@ -81,17 +133,15 @@ class AckRepository:
             return {"command_id": command_id, "drone_id": "d1", "station_id": "station-1", "lake_id": "lake-1", "plan_id": "p1", "desired_state_version": 4, "status": "claimed"}
         return {"command_id": command_id, "drone_id": "d1", "station_id": "station-1", "lake_id": "lake-1", "plan_id": "p2", "desired_state_version": 5, "status": "claimed"}
 
-    def insert_acknowledgement(self, drone_id, command_id, sequence, status, detail):
+    def insert_acknowledgement(self, drone_id, command_id, sequence, plan_id, version, status, detail):
         if sequence in self.sequences:
+            return False
+        if version < self.versions.get(drone_id, 0):
             return False
         self.sequences.add(sequence)
         self.acks.append((drone_id, command_id, sequence, status, detail))
-        return True
-
-    def advance_acknowledged_version(self, drone_id, version, command_id):
-        if version < self.versions.get(drone_id, 0):
-            return False
-        self.versions[drone_id] = max(self.versions.get(drone_id, 0), version)
+        if status in {"accepted", "completed"}:
+            self.versions[drone_id] = max(self.versions.get(drone_id, 0), version)
         return True
 
 
