@@ -9,7 +9,7 @@ def drone(drone_id: str, **changes: object) -> InventoryDrone:
         "station_id": "st-1",
         "lake_id": "lake-1",
         "source": "simulated",
-        "lifecycle": "available",
+        "lifecycle": "circulating",
         "battery_percent": 90,
         "health": "healthy",
         "connectivity": "connected",
@@ -65,3 +65,21 @@ def test_planner_never_mutates_input_inventory():
     candidate = drone("d1")
     plan_assignments((candidate,), zone_plan(ZoneCell("z1", "hotspot", 1.0)), ())
     assert candidate.desired_state_version == 3
+
+
+def test_unsafe_prior_assignment_is_evicted_and_never_regresses_version():
+    desired = plan_assignments(
+        (drone("d1", health="fault", desired_state_version=3), drone("d2", desired_state_version=3)),
+        zone_plan(ZoneCell("z1", "hotspot", 1.0)),
+        (PriorAssignment("d1", "z1", 8),),
+    )
+    assert desired == (type(desired[0])("d2", "z1", 4),)
+
+
+def test_changed_assignment_advances_from_highest_known_version():
+    desired = plan_assignments(
+        (drone("d1", desired_state_version=3),),
+        zone_plan(ZoneCell("new", "hotspot", 1.0)),
+        (PriorAssignment("d1", "old", 8),),
+    )
+    assert desired[0].desired_state_version == 9

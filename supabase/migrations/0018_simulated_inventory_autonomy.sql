@@ -55,6 +55,7 @@ create table public.zone_assignments (
 create table public.command_outbox (
   command_id uuid primary key default gen_random_uuid(),
   inventory_id uuid not null references public.drone_inventory(inventory_id) on delete restrict,
+  zone_assignment_id uuid not null references public.zone_assignments(zone_assignment_id) on delete restrict,
   station_id uuid not null references public.stations(station_id) on delete restrict,
   lake_id text not null references public.lakes(lake_id) on delete restrict,
   desired_state_version integer not null check (desired_state_version > 0),
@@ -73,23 +74,51 @@ create table public.command_outbox (
 create or replace function private.assert_simulated_autonomy_ownership()
 returns trigger language plpgsql set search_path = '' as $$
 declare inventory_station uuid; lake_station uuid; plan_station uuid; plan_lake text; cell_plan uuid;
+  inventory_lake text; inventory_source text; inventory_lifecycle text; inventory_health text;
+  inventory_connectivity text; inventory_maintenance boolean; inventory_battery integer; minimum_battery integer;
+  plan_status text; assignment_plan uuid; assignment_inventory uuid; assignment_version integer;
 begin
   if tg_table_name = 'drone_inventory' and new.lake_id is not null then
     select station_id into lake_station from public.lakes where lake_id = new.lake_id;
     if lake_station is distinct from new.station_id then raise exception 'inventory lake must belong to station' using errcode = '23514'; end if;
   elsif tg_table_name = 'drone_availability_requests' then
-    select station_id into inventory_station from public.drone_inventory where inventory_id = new.inventory_id;
+    select station_id, lake_id, source, lifecycle, health, connectivity, maintenance_due, battery_percent
+      into inventory_station, inventory_lake, inventory_source, inventory_lifecycle, inventory_health, inventory_connectivity, inventory_maintenance, inventory_battery
+      from public.drone_inventory where inventory_id = new.inventory_id;
     select station_id into lake_station from public.lakes where lake_id = new.lake_id;
-    if inventory_station is distinct from new.station_id or lake_station is distinct from new.station_id then raise exception 'availability request must remain station-scoped' using errcode = '23514'; end if;
+    select minimum_battery_percent into minimum_battery from public.station_fleet_policies where station_id = new.station_id;
+    if inventory_station is distinct from new.station_id or lake_station is distinct from new.station_id
+      or minimum_battery is null or inventory_lake is distinct from new.lake_id or inventory_source <> 'simulated'
+      or inventory_lifecycle <> 'circulating' or inventory_health <> 'healthy'
+      or inventory_connectivity <> 'connected' or inventory_maintenance or inventory_battery < minimum_battery
+    then raise exception 'availability request requires eligible simulated circulating inventory' using errcode = '23514'; end if;
   elsif tg_table_name = 'zone_assignments' then
-    select station_id, lake_id into plan_station, plan_lake from public.zone_plans where zone_plan_id = new.zone_plan_id;
+    select station_id, lake_id, status into plan_station, plan_lake, plan_status from public.zone_plans where zone_plan_id = new.zone_plan_id;
     select zone_plan_id into cell_plan from public.zone_plan_cells where zone_plan_cell_id = new.zone_plan_cell_id;
-    select station_id into inventory_station from public.drone_inventory where inventory_id = new.inventory_id;
-    if plan_station is distinct from new.station_id or plan_lake is distinct from new.lake_id or cell_plan is distinct from new.zone_plan_id or inventory_station is distinct from new.station_id then raise exception 'assignment inputs must share station and plan' using errcode = '23514'; end if;
+    select station_id, lake_id, source, lifecycle, health, connectivity, maintenance_due, battery_percent
+      into inventory_station, inventory_lake, inventory_source, inventory_lifecycle, inventory_health, inventory_connectivity, inventory_maintenance, inventory_battery
+      from public.drone_inventory where inventory_id = new.inventory_id;
+    select minimum_battery_percent into minimum_battery from public.station_fleet_policies where station_id = new.station_id;
+    if plan_station is distinct from new.station_id or plan_lake is distinct from new.lake_id or plan_status <> 'active'
+      or cell_plan is distinct from new.zone_plan_id or inventory_station is distinct from new.station_id
+      or minimum_battery is null or inventory_lake is distinct from new.lake_id or inventory_source <> 'simulated'
+      or inventory_lifecycle <> 'circulating' or inventory_health <> 'healthy'
+      or inventory_connectivity <> 'connected' or inventory_maintenance or inventory_battery < minimum_battery
+    then raise exception 'assignment requires eligible simulated inventory and active plan cell' using errcode = '23514'; end if;
   elsif tg_table_name = 'command_outbox' then
-    select station_id into inventory_station from public.drone_inventory where inventory_id = new.inventory_id;
+    select station_id, lake_id, source, lifecycle, health, connectivity, maintenance_due, battery_percent
+      into inventory_station, inventory_lake, inventory_source, inventory_lifecycle, inventory_health, inventory_connectivity, inventory_maintenance, inventory_battery
+      from public.drone_inventory where inventory_id = new.inventory_id;
     select station_id into lake_station from public.lakes where lake_id = new.lake_id;
-    if inventory_station is distinct from new.station_id or lake_station is distinct from new.station_id then raise exception 'command must remain station-scoped' using errcode = '23514'; end if;
+    select zone_plan_id, inventory_id, desired_state_version into assignment_plan, assignment_inventory, assignment_version from public.zone_assignments where zone_assignment_id = new.zone_assignment_id;
+    select status into plan_status from public.zone_plans where zone_plan_id = assignment_plan;
+    select minimum_battery_percent into minimum_battery from public.station_fleet_policies where station_id = new.station_id;
+    if inventory_station is distinct from new.station_id or lake_station is distinct from new.station_id
+      or minimum_battery is null or inventory_lake is distinct from new.lake_id or inventory_source <> 'simulated'
+      or inventory_lifecycle <> 'circulating' or inventory_health <> 'healthy'
+      or inventory_connectivity <> 'connected' or inventory_maintenance or inventory_battery < minimum_battery
+      or assignment_inventory is distinct from new.inventory_id or assignment_version is distinct from new.desired_state_version or plan_status <> 'active'
+    then raise exception 'command requires eligible simulated inventory and active assignment' using errcode = '23514'; end if;
   end if;
   return new;
 end;
@@ -102,7 +131,9 @@ begin
   if new.source <> 'simulated' then return new; end if;
   select simulated_inventory_allowance into allowance from public.station_fleet_policies where station_id = new.station_id for update;
   if allowance is null then raise exception 'station fleet policy is required before simulated inventory' using errcode = '23514'; end if;
-  select count(*) into existing_count from public.drone_inventory where station_id = new.station_id and source = 'simulated';
+  select count(*) into existing_count from public.drone_inventory
+    where station_id = new.station_id and source = 'simulated'
+      and inventory_id is distinct from new.inventory_id;
   if existing_count >= allowance then raise exception 'simulated inventory allowance exceeded' using errcode = '23514'; end if;
   return new;
 end;
@@ -112,7 +143,7 @@ create trigger drone_inventory_station_matches_lake before insert or update on p
 create trigger availability_request_station_matches_inputs before insert on public.drone_availability_requests for each row execute procedure private.assert_simulated_autonomy_ownership();
 create trigger assignment_station_matches_inputs before insert on public.zone_assignments for each row execute procedure private.assert_simulated_autonomy_ownership();
 create trigger outbox_station_matches_inputs before insert on public.command_outbox for each row execute procedure private.assert_simulated_autonomy_ownership();
-create trigger drone_inventory_simulated_allowance before insert on public.drone_inventory for each row execute procedure private.assert_simulated_allowance();
+create trigger drone_inventory_simulated_allowance before insert or update of source, station_id on public.drone_inventory for each row execute procedure private.assert_simulated_allowance();
 
 create or replace function private.prevent_autonomy_history_mutation()
 returns trigger language plpgsql set search_path = '' as $$
