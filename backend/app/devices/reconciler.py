@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.config import REAL_GATEWAY_SIGNING_KEY_REF, REAL_GATEWAY_URL
+
 
 class RealCapacityReconciler:
     """Invoke the configured autonomy service; never acknowledge a wake-up."""
@@ -17,5 +19,7 @@ class RealCapacityReconciler:
 
 
 def has_real_autonomy_service(application) -> bool:
-    """Only start consumers when the actual reconciliation pipeline exists."""
+    """Only start consumers when the real-only transport is configured."""
+    if not REAL_GATEWAY_URL or not REAL_GATEWAY_SIGNING_KEY_REF:
+        return False
     return callable(getattr(getattr(application, "state", None), "real_autonomy_service", None) and getattr(application.state.real_autonomy_service, "reconcile_lake", None))

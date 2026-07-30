@@ -56,9 +56,14 @@ class OutboxPublisher:
             if not command.command_id:
                 raise RuntimeError("claimed commands must have IDs")
             try:
-                self._adapter(command)
+                publish = getattr(self._adapter, "publish", self._adapter)
+                receipt = publish(command)
             except Exception:
                 self._repository.release(command.command_id)
+                continue
+            if getattr(receipt, "device_ack_required", False):
+                # A real gateway merely accepted the network request. The
+                # signed device acknowledgement endpoint owns activation.
                 continue
             if self._repository.acknowledge(command.command_id):
                 acknowledged.append(command.command_id)

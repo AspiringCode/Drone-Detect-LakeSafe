@@ -21,6 +21,7 @@ class AdapterReceipt:
     inventory_id: str
     desired_state_version: int
     command_id: str | None
+    device_ack_required: bool = False
 
 
 class FleetAdapter(Protocol):

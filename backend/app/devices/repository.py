@@ -65,6 +65,38 @@ class SupabaseDeviceRepository(DeviceAuthRepository):
         except Exception as exc:
             raise DeviceRepositoryError("Device gateway is unavailable") from exc
 
+    def real_inventory(self, drone_id: str) -> dict | None:
+        try:
+            row = self._client.table("drone_inventory").select("inventory_id,station_id,lake_id,source").eq("inventory_id", drone_id).eq("source", "real").maybe_single().execute().data
+            if not isinstance(row, dict):
+                return None
+            credential = self.active_credential(drone_id)
+            return {**row, "credential_state": credential.get("credential_state") if credential else "revoked"}
+        except Exception as exc:
+            raise DeviceRepositoryError("Device gateway is unavailable") from exc
+
+    def command_for_ack(self, command_id: str) -> dict | None:
+        try:
+            row = self._client.table("command_outbox").select("command_id,inventory_id,station_id,lake_id,desired_state_version,status,payload").eq("command_id", command_id).maybe_single().execute().data
+            if not isinstance(row, dict):
+                return None
+            payload = row.get("payload") or {}
+            return {"command_id": str(row["command_id"]), "drone_id": str(row["inventory_id"]), "station_id": str(row["station_id"]), "lake_id": str(row["lake_id"]), "desired_state_version": int(row["desired_state_version"]), "status": row.get("status"), "plan_id": payload.get("plan_id")}
+        except Exception as exc:
+            raise DeviceRepositoryError("Device gateway is unavailable") from exc
+
+    def insert_acknowledgement(self, drone_id: str, command_id: str, sequence: int, status: str, detail: str | None) -> bool:
+        try:
+            return self._client.rpc("record_real_command_acknowledgement", {"p_drone_id": drone_id, "p_command_id": command_id, "p_sequence": sequence, "p_status": status, "p_detail": detail}).execute().data is True
+        except Exception as exc:
+            raise DeviceRepositoryError("Device gateway is unavailable") from exc
+
+    def advance_acknowledged_version(self, drone_id: str, version: int, command_id: str) -> bool:
+        try:
+            return self._client.rpc("advance_real_command_acknowledgement", {"p_drone_id": drone_id, "p_command_id": command_id, "p_version": version}).execute().data is True
+        except Exception as exc:
+            raise DeviceRepositoryError("Device gateway is unavailable") from exc
+
     def claim_real_capacity_reconciliations(self, limit: int = 20, lease_seconds: int = 30) -> tuple[dict, ...]:
         try:
             return tuple(self._client.rpc("claim_real_capacity_reconciliations", {"p_limit": limit, "p_lease_seconds": lease_seconds}).execute().data or [])
