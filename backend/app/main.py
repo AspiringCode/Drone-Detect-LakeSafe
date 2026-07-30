@@ -36,6 +36,10 @@ from app.api.risk_plans import get_risk_refresh_worker
 from app.risk_zones.setup_worker import cancel_worker_task, start_worker_task
 from app.api.inventory import router as simulated_autonomy_router
 from app.api.device_admin import router as device_admin_router
+from app.api.devices import router as devices_router
+from app.devices.monitor import HeartbeatMonitor, monitor_loop
+from app.devices.repository import DeviceRepositoryError, get_device_repository
+from app.api.devices import get_heartbeat_autonomy
 
 TICK_INTERVAL_S = 0.5
 WS_REVALIDATION_SECONDS = 30.0
@@ -52,6 +56,16 @@ async def _lifespan(application: FastAPI):
         for lake_id, runtime in lake_runtimes.items()
     }
     start_worker_task(application, get_risk_refresh_worker())
+    application.state.device_heartbeat_task = None
+    try:
+        device_repository = get_device_repository()
+        application.state.device_heartbeat_task = asyncio.create_task(
+            monitor_loop(HeartbeatMonitor(device_repository, get_heartbeat_autonomy(device_repository)))
+        )
+    except DeviceRepositoryError:
+        # The rest of the application remains usable if real-device credentials
+        # are not configured in a local simulated-only environment.
+        pass
     try:
         yield
     finally:
@@ -63,6 +77,14 @@ async def _lifespan(application: FastAPI):
             except asyncio.CancelledError:
                 pass
         application.state.tick_tasks = {}
+        device_task = getattr(application.state, "device_heartbeat_task", None)
+        if device_task is not None:
+            device_task.cancel()
+            try:
+                await device_task
+            except asyncio.CancelledError:
+                pass
+        application.state.device_heartbeat_task = None
 
 app = FastAPI(title="LakeSafe Initiative Demo API", lifespan=_lifespan)
 app.include_router(idme_router)
@@ -72,6 +94,7 @@ app.include_router(lake_router)
 app.include_router(risk_plan_router)
 app.include_router(simulated_autonomy_router)
 app.include_router(device_admin_router)
+app.include_router(devices_router)
 
 # Local-dev dashboard runs on Vite's default port; CAC judges run this locally,
 # not behind a shared origin, so permissive localhost/127.0.0.1 dev ports are fine.
