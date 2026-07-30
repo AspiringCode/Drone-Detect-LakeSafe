@@ -18,6 +18,8 @@ import { StationAdminPage } from "./pages/StationAdminPage";
 import { AddLakePage } from "./pages/AddLakePage";
 import { ReviewConsolePage } from "./pages/ReviewConsolePage";
 import { InvitationAcceptPage } from "./pages/InvitationAcceptPage";
+import { CivilianHomePage } from "./pages/CivilianHomePage";
+import { usePrincipal } from "./auth/PrincipalProvider";
 import "./styles.css";
 
 export default function App() {
@@ -29,7 +31,7 @@ export default function App() {
       <Route path="/onboarding" element={<OnboardingPage />} />
     </Route>
     <Route element={<AuthGate />}>
-      <Route path="/lakes" element={<LakeGridPage />} />
+      <Route path="/lakes" element={<LakeLanding />} />
       <Route path="/lakes/:lakeId" element={<LakeLiveView />} />
       <Route path="/profile" element={<ProfileSettingsPage />} />
       <Route path="/alerts" element={<AlertsPage />} />
@@ -41,6 +43,14 @@ export default function App() {
       <Route path="/stations/:stationId/lakes/new" element={<AddLakePage />} />
       <Route path="/internal/reviews" element={<ReviewConsolePage />} />
     </Route>
-    <Route path="*" element={<Navigate to="/lakes" replace />} />
+    <Route path="/" element={<CivilianHomePage />} />
+    <Route path="/public" element={<CivilianHomePage />} />
+    <Route path="*" element={<Navigate to="/" replace />} />
   </Routes></BrowserRouter></ActiveStationProvider></PrincipalProvider>;
+}
+
+function LakeLanding() {
+  const { principal, loading } = usePrincipal();
+  if (loading) return <main className="auth-loading">Preparing your workspace…</main>;
+  return principal?.account_class === "civilian" ? <CivilianHomePage /> : <LakeGridPage />;
 }
