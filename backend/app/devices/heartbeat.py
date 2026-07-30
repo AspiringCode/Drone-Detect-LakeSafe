@@ -49,4 +49,3 @@ class HeartbeatService:
         if trigger and isinstance(lake_id, str):
             self._autonomy.reconcile_lake(lake_id, trigger)
         return HeartbeatResult(eligible=eligible, reconcile_trigger=trigger)
-
