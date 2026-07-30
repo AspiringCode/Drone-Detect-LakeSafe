@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from functools import lru_cache
+from datetime import datetime, timezone
 from typing import Literal, Protocol
 
 from app.config import SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL
@@ -53,6 +54,7 @@ def request_safe_return(current: RealFleetStatus) -> RealFleetStatus:
 
 class SafetyRepository(Protocol):
     def lake_belongs_to_station(self, station_id: str, lake_id: str) -> bool: ...
+    def real_fleet_status(self, station_id: str, lake_id: str) -> dict: ...
     def set_real_autonomy(self, station_id: str, lake_id: str, enabled: bool, reason: str, actor_user_id: str) -> dict: ...
     def request_safe_return(self, station_id: str, lake_id: str, reason: str, actor_user_id: str) -> dict: ...
     def append_audit(self, event: AuditEventCreate) -> None: ...
@@ -72,6 +74,52 @@ class SupabaseSafetyRepository:
     def lake_belongs_to_station(self, station_id: str, lake_id: str) -> bool:
         row = self._client.table("lakes").select("station_id").eq("lake_id", lake_id).maybe_single().execute().data
         return isinstance(row, dict) and str(row.get("station_id")) == station_id
+
+    def real_fleet_status(self, station_id: str, lake_id: str) -> dict:
+        """Return operational state only; hardware identities and secrets stay server-side."""
+        try:
+            policy = self._client.table("real_fleet_safety_policies").select(
+                "autonomy_state"
+            ).eq("station_id", station_id).eq("lake_id", lake_id).maybe_single().execute().data
+            fleet_policy = self._client.table("station_fleet_policies").select(
+                "minimum_battery_percent"
+            ).eq("station_id", station_id).maybe_single().execute().data
+            inventory = self._client.table("drone_inventory").select(
+                "inventory_id,desired_state_version,acknowledged_state_version,health,connectivity,maintenance_due,battery_percent"
+            ).eq("station_id", station_id).eq("lake_id", lake_id).eq("source", "real").execute().data or []
+            ids = [str(row["inventory_id"]) for row in inventory if isinstance(row, dict) and row.get("inventory_id")]
+            heartbeats = self._client.table("drone_heartbeats").select("drone_id,received_at").in_("drone_id", ids).order("received_at", desc=True).execute().data if ids else []
+        except Exception as exc:
+            raise RuntimeError("Real fleet status is unavailable") from exc
+        newest: dict[str, datetime] = {}
+        for row in heartbeats or []:
+            if not isinstance(row, dict) or not isinstance(row.get("drone_id"), str) or not isinstance(row.get("received_at"), str):
+                continue
+            try:
+                received = datetime.fromisoformat(row["received_at"].replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            newest.setdefault(row["drone_id"], received)
+        now = datetime.now(timezone.utc)
+        ages = [max(0, int((now - received).total_seconds())) for received in newest.values()]
+        desired = max((int(row.get("desired_state_version") or 0) for row in inventory if isinstance(row, dict)), default=0)
+        acknowledged = max((int(row.get("acknowledged_state_version") or 0) for row in inventory if isinstance(row, dict)), default=0)
+        minimum_battery = int(fleet_policy.get("minimum_battery_percent") or 30) if isinstance(fleet_policy, dict) else 30
+        eligible = bool(inventory) and all(
+            row.get("health") == "healthy" and row.get("connectivity") == "connected"
+            and not bool(row.get("maintenance_due")) and int(row.get("battery_percent") or 0) >= minimum_battery
+            and str(row.get("inventory_id")) in newest
+            for row in inventory if isinstance(row, dict)
+        )
+        state = policy.get("autonomy_state") if isinstance(policy, dict) else "paused"
+        if state not in {"paused", "pending_ack", "active", "degraded", "safe_return_requested", "gateway_unavailable"}:
+            state = "paused"
+        return {
+            "station_id": station_id, "lake_id": lake_id, "source": "real", "autonomy": state,
+            "heartbeat_age_seconds": min(ages) if ages else None, "eligible": eligible if inventory else None,
+            "desired_state_version": desired, "acknowledged_state_version": acknowledged,
+            "active_assignments": [], "pending_assignments": [],
+        }
 
     def set_real_autonomy(self, station_id: str, lake_id: str, enabled: bool, reason: str, actor_user_id: str) -> dict:
         return self._one("set_real_fleet_autonomy", {

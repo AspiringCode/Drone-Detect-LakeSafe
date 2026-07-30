@@ -30,6 +30,17 @@ class SafetyRepository:
         self.status = {**self.status, "autonomy": "safe_return_requested"}
         return self.status
 
+    def real_fleet_status(self, station_id: str, lake_id: str):
+        assert self.lake_belongs_to_station(station_id, lake_id)
+        return {
+            **self.status,
+            "source": "real",
+            "heartbeat_age_seconds": 4,
+            "eligible": True,
+            "desired_state_version": 7,
+            "acknowledged_state_version": 6,
+        }
+
     def append_audit(self, event) -> None:
         self.calls.append(("audit", event))
 
@@ -62,6 +73,21 @@ def test_admin_without_safety_role_cannot_enable_real_autonomy():
         "/api/stations/station-1/lakes/lake-1/safety/autonomy", json={"enabled": True, "reason": "shift start"}
     )
     assert response.status_code == 403
+
+
+def test_verified_station_viewer_can_read_real_safety_status_without_secrets_or_controls():
+    response = _client(_principal(StationRole.VIEWER), SafetyRepository(), Reconciler()).get(
+        "/api/stations/station-1/lakes/lake-1/safety/status"
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload == {
+        "station_id": "station-1", "lake_id": "lake-1", "autonomy": "paused",
+        "active_assignments": [], "pending_assignments": [], "source": "real",
+        "heartbeat_age_seconds": 4, "eligible": True,
+        "desired_state_version": 7, "acknowledged_state_version": 6,
+    }
+    assert not {"public_key", "credential_id", "serial", "coordinate", "route"} & payload.keys()
 
 
 def test_safety_supervisor_with_recent_mfa_changes_policy_audits_and_reconciles():

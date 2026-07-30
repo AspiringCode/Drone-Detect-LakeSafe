@@ -95,12 +95,16 @@ export type FleetLifecycle = "available" | "circulating" | "charging" | "mainten
 
 export interface FleetDrone {
   inventoryId: string;
-  source: "simulated";
+  source: Source;
   lifecycle: FleetLifecycle;
   batteryPercent: number | null;
   health: string;
   connectivity: string;
   maintenanceDue?: string | null;
+  /** Server-observed age of a signed real-device heartbeat. */
+  heartbeatAgeSeconds?: number | null;
+  /** Eligibility is a server-side safety decision, never a browser override. */
+  eligible?: boolean | null;
   desiredStateVersion: number;
   acknowledgedStateVersion: number;
 }
@@ -119,4 +123,17 @@ export interface ReconcileStatus {
   reconciliationId: string;
   desiredStateVersion: number;
   acknowledgedStateVersion: number;
+}
+
+export type RealAutonomyState = "paused" | "pending_ack" | "active" | "degraded" | "safe_return_requested" | "gateway_unavailable";
+
+export interface RealFleetSafetyStatus {
+  source: "real";
+  realAutonomy: RealAutonomyState;
+  heartbeatAgeSeconds: number | null;
+  eligible: boolean | null;
+  desiredStateVersion: number;
+  acknowledgedStateVersion: number;
+  activeAssignments?: string[];
+  pendingAssignments?: string[];
 }

@@ -307,8 +307,8 @@ legend { padding: 0 0.4rem; font-weight: 700; }
 .data-freshness--unknown { background: var(--surface-muted); color: var(--text-muted); }
 .data-freshness--stale { background: var(--warning-surface); color: oklch(43% 0.09 80); }
 .operations-data-error { margin: 0; padding: 0.65rem 0.75rem; border: 1px solid oklch(85% 0.065 40); border-radius: 12px; background: oklch(96% 0.035 40); color: oklch(43% 0.13 30); font-size: 0.72rem; font-weight: 700; line-height: 1.45; }
-.plan-card, .inventory-card, .autonomy-card { padding: 0.9rem 1rem; }
-.plan-card .panel-heading, .inventory-card .panel-heading, .autonomy-card .panel-heading { margin-bottom: 0.55rem; }
+.plan-card, .inventory-card, .autonomy-card, .real-fleet-safety { padding: 0.9rem 1rem; }
+.plan-card .panel-heading, .inventory-card .panel-heading, .autonomy-card .panel-heading, .real-fleet-safety .panel-heading { margin-bottom: 0.55rem; }
 .plan-details { display: grid; grid-template-columns: 1.3fr repeat(2, 1fr); gap: 0.55rem; margin: 0; }
 .plan-details div { min-width: 0; padding: 0.5rem; border-radius: 10px; background: var(--surface-muted); }
 .plan-details dt { color: var(--text-muted); font-size: 0.58rem; font-weight: 750; letter-spacing: 0.08em; text-transform: uppercase; }
@@ -330,6 +330,23 @@ legend { padding: 0 0.4rem; font-weight: 700; }
 .autonomy-card .form-error { margin: 0.55rem 0 0; font-size: 0.69rem; }
 .autonomy-actions { display: grid; gap: 0.45rem; margin-top: 0.65rem; }
 .autonomy-actions button { width: 100%; min-height: 2.25rem; padding: 0.38rem 0.55rem; font-size: 0.72rem; }
+.real-fleet-safety { display: grid; gap: 0.65rem; }
+.real-safety-state { display: inline-flex; align-items: center; min-height: 1.55rem; padding: 0.18rem 0.45rem; border-radius: 999px; background: var(--surface-muted); color: var(--text-muted); font-size: 0.58rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
+.real-safety-state--active { background: oklch(94% .04 150); color: oklch(39% .1 150); }
+.real-safety-state--pending_ack, .real-safety-state--degraded { background: var(--warning-surface); color: oklch(43% .09 80); }
+.real-safety-state--safe_return_requested, .real-safety-state--gateway_unavailable { background: oklch(96% .035 40); color: oklch(43% .13 30); }
+.real-safety-copy { margin: 0; color: var(--text-muted); font-size: 0.71rem; line-height: 1.45; }
+.real-safety-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.4rem; margin: 0; }
+.real-safety-details div { min-width: 0; padding: 0.45rem; border-radius: 9px; background: var(--surface-muted); }
+.real-safety-details dt { color: var(--text-muted); font-size: 0.56rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+.real-safety-details dd { margin: 0.18rem 0 0; color: var(--text); font-size: 0.63rem; font-weight: 700; line-height: 1.35; }
+.real-safety-pending { color: oklch(43% .09 80) !important; }
+.real-safety-actions { display: grid; gap: 0.45rem; padding-top: 0.1rem; }
+.real-safety-actions label { display: grid; gap: 0.25rem; color: var(--text-muted); font-size: 0.64rem; font-weight: 750; }
+.real-safety-actions textarea { min-height: 3.2rem; resize: vertical; padding: 0.48rem 0.55rem; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); color: var(--text); font: inherit; }
+.real-safety-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem; }
+.real-safety-buttons button { min-height: 2.2rem; padding: 0.38rem 0.5rem; font-size: 0.68rem; }
+.real-safety-return { color: oklch(43% .13 30); border-color: oklch(78% .08 35); }
 .no-live { place-content: center; text-align: center; }
 .no-live h1 { margin-bottom: 0.9rem; }
 .no-live p:not(.kicker) { color: var(--text-muted); }

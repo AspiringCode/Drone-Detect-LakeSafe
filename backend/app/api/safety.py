@@ -48,9 +48,9 @@ def get_real_capacity_reconciler() -> RealCapacityReconciler:
     return RealCapacityReconciler(app)
 
 
-def _station_access(principal: Principal, station_id: str) -> None:
+def _station_access(principal: Principal, station_id: str, permission: Permission = Permission.CHANGE_FLEET_SAFETY) -> None:
     try:
-        require_station_access(principal, station_id, Permission.CHANGE_FLEET_SAFETY)
+        require_station_access(principal, station_id, permission)
     except HTTPException as exc:
         if exc.status_code == 403 and not any(item.station_id == station_id for item in principal.memberships):
             raise HTTPException(status_code=404, detail="Lake not found") from exc
@@ -92,6 +92,19 @@ def _status_from(value: dict):
     if state not in {"paused", "pending_ack", "active", "degraded", "safe_return_requested", "gateway_unavailable"}:
         state = "pending_ack"
     return RealFleetStatus(state, tuple(value.get("active_assignments") or ()), tuple(value.get("pending_assignments") or ()), value.get("last_acknowledged_versions") or {})
+
+
+@router.get("/status")
+def real_fleet_status(station_id: str, lake_id: str, principal: Principal = Depends(get_principal)) -> dict:
+    """Read-only status for station members; this exposes no device controls or secrets."""
+    _station_access(principal, station_id, Permission.READ_OPERATIONS)
+    repository = get_safety_repository()
+    if not repository.lake_belongs_to_station(station_id, lake_id):
+        raise HTTPException(status_code=404, detail="Lake not found")
+    try:
+        return repository.real_fleet_status(station_id, lake_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="Real fleet status is unavailable") from exc
 
 
 @router.post("/autonomy", status_code=status.HTTP_202_ACCEPTED)

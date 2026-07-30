@@ -7,13 +7,15 @@ import { SimulatedBadge } from "../components/SimulatedBadge";
 import { supabase, type SupabaseLike } from "../lib/supabase";
 import { connectOperationalPositions, connectPositions } from "../lib/ws";
 import { useOrientation } from "../lib/useOrientation";
-import type { Alert, Capability, FleetDrone, Principal, SimulationState, ZonePlanSummary } from "../lib/types";
+import type { Alert, Capability, FleetDrone, Principal, RealFleetSafetyStatus, SimulationState, ZonePlanSummary } from "../lib/types";
 import { AppHeader } from "../components/AppHeader";
 import { useOptionalPrincipal } from "../auth/PrincipalProvider";
-import { applyReconcileStatus, loadFleet, loadZonePlan, requestCirculation } from "../lib/fleetData";
+import { applyReconcileStatus, loadFleet, loadRealFleetSafetyStatus, loadZonePlan, requestCirculation, requestSafeReturn, setRealAutonomy } from "../lib/fleetData";
 import { AutonomyControls } from "../components/AutonomyControls";
 import { FleetInventoryPanel } from "../components/FleetInventoryPanel";
 import { ZonePlanStatus } from "../components/ZonePlanStatus";
+import { RealFleetSafetyPanel } from "../components/RealFleetSafetyPanel";
+import { ApiError } from "../lib/apiClient";
 
 const API = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 const wsFor = (lakeId: string) => `${API.replace(/^http/, "ws")}/ws/lakes/${lakeId}/positions`;
@@ -42,6 +44,9 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
   const [reconciliationId, setReconciliationId] = useState<string | null>(null);
   const [circulationError, setCirculationError] = useState<string | null>(null);
   const [operationsDataError, setOperationsDataError] = useState<string | null>(null);
+  const [realSafety, setRealSafety] = useState<RealFleetSafetyStatus | null>(null);
+  const [realSafetyBusy, setRealSafetyBusy] = useState(false);
+  const [realSafetyError, setRealSafetyError] = useState<string | null>(null);
 
   const canReadOperations = hasLakeCapability(principal, lakeStationId, "station.read");
   const canManageAlerts = hasLakeCapability(principal, lakeStationId, "alert.manage");
@@ -63,12 +68,13 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
   }, [client, lakeId]);
 
   useEffect(() => {
-    if (!canReadOperations || !lakeStationId) { setFleet([]); setZonePlan(null); setOperationsDataError(null); return; }
+    if (!canReadOperations || !lakeStationId) { setFleet([]); setZonePlan(null); setRealSafety(null); setOperationsDataError(null); return; }
     let active = true;
-    void Promise.allSettled([loadFleet(lakeStationId, lakeId, client, fetcher), loadZonePlan(lakeStationId, lakeId, client, fetcher)]).then(([fleetResult, planResult]) => {
+    void Promise.allSettled([loadFleet(lakeStationId, lakeId, client, fetcher), loadZonePlan(lakeStationId, lakeId, client, fetcher), loadRealFleetSafetyStatus(lakeStationId, lakeId, client, fetcher)]).then(([fleetResult, planResult, realSafetyResult]) => {
       if (!active) return;
       if (fleetResult.status === "fulfilled") setFleet(fleetResult.value);
       if (planResult.status === "fulfilled") setZonePlan(planResult.value);
+      if (realSafetyResult.status === "fulfilled") setRealSafety(realSafetyResult.value);
       if (fleetResult.status === "rejected" || planResult.status === "rejected") setOperationsDataError("Operational data could not be loaded. Existing live telemetry may still be available.");
     });
     return () => { active = false; };
@@ -84,6 +90,20 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
       setFleet((current) => applyReconcileStatus(current, droneId, result));
     } catch { setCirculationError("The circulation change could not be queued. Try again."); }
     finally { setPendingCirculationId(null); }
+  }
+  async function changeRealAutonomy(enabled: boolean, reason: string) {
+    if (!canManageAutonomy || !lakeStationId) return;
+    setRealSafetyBusy(true); setRealSafetyError(null);
+    try { setRealSafety(await setRealAutonomy(lakeStationId, lakeId, enabled, reason, client, fetcher)); }
+    catch (error) { setRealSafetyError(error instanceof ApiError && error.status === 403 ? "Recent MFA is required before changing real fleet safety policy." : "The real fleet safety policy could not be updated."); }
+    finally { setRealSafetyBusy(false); }
+  }
+  async function returnRealFleet(reason: string) {
+    if (!canManageAutonomy || !lakeStationId) return;
+    setRealSafetyBusy(true); setRealSafetyError(null);
+    try { setRealSafety(await requestSafeReturn(lakeStationId, lakeId, reason, client, fetcher)); }
+    catch (error) { setRealSafetyError(error instanceof ApiError && error.status === 403 ? "Recent MFA is required before requesting a fleet safe return." : "The fleet safe-return request could not be sent."); }
+    finally { setRealSafetyBusy(false); }
   }
   async function demo() { if (!canManageAlerts) return; const token = accessToken ?? (await client.auth.getSession()).data.session?.access_token; const response = await fetcher(`${API}/api/lakes/${lakeId}/demo/trigger`, { method: "POST", headers: { Authorization: `Bearer ${token ?? ""}` } }); if (response.ok) setAlert(await response.json()); }
   async function escalate(id: string) { if (!canManageAlerts) return; const token = accessToken ?? (await client.auth.getSession()).data.session?.access_token; await fetcher(`${API}/api/lakes/${lakeId}/alerts/${id}/escalate`, { method: "POST", headers: { Authorization: `Bearer ${token ?? ""}` } }); }
@@ -124,6 +144,7 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
             <DroneRoster drones={drones} />
           </section>
           {canReadOperations && <FleetInventoryPanel drones={fleet} />}
+          {canReadOperations && realSafety && <RealFleetSafetyPanel capabilities={stationCapabilities} status={realSafety} busy={realSafetyBusy} error={realSafetyError} onSetAutonomy={changeRealAutonomy} onRequestSafeReturn={returnRealFleet} />}
           <section className="panel-card alert-card">
             <div className="panel-heading"><div><p className="panel-eyebrow">Response</p><h2>Active alert</h2></div></div>
             <AlertPanel alert={alert} onEscalate={canManageAlerts ? escalate : undefined} />
