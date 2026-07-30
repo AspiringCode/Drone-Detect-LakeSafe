@@ -23,6 +23,8 @@ class AutonomyRepository(Protocol):
     def active_plan_id(self, lake_id: str) -> str | None: ...
     def claim_pending(self, limit: int) -> tuple[CommandEnvelope, ...]: ...
     def claim_real_pending(self, station_id: str, lake_id: str, limit: int) -> tuple[CommandEnvelope, ...]: ...
+    def expire_real_delivery(self, station_id: str, lake_id: str) -> tuple[str, ...]: ...
+    def release_real(self, command_id: str) -> bool: ...
     def acknowledge(self, command_id: str) -> bool: ...
     def release(self, command_id: str) -> bool: ...
 
@@ -91,6 +93,13 @@ class InMemoryAutonomyRepository:
             self._commands[key] = updated
             claimed.append(updated)
         return tuple(claimed)
+
+    def expire_real_delivery(self, station_id: str, lake_id: str) -> tuple[str, ...]:
+        del station_id, lake_id
+        return ()
+
+    def release_real(self, command_id: str) -> bool:
+        return self.release(command_id)
 
     def acknowledge(self, command_id: str) -> bool:
         for key, command in self._commands.items():
@@ -162,6 +171,13 @@ class SupabaseAutonomyRepository:
     def claim_real_pending(self, station_id: str, lake_id: str, limit: int) -> tuple[CommandEnvelope, ...]:
         rows = self._client.rpc("claim_real_autonomy_outbox", {"p_station_id": station_id, "p_lake_id": lake_id, "p_limit": limit}).execute().data or []
         return self._commands_from_rows(rows)
+
+    def expire_real_delivery(self, station_id: str, lake_id: str) -> tuple[str, ...]:
+        rows = self._client.rpc("expire_real_command_delivery", {"p_station_id": station_id, "p_lake_id": lake_id, "p_max_attempts": 3}).execute().data or []
+        return tuple(str(row) for row in rows)
+
+    def release_real(self, command_id: str) -> bool:
+        return self._client.rpc("release_real_autonomy_command", {"p_command_id": command_id, "p_max_attempts": 3}).execute().data is True
 
     @staticmethod
     def _commands_from_rows(rows) -> tuple[CommandEnvelope, ...]:

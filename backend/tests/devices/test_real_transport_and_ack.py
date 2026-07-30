@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 from app.autonomy.outbox import CommandEnvelope
 from app.devices.auth import DevicePrincipal, canonical_request_bytes
@@ -162,6 +164,8 @@ class AckRepository:
         self.sequences: set[int] = set()
 
     def command_for_ack(self, command_id: str):
+        if command_id == "return-6":
+            return {"command_id": command_id, "drone_id": "d1", "station_id": "station-1", "lake_id": "lake-1", "plan_id": None, "desired_state_version": 6, "command_type": "return_to_reserve", "status": "claimed"}
         if command_id == "c4":
             return {"command_id": command_id, "drone_id": "d1", "station_id": "station-1", "lake_id": "lake-1", "plan_id": "p1", "desired_state_version": 4, "status": "claimed"}
         return {"command_id": command_id, "drone_id": "d1", "station_id": "station-1", "lake_id": "lake-1", "plan_id": "p2", "desired_state_version": 5, "status": "claimed"}
@@ -194,3 +198,82 @@ def test_ack_requires_exact_command_ownership_and_version():
     service = AcknowledgementService(AckRepository())
     with pytest.raises(AcknowledgementMismatch):
         service.record(DevicePrincipal("d1", "station-1", "credential-1", 7), "c5", "p2", 4, "accepted", None)
+
+
+def test_safe_return_ack_allows_no_plan_but_keeps_exact_drone_and_version_binding():
+    from app.devices.acknowledgements import AcknowledgementService, AcknowledgementMismatch
+
+    service = AcknowledgementService(AckRepository())
+    principal = DevicePrincipal("d1", "station-1", "credential-1", 8)
+    service.record(principal, "return-6", None, 6, "accepted", None)
+    with pytest.raises(AcknowledgementMismatch):
+        service.record(DevicePrincipal("d1", "station-1", "credential-1", 9), "return-6", None, 5, "accepted", None)
+
+
+def test_device_api_accepts_valid_safe_return_ack_without_plan_id(monkeypatch):
+    from app.api import devices
+
+    private = Ed25519PrivateKey.generate()
+    public_key = base64.urlsafe_b64encode(private.public_key().public_bytes_raw()).rstrip(b"=").decode()
+
+    class Repository(AckRepository):
+        def active_credential(self, drone_id):
+            return {"drone_id": drone_id, "station_id": "station-1", "credential_id": "credential-1", "public_key": public_key}
+        def claim_sequence(self, drone_id, sequence): return True
+
+    repository = Repository()
+    app = FastAPI(); app.include_router(devices.router)
+    monkeypatch.setattr(devices, "get_device_repository", lambda: repository)
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    body = b'{"desired_state_version":6,"status":"accepted"}'
+    signature = base64.urlsafe_b64encode(private.sign(canonical_request_bytes("d1", timestamp, 10, body))).rstrip(b"=").decode()
+    response = TestClient(app).post("/api/devices/d1/commands/return-6/acknowledgements", content=body, headers={
+        "X-Device-Timestamp": timestamp, "X-Device-Sequence": "10", "X-Device-Signature": signature,
+    })
+    assert response.status_code == 202
+
+
+def test_real_claim_database_contract_filters_due_unexpired_commands_and_increments_attempts():
+    sql = (Path(__file__).parents[3] / "supabase" / "migrations" / "0027_real_delivery_retry_and_safe_return_ack.sql").read_text().lower()
+    claim = sql.split("create or replace function public.claim_real_autonomy_outbox", 1)[1]
+    assert "expires_at is null or command.expires_at > now()" in claim
+    assert "next_attempt_at is null or command.next_attempt_at <= now()" in claim
+    assert "delivery_attempts=command.delivery_attempts+1" in claim
+
+
+def test_real_publisher_expires_before_claim_and_schedules_reduced_capacity_reconciliation():
+    from app.devices.reconciler import RealAutonomyPublisher
+
+    class DeliveryRepository:
+        def __init__(self): self.claimed = False
+        def expire_real_delivery(self, station_id, lake_id):
+            assert (station_id, lake_id) == ("station-1", "lake-1")
+            return ("d2",)
+        def claim_real_pending(self, station_id, lake_id, limit):
+            self.claimed = True
+            return ()
+
+    class Lakes(Inventory):
+        def __init__(self): super().__init__(); self.reconciliations = []
+        def request_real_capacity_reconciliation(self, lake_id, trigger): self.reconciliations.append((lake_id, trigger))
+
+    deliveries, lakes = DeliveryRepository(), Lakes()
+    assert RealAutonomyPublisher(deliveries, Gateway(), lakes).reconcile_lake("lake-1", "timer") == ()
+    assert deliveries.claimed is True
+    assert lakes.reconciliations == [("lake-1", "real_command_expired")]
+
+
+def test_real_publisher_uses_real_release_path_after_gateway_failure():
+    from app.devices.reconciler import RealAutonomyPublisher
+
+    class DeliveryRepository:
+        def expire_real_delivery(self, station_id, lake_id): return ()
+        def claim_real_pending(self, station_id, lake_id, limit): return (command_for(),)
+        def release_real(self, command_id): self.command_id = command_id; return True
+
+    class FailingGateway:
+        def publish(self, command): raise RuntimeError("gateway offline")
+
+    deliveries = DeliveryRepository()
+    RealAutonomyPublisher(deliveries, FailingGateway(), Inventory()).reconcile_lake("lake-1", "timer")
+    assert deliveries.command_id == "c5"

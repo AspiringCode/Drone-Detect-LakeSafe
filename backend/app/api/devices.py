@@ -61,7 +61,7 @@ async def acknowledge_command(
         raise HTTPException(status_code=401, detail="Device authentication failed") from exc
     try:
         payload = json.loads(raw_body)
-        AcknowledgementService(repository).record(principal, command_id, payload["plan_id"], payload["desired_state_version"], payload["status"], payload.get("detail"))
+        AcknowledgementService(repository).record(principal, command_id, payload.get("plan_id"), payload["desired_state_version"], payload["status"], payload.get("detail"))
     except (json.JSONDecodeError, KeyError, TypeError, ValidationError, ValueError, AcknowledgementError, DeviceRepositoryError) as exc:
         raise HTTPException(status_code=422, detail="Acknowledgement payload is invalid") from exc
     return {"received_sequence": sequence}

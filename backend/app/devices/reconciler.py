@@ -40,12 +40,20 @@ class RealAutonomyPublisher:
         station_id = self._lake_repository.lake_station_id(lake_id)
         if not station_id:
             raise RuntimeError("real capacity lake is unavailable")
+        expired = tuple(getattr(self._repository, "expire_real_delivery", lambda *_: ())(station_id, lake_id))
+        if expired:
+            request = getattr(self._lake_repository, "request_real_capacity_reconciliation", None)
+            if callable(request):
+                request(lake_id, "real_command_expired")
         published: list[str] = []
         for command in self._repository.claim_real_pending(station_id, lake_id, self._batch_size):
             try:
                 receipt = self._adapter.publish(command)
             except Exception:
-                self._repository.release(command.command_id)
+                release = getattr(self._repository, "release_real", None)
+                if not callable(release):
+                    release = self._repository.release
+                release(command.command_id)
                 continue
             if receipt.command_id:
                 published.append(receipt.command_id)
