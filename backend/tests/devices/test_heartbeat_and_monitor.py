@@ -54,6 +54,11 @@ class Autonomy:
         self.calls.append((lake_id, trigger))
 
 
+class FailingAutonomy(Autonomy):
+    def reconcile_lake(self, lake_id, trigger, expected_plan_id=None):
+        raise RuntimeError("autonomy service is unavailable")
+
+
 class AuthRepository(Repository):
     def __init__(self, public_key: bytes) -> None:
         super().__init__()
@@ -92,6 +97,25 @@ def test_stale_heartbeat_marks_offline_once():
     assert monitor.scan(datetime.now(timezone.utc)) == ("lake-1",)
     assert monitor.scan(datetime.now(timezone.utc)) == ()
     assert autonomy.calls == [("lake-1", "heartbeat_expired")]
+
+
+def test_claimed_capacity_job_is_released_when_actual_reconcile_fails():
+    repository = Repository()
+    repository.queue.append({"reconciliation_id": "r-1", "lake_id": "lake-1", "trigger": "heartbeat_expired", "generation": 1, "claim_token": "c-1"})
+    released = []
+    repository.release_real_capacity_reconciliation = lambda item: released.append(item["reconciliation_id"]) or True
+    assert HeartbeatMonitor(repository, FailingAutonomy()).drain_reconciliations() == ()
+    assert released == ["r-1"]
+
+
+def test_claimed_capacity_job_completes_only_after_actual_reconcile_call():
+    repository, autonomy = Repository(), Autonomy()
+    repository.queue.append({"reconciliation_id": "r-1", "lake_id": "lake-1", "trigger": "heartbeat_recovery", "generation": 1, "claim_token": "c-1"})
+    completed = []
+    repository.complete_real_capacity_reconciliation = lambda item: completed.append(item["reconciliation_id"]) or True
+    assert HeartbeatMonitor(repository, autonomy).drain_reconciliations() == ("lake-1",)
+    assert autonomy.calls == [("lake-1", "heartbeat_recovery")]
+    assert completed == ["r-1"]
 
 
 def _signature(private, drone_id, timestamp, sequence, body):

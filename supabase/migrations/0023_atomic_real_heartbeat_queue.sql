@@ -76,13 +76,5 @@ begin update public.real_capacity_reconciliations set status='pending',claim_tok
 
 drop function public.request_real_capacity_reconciliation(text,text);
 create function public.request_real_capacity_reconciliation(p_lake_id text,p_trigger text) returns void language plpgsql security definer set search_path='' as $$ begin if p_trigger not in ('heartbeat_recovery','heartbeat_expired') or not exists(select 1 from public.lakes where lake_id=p_lake_id) then raise exception 'invalid real capacity reconciliation' using errcode='23514'; end if; perform private.enqueue_real_capacity_reconciliation(p_lake_id,p_trigger); end; $$;
-create function public.reconcile_real_capacity(p_lake_id text,p_trigger text) returns void language plpgsql security definer set search_path='' as $$ begin
-  -- The durable worker calls this hook after claiming a queue lease.  It
-  -- publishes an internal wake-up for the autonomy service; no route, heading,
-  -- waypoint, or manual control is ever accepted here.
-  perform pg_notify('lakesafe_real_capacity', json_build_object('lake_id',p_lake_id,'trigger',p_trigger)::text);
-end; $$;
 revoke all on function public.record_real_heartbeat(uuid,uuid,uuid,bigint,integer,text,boolean,timestamptz), public.claim_real_capacity_reconciliations(integer,integer), public.complete_real_capacity_reconciliation(uuid,uuid,bigint), public.release_real_capacity_reconciliation(uuid,uuid), public.request_real_capacity_reconciliation(text,text) from public,anon,authenticated;
 grant execute on function public.record_real_heartbeat(uuid,uuid,uuid,bigint,integer,text,boolean,timestamptz), public.claim_real_capacity_reconciliations(integer,integer), public.complete_real_capacity_reconciliation(uuid,uuid,bigint), public.release_real_capacity_reconciliation(uuid,uuid), public.request_real_capacity_reconciliation(text,text) to service_role;
-revoke all on function public.reconcile_real_capacity(text,text) from public,anon,authenticated;
-grant execute on function public.reconcile_real_capacity(text,text) to service_role;

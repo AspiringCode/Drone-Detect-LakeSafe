@@ -65,12 +65,6 @@ class SupabaseDeviceRepository(DeviceAuthRepository):
         except Exception as exc:
             raise DeviceRepositoryError("Device gateway is unavailable") from exc
 
-    def reconcile_real_capacity(self, lake_id: str, trigger: str) -> None:
-        try:
-            self._client.rpc("reconcile_real_capacity", {"p_lake_id": lake_id, "p_trigger": trigger}).execute()
-        except Exception as exc:
-            raise DeviceRepositoryError("Real capacity reconciliation is unavailable") from exc
-
     def claim_real_capacity_reconciliations(self, limit: int = 20, lease_seconds: int = 30) -> tuple[dict, ...]:
         try:
             return tuple(self._client.rpc("claim_real_capacity_reconciliations", {"p_limit": limit, "p_lease_seconds": lease_seconds}).execute().data or [])

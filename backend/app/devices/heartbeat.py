@@ -35,7 +35,7 @@ class LakeReconciler(Protocol):
 
 
 class HeartbeatService:
-    def __init__(self, repository: HeartbeatRepository, autonomy: LakeReconciler) -> None:
+    def __init__(self, repository: HeartbeatRepository, autonomy: LakeReconciler | None = None) -> None:
         self._repository = repository
         self._autonomy = autonomy
 
