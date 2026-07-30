@@ -2,6 +2,12 @@
 -- Keep the original import table for migration audit only.
 alter table if exists public.alerts rename to legacy_alerts;
 
+-- A legacy import is never a public fallback.  Keep it available only to a
+-- service-side migration, with RLS forced even for table owners.
+alter table public.legacy_alerts enable row level security;
+alter table public.legacy_alerts force row level security;
+revoke all on public.legacy_alerts from public, anon, authenticated;
+
 create table if not exists public.legacy_alert_quarantine (
   alert_id text primary key,
   reason text not null,

@@ -324,17 +324,20 @@ def create_organization(
 
 
 @app.get("/api/lakes/{lake_id}/riskmap")
-def get_riskmap(lake_id: str):
+def get_riskmap(lake_id: str, authorization: str | None = Header(default=None)):
+    authorize_lake(lake_id, authorization, Permission.READ_OPERATIONS)
     return zones_to_geojson(get_runtime(lake_id).zones)
 
 
 @app.get("/api/lakes/{lake_id}/drones")
-def get_drones(lake_id: str):
+def get_drones(lake_id: str, authorization: str | None = Header(default=None)):
+    authorize_lake(lake_id, authorization, Permission.READ_OPERATIONS)
     return current_state(get_runtime(lake_id))
 
 
 @app.get("/api/lakes/{lake_id}/alerts")
-def get_alerts(lake_id: str):
+def get_alerts(lake_id: str, authorization: str | None = Header(default=None)):
+    authorize_lake(lake_id, authorization, Permission.READ_OPERATIONS)
     return _jsonable(get_runtime(lake_id).alert_backend.list())
 
 

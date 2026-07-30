@@ -11,6 +11,11 @@ from app.main import app, lake_runtimes
 LAKE_ID = "lake-sammamish"
 
 
+def _read_headers(monkeypatch):
+    monkeypatch.setattr("app.main.verify_supabase_jwt", lambda token: {"sub": "owner", "aal": "aal2"})
+    return {"Authorization": "Bearer signed-token"}
+
+
 class FakeAccessRepository:
     def load_principal_state(self, user_id):
         station_id = "station-1" if user_id == "owner" else "station-2"
@@ -28,11 +33,20 @@ def fake_access_repository(monkeypatch):
     monkeypatch.setattr("app.main.get_access_repository", lambda: FakeAccessRepository())
 
 
-def test_get_riskmap_returns_feature_collection():
+def test_get_riskmap_returns_feature_collection(monkeypatch):
     client = TestClient(app)
-    response = client.get(f"/api/lakes/{LAKE_ID}/riskmap")
+    response = client.get(f"/api/lakes/{LAKE_ID}/riskmap", headers=_read_headers(monkeypatch))
     assert response.status_code == 200
     assert response.json()["type"] == "FeatureCollection"
+
+
+@pytest.mark.parametrize("path", [
+    f"/api/lakes/{LAKE_ID}/riskmap",
+    f"/api/lakes/{LAKE_ID}/drones",
+    f"/api/lakes/{LAKE_ID}/alerts",
+])
+def test_operational_read_routes_reject_anonymous_clients(path):
+    assert TestClient(app).get(path).status_code == 401
 
 
 def test_demo_trigger_creates_alert_retrievable(monkeypatch):
@@ -41,7 +55,7 @@ def test_demo_trigger_creates_alert_retrievable(monkeypatch):
     response = client.post(f"/api/lakes/{LAKE_ID}/demo/trigger", headers={"Authorization": "Bearer signed-token"})
     assert response.status_code == 200
     alert_id = response.json()["alert_id"]
-    alerts = client.get(f"/api/lakes/{LAKE_ID}/alerts").json()
+    alerts = client.get(f"/api/lakes/{LAKE_ID}/alerts", headers={"Authorization": "Bearer signed-token"}).json()
     assert any(alert["alert_id"] == alert_id for alert in alerts)
 
 
@@ -61,15 +75,15 @@ def test_startup_launches_background_tick_task_that_stays_alive():
         assert not tasks[LAKE_ID].done()
 
 
-def test_riskmap_allows_cross_origin_dashboard_dev_server():
+def test_riskmap_allows_cross_origin_dashboard_dev_server(monkeypatch):
     client = TestClient(app)
-    response = client.get(f"/api/lakes/{LAKE_ID}/riskmap", headers={"Origin": "http://localhost:5173"})
+    response = client.get(f"/api/lakes/{LAKE_ID}/riskmap", headers={"Origin": "http://localhost:5173", **_read_headers(monkeypatch)})
     assert response.headers.get("access-control-allow-origin") == "http://localhost:5173"
 
 
-def test_riskmap_returns_nonempty_closed_tessellated_cell_rings():
+def test_riskmap_returns_nonempty_closed_tessellated_cell_rings(monkeypatch):
     client = TestClient(app)
-    response = client.get(f"/api/lakes/{LAKE_ID}/riskmap")
+    response = client.get(f"/api/lakes/{LAKE_ID}/riskmap", headers=_read_headers(monkeypatch))
     assert response.status_code == 200
     features = response.json()["features"]
     assert features
