@@ -6,11 +6,8 @@ from __future__ import annotations
 
 from app.config import LAKE_BBOX
 from app.models import LatLon, RiskZone
-from app.risk_zones.socrata_client import (
-    fetch_access_points,
-    fetch_depth_contours,
-    fetch_incidents,
-)
+from app.risk_zones.connectors import ReviewedConnectorUnavailable
+from app.risk_zones.demo_fixture_data import load_demo_rows
 
 INCIDENT_PROXY_THRESHOLD = 2
 WEIGHTS = {"incidents": 0.5, "depth": 0.3, "crowding": 0.2}
@@ -65,15 +62,19 @@ def _polygon(south: float, west: float, north: float, east: float) -> list[LatLo
 
 
 def compute_risk_zones(grid_n: int = 5, use_fixture: bool = False) -> list[RiskZone]:
-    """Compute Lake Sammamish risk cells from incidents plus proxy factors.
+    """Compute legacy demo cells only when synthetic fixtures are explicit.
 
     Raw score uses weights 0.5 incident density, 0.3 depth-change severity, and
     0.2 access-point crowding. Cells with fewer than 2 incident rows are marked
     `is_proxy=True` because depth/crowding proxy estimates dominate disclosure.
     """
-    incidents = fetch_incidents(use_fixture=use_fixture)
-    depths = fetch_depth_contours(use_fixture=use_fixture)
-    access = fetch_access_points(use_fixture=use_fixture)
+    if not use_fixture:
+        raise ReviewedConnectorUnavailable(
+            "legacy scoring has no live data path; use the reviewed snapshot/plan pipeline"
+        )
+    incidents = load_demo_rows("incidents")
+    depths = load_demo_rows("depth_contours")
+    access = load_demo_rows("access_points")
 
     cells: list[dict[str, float | int]] = []
     for row in range(grid_n):

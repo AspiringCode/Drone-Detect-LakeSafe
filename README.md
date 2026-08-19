@@ -1,55 +1,53 @@
-# CAC Drone Lake Surveillance — Software
+# LakeSafe — Congressional App Challenge software
 
-Congressional App Challenge 2026 entry (WA-08). The software "app" for an autonomous
-multi-drone thermal drowning-detection concept for **Lake Sammamish**, built for and aligned
-with the **LakeSafe Initiative** mission.
+LakeSafe is a safety-oriented proof-of-concept for three reviewed King County lakes:
+**Lake Sammamish, Pine Lake, and Beaver Lake**. It combines reviewed public access and
+environmental proxy observations, shoreline-clipped planning, role-separated public and
+station views, and a clearly labeled fleet/alert simulation.
 
-## What this is
+Backend: Python 3.11+ / FastAPI / WebSocket. Dashboard: React / TypeScript / Vite /
+Leaflet. Storage and authorization: Supabase/PostgreSQL.
 
-Four decoupled software subsystems, integrated into one operator-facing demo:
+## Current scope
 
-1. **Risk-zone algorithm** — King County water/incident data → weighted risk zones over Lake Sammamish → heat map.
-2. **Thermal detection pipeline** — YOLOv8n fine-tune + temporal-persistence filtering + evaluation.
-3. **Multi-drone coordination simulation** — risk-weighted zone assignment, collision avoidance, battery reassignment, second-drone confirmation protocol.
-4. **Operator dashboard** — real-time lake map, live drone positions, risk overlay, GPS-located alerts, one-tap dispatch.
+- Reviewed King County swim-beach observations and monitoring-site coordinates are real
+  public proxy data; they are not incident history.
+- Reviewed King County polygons supply the three local shoreline fixtures.
+- Planning creates proxy-priority and baseline-coverage cells, validates shoreline-
+  clipped geometry, and atomically retains safe active state across refresh failures.
+- Fleet coordination and demo alerts are simulated.
+- A signed real-device software pathway exists but has not been physically flight-
+  validated.
+- Thermal detector code exists, but real open-water accuracy, false-positive rate, and
+  latency are unproven. There is no live CAD/911 integration.
+- Civilian output is delayed/generalized; operational access requires verified/MFA/
+  station/capability checks and database row-level security.
 
-Backend: Python 3.11+ / FastAPI / WebSocket. Dashboard: React + TypeScript + Vite + Leaflet. Storage: Supabase.
+Draft CAC materials, setup instructions, AI disclosure, architecture, results,
+privacy notes, and attribution are in [`submission/`](submission/).
 
-## Scope
+## Local development
 
-This is a **proof-of-concept**, not an operational deployment. Specifically:
-
-- **Not** a replacement for lifeguards, and **not** a 24/7 monitoring system.
-- Open-water nighttime detection accuracy is **not** proven equal to pool-environment benchmarks.
-- **Not** integrated with any real King County 911 CAD system. The dashboard receives **simulated/demo alerts only** — never live dispatch traffic.
-- **Real vs. simulated is labeled everywhere.** Single-pod thermal footage is *real*; the 5-drone coordination and wide-area coverage are *simulated*. Every drone, detection, and alert record carries a `source: "real" | "simulated"` field, surfaced in the UI as a `SIMULATED`/`REAL` badge. Reliable classification happens at investigate altitude (~8–15 m), not wide-area scan altitude.
-
-Lake Sammamish drowning statistics are cited as motivation and context, not as a claim this system would have prevented any specific incident.
-
-## Running
-
-```bash
+```text
 # Backend
-cd backend && pip install -e .        # or: uv sync
-uvicorn app.main:app --reload
+cd backend
+uv sync
+uv run uvicorn app.main:app --reload
 
-# Dashboard
-cd dashboard && npm install && npm run dev
-
-# Supabase: apply supabase/migrations/0001_init.sql, set env vars (see supabase/README.md)
+# Dashboard (separate terminal)
+cd dashboard
+npm ci
+npm run dev
 ```
 
-Fire the demo: `POST /api/demo/trigger` → watch a detection become a confirmed, GPS-located alert on the dashboard.
+The full database release gate and every environment-variable name are documented in
+[`submission/judge-setup.md`](submission/judge-setup.md). Apply Supabase migrations in
+filename order through `0036_reviewed_multi_lake_sources.sql`; never place service-role,
+identity-provider, or real-device secrets in browser-exposed `VITE_` variables.
 
-### ID.me officer verification
+## Transparency
 
-The FastAPI service begins ID.me OIDC verification at
-`POST /api/verifications/idme/start` and receives its callback at
-`GET /api/verifications/idme/callback`. Configure backend-only environment
-variables (never a `VITE_` browser variable): `IDME_CLIENT_ID`,
-`IDME_CLIENT_SECRET`, `IDME_REDIRECT_URI`, and `IDME_AUDIENCE`. Optional
-provider/environment overrides are `IDME_ISSUER`, `IDME_AUTHORIZATION_ENDPOINT`,
-`IDME_TOKEN_ENDPOINT`, `IDME_JWKS_URI`, `IDME_USERINFO_ENDPOINT`,
-`IDME_PROFILE_SUCCESS_URL`, and `IDME_PROFILE_FAILURE_URL`. Set the server-only
-`VERIFICATION_SESSION_ENCRYPTION_KEY` to a Fernet key so callback material can
-survive a worker restart without exposing it to the browser.
+All AI assistance must be disclosed accurately. The draft disclosure names Codex and
+Claude and requires student personalization. Open-source and data terms—including GSAP's
+Standard License, Ultralytics deployment review, King County sources, and OpenStreetMap
+attribution—are documented in [`submission/open-source-attribution.md`](submission/open-source-attribution.md).

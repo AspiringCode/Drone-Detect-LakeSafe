@@ -1,4 +1,12 @@
+import pytest
+
+from app.risk_zones.connectors import ReviewedConnectorUnavailable
 from app.risk_zones.scoring import compute_risk_zones
+
+
+def test_legacy_scoring_requires_explicit_demo_fixture() -> None:
+    with pytest.raises(ReviewedConnectorUnavailable, match="reviewed snapshot/plan pipeline"):
+        compute_risk_zones(grid_n=5, use_fixture=False)
 
 
 def test_scores_normalized_and_proxy_flagged():

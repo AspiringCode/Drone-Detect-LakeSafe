@@ -7,14 +7,11 @@ from app.coordination.assignment import haversine_m
 from app.config import LAKE_BBOX
 from app.models import LatLon, RiskZone
 from app.risk_zones.cluster_strategy import ClusterZone, WeightedPoint, ZoneClusterStrategy
+from app.risk_zones.connectors import ReviewedConnectorUnavailable
+from app.risk_zones.demo_fixture_data import load_demo_rows
 from app.risk_zones.kmeans_strategy import MAX_RADIUS_M, MIN_RADIUS_M
 from app.risk_zones.scoring import INCIDENT_PROXY_THRESHOLD, WEIGHTS
 from app.risk_zones.shoreline import load_lake_polygon
-from app.risk_zones.socrata_client import (
-    fetch_access_points,
-    fetch_depth_contours,
-    fetch_incidents,
-)
 
 
 SEED_DEDUP_EPS_M = 1.0
@@ -226,11 +223,15 @@ def _cluster_components(cluster: ClusterZone) -> dict[str, float]:
 
 
 def compute_tessellated_zones(
-    lake_id: str, drone_count: int, use_fixture: bool = True, strategy: ZoneClusterStrategy | None = None
+    lake_id: str, drone_count: int, use_fixture: bool = False, strategy: ZoneClusterStrategy | None = None
 ) -> list[RiskZone]:
-    """Tile a lake between hotspot and coverage patrol cells, retaining one standby drone."""
+    """Tile a legacy demo fixture; production callers use persisted reviewed plans."""
     if drone_count <= 0:
         raise ValueError("drone_count must be positive")
+    if not use_fixture:
+        raise ReviewedConnectorUnavailable(
+            "legacy tessellation has no live data path; use the reviewed snapshot/plan pipeline"
+        )
 
     shoreline = load_lake_polygon(lake_id)
     mean_lat = _mean_latitude(shoreline)
@@ -238,9 +239,9 @@ def compute_tessellated_zones(
         lambda x, y, z=None: (x * math.cos(math.radians(mean_lat)), y), shoreline
     )
     points = _rows_to_weighted_points(
-        fetch_incidents(use_fixture=use_fixture),
-        fetch_depth_contours(use_fixture=use_fixture),
-        fetch_access_points(use_fixture=use_fixture),
+        load_demo_rows("incidents"),
+        load_demo_rows("depth_contours"),
+        load_demo_rows("access_points"),
     )
     from app.risk_zones.kmeans_strategy import WeightedKMeansStrategy
 

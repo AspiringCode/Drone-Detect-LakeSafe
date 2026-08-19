@@ -7,6 +7,7 @@ from shapely.ops import transform, unary_union
 from app.models import LatLon
 from app.coordination.assignment import haversine_m
 from app.risk_zones.cluster_strategy import ClusterZone
+from app.risk_zones.connectors import ReviewedConnectorUnavailable
 from app.risk_zones.shoreline import load_lake_polygon
 from app.geo import destination_point
 from app.risk_zones.kmeans_strategy import MAX_RADIUS_M, MIN_RADIUS_M
@@ -50,6 +51,11 @@ def test_tessellated_scores_normalized_and_coverage_cells_proxy_flagged() -> Non
     assert any(zone.is_proxy for zone in zones)
     assert max(zone.risk_score for zone in zones) == 1.0
     assert min(zone.risk_score for zone in zones) == 0.0
+
+
+def test_legacy_tessellation_requires_explicit_demo_fixture() -> None:
+    with pytest.raises(ReviewedConnectorUnavailable, match="reviewed snapshot/plan pipeline"):
+        compute_tessellated_zones("lake-sammamish", drone_count=5, use_fixture=False)
 
 
 def test_tessellated_hotspot_with_incidents_is_not_proxy() -> None:
@@ -259,7 +265,7 @@ def test_tessellated_pipeline_rejects_a_non_positive_drone_count() -> None:
 
 
 def test_fixture_pipeline_has_two_hotspots_two_coverage_cells_and_a_standby_drone() -> None:
-    zones = compute_tessellated_zones("lake-sammamish", drone_count=5)
+    zones = compute_tessellated_zones("lake-sammamish", drone_count=5, use_fixture=True)
     lake = load_lake_polygon("lake-sammamish")
     projected_boundary = _projected_sammamish_boundary()
 
