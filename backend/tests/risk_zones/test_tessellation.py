@@ -259,9 +259,14 @@ def test_adaptive_seeds_adds_coverage_only_when_response_reach_exceeds_limit() -
             assert min(haversine_m(seed, other) for other in seeds if other != seed) > RESPONSE_RADIUS_M
 
 
-def test_tessellated_pipeline_rejects_a_non_positive_drone_count() -> None:
+def test_tessellated_pipeline_fails_closed_before_validating_drone_count() -> None:
+    with pytest.raises(ReviewedConnectorUnavailable, match="reviewed snapshot/plan pipeline"):
+        compute_tessellated_zones("lake-sammamish", drone_count=0, use_fixture=False)
+
+
+def test_explicit_fixture_pipeline_rejects_a_non_positive_drone_count() -> None:
     with pytest.raises(ValueError, match="drone_count"):
-        compute_tessellated_zones("lake-sammamish", drone_count=0)
+        compute_tessellated_zones("lake-sammamish", drone_count=0, use_fixture=True)
 
 
 def test_fixture_pipeline_has_two_hotspots_two_coverage_cells_and_a_standby_drone() -> None:

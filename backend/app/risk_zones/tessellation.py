@@ -226,12 +226,12 @@ def compute_tessellated_zones(
     lake_id: str, drone_count: int, use_fixture: bool = False, strategy: ZoneClusterStrategy | None = None
 ) -> list[RiskZone]:
     """Tile a legacy demo fixture; production callers use persisted reviewed plans."""
-    if drone_count <= 0:
-        raise ValueError("drone_count must be positive")
     if not use_fixture:
         raise ReviewedConnectorUnavailable(
             "legacy tessellation has no live data path; use the reviewed snapshot/plan pipeline"
         )
+    if drone_count <= 0:
+        raise ValueError("drone_count must be positive")
 
     shoreline = load_lake_polygon(lake_id)
     mean_lat = _mean_latitude(shoreline)

@@ -23,13 +23,18 @@ flowchart LR
 
 ## Application and authorization layers
 
-The React/TypeScript dashboard calls FastAPI REST endpoints and two different WebSocket
-surfaces. Anonymous public routes read dedicated projection tables. The public socket
-broadcasts only an already-persisted `PublicPatrolPresence` projection and rejects URL
-credentials. Operational REST and WebSocket routes verify a Supabase token, reload the
-principal's current authority, and require the lake's station plus the relevant role
-capability. The operational socket carries its bearer value as a negotiated subprotocol,
-rejects query-string credentials, and periodically revalidates access.
+The React/TypeScript dashboard calls FastAPI REST endpoints, and the backend exposes two
+different WebSocket surfaces. The current civilian dashboard reads dedicated public
+projection tables through REST; it does not currently connect to the public WebSocket.
+The available anonymous public WebSocket rejects URL credentials and can broadcast a
+`PublicPatrolPresence` payload after DTO validation enforces its fields and minimum
+publication delay. The broadcast helper does not query the database or prove that its
+caller supplied a persisted row. The current dashboard operations page connects to the
+authenticated operational WebSocket. Operational REST and WebSocket routes verify a
+Supabase token, reload the principal's current authority, and require the lake's station
+plus the relevant role capability. The operational socket carries its bearer value as a
+negotiated subprotocol, rejects query-string credentials, and periodically revalidates
+access.
 
 An operational principal must be an officer with current verification, MFA assurance
 level `aal2`, active station membership, and an allowed role. Roles map to narrow

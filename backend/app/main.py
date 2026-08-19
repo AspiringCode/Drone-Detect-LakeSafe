@@ -356,7 +356,7 @@ def public_patrol_payload(payload: object) -> dict[str, object]:
 
 
 async def publish_public_patrol_presence(lake_id: str, payload: object) -> None:
-    """Broadcast a persisted public projection; never derive it from telemetry."""
+    """Broadcast a DTO-validated public projection supplied by the caller."""
     projection = public_patrol_payload(payload)
     if projection["lake_id"] != lake_id:
         raise ValueError("Public patrol projection lake does not match its channel")

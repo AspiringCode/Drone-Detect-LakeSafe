@@ -9,10 +9,13 @@ Civilian endpoints read dedicated `public_lakes`, `public_alerts`, and
 `public_patrol_presence` projections. Public alerts use approximate area labels rather
 than precise coordinates. Patrol presence uses generalized zones and a minimum five-
 minute publication delay enforced in both database constraints and response validation.
-The anonymous WebSocket accepts only persisted public projection payloads; it does not
-derive output from live operational telemetry. Public clients do not receive station
-membership, precise routes, hardware identifiers, health details, response tactics,
-subject information, or thermal evidence.
+The backend also exposes an anonymous public WebSocket endpoint. Its broadcast helper
+checks the `PublicPatrolPresence` DTO, including the minimum delay, and checks that the
+payload lake matches the channel. It does not query the database or independently verify
+persistence. The current civilian dashboard uses the public REST routes and does not
+connect to that public WebSocket. Public clients do not receive station membership,
+precise routes, hardware identifiers, health details, response tactics, subject
+information, or thermal evidence.
 
 ## Operational identity and station scope
 
@@ -24,11 +27,12 @@ Operational REST and WebSocket access requires an authenticated officer principa
 - a role granting the exact requested capability.
 
 The FastAPI policy layer reloads authority instead of trusting client-supplied roles.
-Operational WebSockets reject credentials in URLs, authenticate through a bearer
-subprotocol, and periodically revalidate access so a revoked membership cannot keep a
-long-lived connection indefinitely. Supabase row-level security and grants repeat the
-station boundary in the database. Cross-station absence and denial responses are shaped
-to avoid unnecessary resource disclosure.
+The current dashboard operations page connects to the authenticated operational
+WebSocket. Operational WebSockets reject credentials in URLs, authenticate through a
+bearer subprotocol, and periodically revalidate access so a revoked membership cannot
+keep a long-lived connection indefinitely. Supabase row-level security and grants repeat
+the station boundary in the database. Cross-station absence and denial responses are
+shaped to avoid unnecessary resource disclosure.
 
 ## Evidence privacy
 
