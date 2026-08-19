@@ -11,7 +11,7 @@ const plan = {
   sourceFreshThrough: "2026-08-18T00:00:00Z",
   activityDataUnavailable: false,
   priorityCells: 2,
-  proxyPriorityCells: 1,
+  proxyPriorityCells: 2,
   coverageCells: 4,
   sourceAttribution: [
     "King County Open Data — Freshwater Swim Beach Data and Water Quality Monitoring Sites",
@@ -24,6 +24,7 @@ describe("ZonePlanStatus", () => {
     render(<ZonePlanStatus plan={plan} />);
 
     expect(screen.getByText("Patrol-priority areas")).toBeVisible();
+    expect(screen.getByText("Proxy-priority areas").nextElementSibling).toHaveTextContent("2");
     expect(screen.getByText("Baseline coverage areas")).toBeVisible();
     expect(screen.getByText("Proxy data")).toBeVisible();
     expect(screen.getByText("King County Open Data — Freshwater Swim Beach Data and Water Quality Monitoring Sites")).toBeVisible();
