@@ -152,8 +152,10 @@ database cannot claim the database portion passed.
 4. Open the civilian screens first and show only generalized/delayed projections.
 5. Sign in as the prepared station member, select Lake Sammamish, Pine Lake, and Beaver
    Lake, and show source attribution plus proxy-priority/baseline coverage labels.
-6. Change simulated circulation and trigger a demo alert. Keep every SIMULATED label
-   visible and say that no 911/CAD feed or physical aircraft is connected.
+6. Queue a simulated circulation eligibility change and show its reconciliation plus
+   desired/acknowledged versions; explain that this action does not rebuild the displayed
+   zone plan. Then trigger a demo alert. Keep every SIMULATED label visible and say that
+   no 911/CAD feed or physical aircraft is connected.
 7. Do not enable the real adapter unless a separately controlled hardware test has been
    authorized and configured; local judges do not need it for the software demo.
 
