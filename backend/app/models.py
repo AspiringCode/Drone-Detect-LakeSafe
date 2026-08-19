@@ -21,13 +21,15 @@ class RiskPointProvenance:
     connector_key: str
     source_row_id: str
     locator: str | None
-    observed_at: datetime
+    observed_at: datetime | None
     source_latitude: float | None = None
     source_longitude: float | None = None
     derived_seed_latitude: float | None = None
     derived_seed_longitude: float | None = None
     adjustment_distance_m: float | None = None
     adjustment_reason: str | None = None
+    reviewed_at: datetime | None = None
+    temporal_basis: Literal["publisher_observation", "catalog_review"] = "publisher_observation"
 
 
 @dataclass

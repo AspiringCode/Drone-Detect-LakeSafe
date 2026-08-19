@@ -157,3 +157,21 @@ def test_rebuild_context_exposes_source_configuration_and_remains_service_only()
         rf"grant\s+execute\s+on\s+{re.escape(signature)}\s+to\s+(public|anon|authenticated)",
         function_sql,
     )
+
+
+def test_forward_migration_configures_one_drone_risk_plan_reserve() -> None:
+    path = (
+        Path(__file__).resolve().parents[3]
+        / "supabase"
+        / "migrations"
+        / "0037_risk_plan_safety_reserve.sql"
+    )
+
+    assert path.exists(), "applied migration 0036 must be corrected by a forward migration"
+    sql = path.read_text(encoding="utf-8").lower()
+    function_start = sql.index("create or replace function public.risk_plan_rebuild_context")
+    function_sql = sql[function_start:]
+    assert "'safety_reserve', 1" in function_sql
+    assert "security definer" in function_sql and "set search_path = ''" in function_sql
+    assert "revoke all on function public.risk_plan_rebuild_context(text)" in function_sql
+    assert "grant execute on function public.risk_plan_rebuild_context(text) to service_role" in function_sql

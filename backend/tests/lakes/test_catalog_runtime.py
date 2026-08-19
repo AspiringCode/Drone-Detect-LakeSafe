@@ -114,7 +114,9 @@ def test_runtime_proxy_priority_cells_represent_exact_catalog_seeds(lake_id: str
         source = LatLon(*source_coordinate)
         assert provenance.connector_key == "king_county_swim_beach_proxy"
         assert provenance.source_row_id == f"catalog:{provenance.locator}"
-        assert provenance.observed_at.isoformat() == "2026-08-18T00:00:00+00:00"
+        assert provenance.observed_at is None
+        assert provenance.reviewed_at.isoformat() == "2026-08-18T00:00:00+00:00"
+        assert provenance.temporal_basis == "catalog_review"
         assert zone.seed == LatLon(provenance.derived_seed_latitude, provenance.derived_seed_longitude)
         assert shoreline.contains(Point(zone.seed.lon, zone.seed.lat))
         assert haversine_m(source, zone.seed) <= 100
@@ -150,6 +152,18 @@ def test_runtime_has_five_distinct_interior_demo_drone_positions(lake_id: str) -
     assert len(positions) == 5
     assert all(shoreline.contains(Point(drone.pos.lon, drone.pos.lat)) for drone in runtime.engine.drones)
     assert runtime.shore_station == load_reviewed_lake(lake_id).shore_station.as_lat_lon()
+
+
+@pytest.mark.parametrize("lake_id", EXPECTED_LAKES)
+def test_runtime_reserves_one_of_five_drones_and_never_overassigns_plan_capacity(lake_id: str) -> None:
+    runtime = build_lake_runtime(lake_id)
+    assigned = [drone for drone in runtime.engine.drones if drone.assigned_zone is not None]
+    standby = [drone for drone in runtime.engine.drones if drone.assigned_zone is None]
+
+    assert len(runtime.zones) <= 4
+    assert len(assigned) <= 4
+    assert len(standby) >= 1
+    assert all(drone.status.value == "idle" for drone in standby)
 
 
 def _metric_square_and_proxy(outside_distance_m: float) -> tuple[Polygon, NormalizedRiskPoint]:

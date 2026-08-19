@@ -16,8 +16,13 @@ def _provenance_metadata(provenance) -> dict[str, object]:
         "connector_key": provenance.connector_key,
         "source_row_id": provenance.source_row_id,
         "locator": provenance.locator,
-        "observed_at": provenance.observed_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
     }
+    if provenance.observed_at is not None:
+        payload["observed_at"] = provenance.observed_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    if provenance.reviewed_at is not None:
+        payload["reviewed_at"] = provenance.reviewed_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    if provenance.temporal_basis != "publisher_observation":
+        payload["temporal_basis"] = provenance.temporal_basis
     for field in (
         "source_latitude", "source_longitude", "derived_seed_latitude",
         "derived_seed_longitude", "adjustment_distance_m", "adjustment_reason",

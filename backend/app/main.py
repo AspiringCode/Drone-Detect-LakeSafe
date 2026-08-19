@@ -156,19 +156,23 @@ def build_lake_runtime(lake_id: str) -> LakeRuntime:
             source_row_id=f"catalog:{point.locator}",
             latitude=point.latitude,
             longitude=point.longitude,
-            occurred_at=reviewed_at,
+            occurred_at=None,
             weight=1.0,
-            source_payload={},
+            source_payload={"temporal_basis": "catalog_review"},
             category="access_environment_proxy",
             is_proxy=True,
             provenance=RiskPointProvenance(
                 connector_key="king_county_swim_beach_proxy",
                 source_row_id=f"catalog:{point.locator}",
                 locator=point.locator,
-                observed_at=reviewed_at,
+                observed_at=None,
                 source_latitude=point.latitude,
                 source_longitude=point.longitude,
+                reviewed_at=reviewed_at,
+                temporal_basis="catalog_review",
             ),
+            reviewed_at=reviewed_at,
+            temporal_basis="catalog_review",
         )
         for point in lake.official_priority_coordinates
     )
@@ -206,9 +210,15 @@ def build_lake_runtime(lake_id: str) -> LakeRuntime:
         )
         for cell in candidate.cells
     ]
+    positions = [cell.centroid for cell in candidate.cells]
+    reserve_point = shoreline.representative_point()
+    reserve_position = LatLon(reserve_point.y, reserve_point.x)
+    if reserve_position in positions:
+        reserve_position = next(cell.seed for cell in candidate.cells if cell.seed not in positions)
+    positions.append(reserve_position)
     drones = [
-        Drone(f"{lake_id}-d{index}", cell.centroid, 1.0, DroneStatus.IDLE, None)
-        for index, cell in enumerate(candidate.cells[:5])
+        Drone(f"{lake_id}-d{index}", position, 1.0, DroneStatus.IDLE, None)
+        for index, position in enumerate(positions)
     ]
     shore_station = lake.shore_station.as_lat_lon()
     backend = InMemoryBackend()

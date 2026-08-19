@@ -42,9 +42,9 @@ def test_supported_hotspots_are_preserved_before_coverage_capacity() -> None:
         NormalizedRiskPoint("c", 47.585, -122.085, NOW, 2.0, {}),
         NormalizedRiskPoint("d", 47.5851, -122.0851, NOW, 2.0, {}),
     ]
-    plan = build_candidate(_snapshot(points), SHORELINE, patrol_capacity=1, reserve=1, prior_plan_id=None)
+    plan = build_candidate(_snapshot(points), SHORELINE, patrol_capacity=2, reserve=1, prior_plan_id=None)
 
-    assert [cell.kind for cell in plan.cells] == ["hotspot", "hotspot"]
+    assert [cell.kind for cell in plan.cells] == ["hotspot"]
 
 
 def _proxy(source_row_id: str, latitude: float, longitude: float) -> NormalizedRiskPoint:
@@ -60,7 +60,7 @@ def _proxy(source_row_id: str, latitude: float, longitude: float) -> NormalizedR
 def test_one_proxy_observation_becomes_a_proxy_priority_cell_at_its_official_coordinate() -> None:
     point = _proxy("0615SB:2026-07-27T00:00:00+00:00", 47.575, -122.095)
 
-    plan = build_candidate(_snapshot((point,)), SHORELINE, patrol_capacity=0, reserve=0, prior_plan_id=None)
+    plan = build_candidate(_snapshot((point,)), SHORELINE, patrol_capacity=1, reserve=0, prior_plan_id=None)
 
     assert [(cell.kind, cell.seed, cell.is_proxy) for cell in plan.cells] == [
         ("hotspot", LatLon(47.575, -122.095), True),
@@ -76,7 +76,7 @@ def test_one_proxy_observation_becomes_a_proxy_priority_cell_at_its_official_coo
 def test_distinct_proxy_observations_remain_distinct_priority_seeds() -> None:
     plan = build_candidate(
         _snapshot((_proxy("a", 47.575, -122.095), _proxy("b", 47.585, -122.085))),
-        SHORELINE, patrol_capacity=0, reserve=0, prior_plan_id=None,
+        SHORELINE, patrol_capacity=2, reserve=0, prior_plan_id=None,
     )
 
     assert {cell.seed for cell in plan.cells} == {LatLon(47.575, -122.095), LatLon(47.585, -122.085)}
@@ -89,7 +89,7 @@ def test_incident_records_still_cluster_into_non_proxy_priority_cells() -> None:
         NormalizedRiskPoint("b", 47.5751, -122.0951, NOW, 2.0, {}),
     ]
 
-    plan = build_candidate(_snapshot(points), SHORELINE, patrol_capacity=0, reserve=0, prior_plan_id=None)
+    plan = build_candidate(_snapshot(points), SHORELINE, patrol_capacity=1, reserve=0, prior_plan_id=None)
 
     assert len(plan.cells) == 1
     assert plan.cells[0].kind == "hotspot"
@@ -103,18 +103,19 @@ def test_mixed_incident_and_proxy_inputs_preserve_priority_cell_semantics() -> N
         _proxy("proxy", 47.585, -122.085),
     ]
 
-    plan = build_candidate(_snapshot(points), SHORELINE, patrol_capacity=0, reserve=0, prior_plan_id=None)
+    plan = build_candidate(_snapshot(points), SHORELINE, patrol_capacity=2, reserve=0, prior_plan_id=None)
 
     assert {cell.is_proxy for cell in plan.cells} == {False, True}
 
 
-def test_eligible_patrol_capacity_adds_proxy_coverage_without_moving_priority_seeds() -> None:
-    points = (_proxy("a", 47.575, -122.095), _proxy("b", 47.585, -122.085))
-    baseline = build_candidate(_snapshot(points), SHORELINE, patrol_capacity=0, reserve=1, prior_plan_id=None)
+def test_eligible_patrol_capacity_caps_total_cells_after_priority_seeds() -> None:
+    points = (_proxy("a", 47.575, -122.095),)
+    baseline = build_candidate(_snapshot(points), SHORELINE, patrol_capacity=1, reserve=0, prior_plan_id=None)
     expanded = build_candidate(_snapshot(points), SHORELINE, patrol_capacity=3, reserve=1, prior_plan_id=None)
 
     assert {cell.seed for cell in baseline.cells} <= {cell.seed for cell in expanded.cells}
-    assert len(expanded.cells) == len(baseline.cells) + 2
+    assert len(expanded.cells) == 2
+    assert [cell.kind for cell in expanded.cells].count("hotspot") == 1
     assert all(cell.is_proxy for cell in expanded.cells if cell.kind == "coverage")
 
 

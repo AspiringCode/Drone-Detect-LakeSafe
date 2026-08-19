@@ -49,23 +49,41 @@ def _canonical_boundary(boundary: object) -> str:
 
 
 def _point_payload(point: NormalizedRiskPoint) -> dict[str, object]:
+    if point.temporal_basis == "publisher_observation":
+        if point.occurred_at is None:
+            raise ValueError("publisher observations require occurred_at")
+    elif point.temporal_basis == "catalog_review":
+        if point.occurred_at is not None or point.reviewed_at is None:
+            raise ValueError("catalog reviews require reviewed_at without occurred_at")
+    else:
+        raise ValueError("invalid point temporal basis")
     payload = {
         "source_row_id": point.source_row_id,
         "latitude": point.latitude,
         "longitude": point.longitude,
-        "occurred_at": _utc(point.occurred_at).isoformat().replace("+00:00", "Z"),
         "weight": point.weight,
         "category": point.category,
         "is_proxy": point.is_proxy,
         "source_payload": point.source_payload,
     }
+    if point.occurred_at is not None:
+        payload["occurred_at"] = _utc(point.occurred_at).isoformat().replace("+00:00", "Z")
+    if point.reviewed_at is not None:
+        payload["reviewed_at"] = _utc(point.reviewed_at).isoformat().replace("+00:00", "Z")
+    if point.temporal_basis != "publisher_observation":
+        payload["temporal_basis"] = point.temporal_basis
     if point.provenance is not None:
         provenance_payload = {
             "connector_key": point.provenance.connector_key,
             "source_row_id": point.provenance.source_row_id,
             "locator": point.provenance.locator,
-            "observed_at": _utc(point.provenance.observed_at).isoformat().replace("+00:00", "Z"),
         }
+        if point.provenance.observed_at is not None:
+            provenance_payload["observed_at"] = _utc(point.provenance.observed_at).isoformat().replace("+00:00", "Z")
+        if point.provenance.reviewed_at is not None:
+            provenance_payload["reviewed_at"] = _utc(point.provenance.reviewed_at).isoformat().replace("+00:00", "Z")
+        if point.provenance.temporal_basis != "publisher_observation":
+            provenance_payload["temporal_basis"] = point.provenance.temporal_basis
         for field in (
             "source_latitude", "source_longitude", "derived_seed_latitude",
             "derived_seed_longitude", "adjustment_distance_m", "adjustment_reason",
@@ -87,6 +105,7 @@ def _with_connector_provenance(
             provenance, connector_key=connector_key, source_row_id=point.source_row_id
         ) if provenance is not None else RiskPointProvenance(
             connector_key, point.source_row_id, None, point.occurred_at,
+            reviewed_at=point.reviewed_at, temporal_basis=point.temporal_basis,
         ),
     )
 

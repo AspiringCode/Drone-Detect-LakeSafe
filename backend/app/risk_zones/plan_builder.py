@@ -147,8 +147,8 @@ def build_candidate(
 ) -> ZonePlanCandidate:
     """Create a fully validated candidate without changing the active-plan pointer.
 
-    Hotspot selection is driven entirely by the snapshot.  Fleet capacity can
-    add coverage cells after those supported hotspots, but never removes one.
+    Hotspot selection is driven entirely by the snapshot.  Usable fleet
+    capacity is filled with priority cells first, then coverage cells.
     """
     if snapshot.status != "ready":
         raise RiskDataUnavailable(snapshot.failure_reason or "risk_snapshot_unavailable")
@@ -171,16 +171,21 @@ def build_candidate(
             is_proxy,
             tuple(dict.fromkeys((*existing_provenance, *provenance))),
         )
-    priority_seeds = list(priority_by_seed)
+    usable_capacity = max(0, patrol_capacity - reserve)
+    priority_seeds = sorted(
+        priority_by_seed,
+        key=lambda seed: (-priority_by_seed[seed][0], seed.lat, seed.lon),
+    )
     unavailable = not priority_seeds
     if unavailable:
         seed = unproject((projected.representative_point().x, projected.representative_point().y), mean_lat)
         cells = (_cell("fallback-0", "fallback", seed, projected, mean_lat, 0.0, True),)
     else:
-        seeds = list(priority_seeds)
+        if usable_capacity == 0:
+            raise RiskDataUnavailable("insufficient_patrol_capacity")
+        seeds = list(priority_seeds[:usable_capacity])
         kinds = ["hotspot"] * len(seeds)
-        coverage_capacity = max(0, patrol_capacity - reserve)
-        while len(seeds) < len(priority_seeds) + coverage_capacity:
+        while len(seeds) < usable_capacity:
             candidate, _ = _farthest_coverage_candidate(
                 seeds, projected, mean_lat, reassign_detached_pieces
             )

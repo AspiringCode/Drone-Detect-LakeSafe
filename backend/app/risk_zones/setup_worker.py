@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 
 from shapely import wkt
 
+from app.lakes.catalog import SUPPORTED_LAKE_IDS, load_reviewed_lake
 from app.risk_zones.connectors.king_county import KingCountyIncidentConnector
 from app.risk_zones.connectors.king_county_swim_beach import KingCountySwimBeachProxyConnector
 from app.risk_zones.plan_builder import RiskDataUnavailable, build_candidate
@@ -112,11 +113,27 @@ class RiskPlanSetupService:
         if not sources and context.get("data_source_status") == "fallback_coverage":
             snapshot = build_fallback_snapshot(lake_id, context["station_id"], boundary_wkt, since, now)
         else:
-            fetches = tuple(
-                self._fetch(source, boundary_wkt, now - timedelta(days=self._lookback_days(source)))
-                for source in sources
-            )
-            snapshot = build_snapshot(lake_id, context["station_id"], fetches, boundary_wkt, since, now)
+            fetches = []
+            for source in sources:
+                try:
+                    if (
+                        lake_id in SUPPORTED_LAKE_IDS
+                        and source.get("connector_key") == KingCountySwimBeachProxyConnector.connector_key
+                    ):
+                        configuration = source.get("source_configuration")
+                        configured_locators = configuration.get("locators") if isinstance(configuration, dict) else None
+                        if configured_locators != list(load_reviewed_lake(lake_id).locators):
+                            raise ValueError("schema drift: locator is not reviewed for this lake")
+                    fetches.append(self._fetch(
+                        source, boundary_wkt, now - timedelta(days=self._lookback_days(source))
+                    ))
+                except RiskDataUnavailable as error:
+                    fetches.append(ValueError(str(error)))
+                    break
+                except Exception as error:
+                    fetches.append(error)
+                    break
+            snapshot = build_snapshot(lake_id, context["station_id"], tuple(fetches), boundary_wkt, since, now)
         if snapshot.status == "ready":
             has_proxy_source = any(
                 source.get("connector_key") == KingCountySwimBeachProxyConnector.connector_key
@@ -126,11 +143,12 @@ class RiskPlanSetupService:
                 point.occurred_at
                 for point in snapshot.points
                 if point.category == "access_environment_proxy" and point.is_proxy
+                and point.occurred_at is not None
             ]
             source_fresh_through = (
                 max(proxy_times, default=None)
                 if has_proxy_source
-                else max((point.occurred_at for point in snapshot.points), default=None)
+                else max((point.occurred_at for point in snapshot.points if point.occurred_at is not None), default=None)
             )
         else:
             source_fresh_through = None

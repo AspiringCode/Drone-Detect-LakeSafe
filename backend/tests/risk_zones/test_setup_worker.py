@@ -145,8 +145,8 @@ class ProductionShapeRepository(Repository):
             "lake_id": lake_id, "station_id": "station-1", "shoreline_wkt": Polygon([
                 (-122.10, 47.57), (-122.08, 47.57), (-122.08, 47.59), (-122.10, 47.59),
             ]).wkt,
-            "data_source_status": "fallback_coverage", "sources": [], "patrol_capacity": 0,
-            "safety_reserve": 0, "prior_plan_id": None,
+            "data_source_status": "fallback_coverage", "sources": [], "patrol_capacity": 5,
+            "safety_reserve": 1, "prior_plan_id": None,
         }
 
     def persist_snapshot(self, snapshot, source_fresh_through, claim_token=None):
@@ -209,6 +209,96 @@ def test_setup_service_uses_proxy_configuration_and_latest_observation_for_fresh
     assert result.status == "active"
     assert repository.persisted_snapshot[1] == datetime(2026, 7, 20, 17, tzinfo=timezone.utc)
     assert repository.persisted_candidate.activity_data_unavailable is False
+
+
+@pytest.mark.parametrize(
+    ("client_rows", "expected_reason"),
+    [
+        (RuntimeError("publisher unavailable"), "connector_fetch_failure"),
+        (({"incident_id": "missing-required-fields"},), "connector_schema_failure"),
+    ],
+)
+def test_reviewed_source_failure_persists_quarantine_and_preserves_active_plan(
+    client_rows, expected_reason: str,
+) -> None:
+    class Client:
+        def get(self, _dataset_id, **_query):
+            if isinstance(client_rows, BaseException):
+                raise client_rows
+            return client_rows
+
+    class ReviewedRepository(ProductionShapeRepository):
+        def __init__(self) -> None:
+            super().__init__()
+            self.active_id = "plan-existing"
+
+        def rebuild_context(self, lake_id):
+            context = super().rebuild_context(lake_id)
+            context.update({
+                "data_source_status": "reviewed",
+                "sources": [{
+                    "connector_key": "king_county_incidents",
+                    "domain": "data.kingcounty.gov",
+                    "dataset_id": "reviewed-incidents",
+                }],
+                "prior_plan_id": self.active_id,
+            })
+            return context
+
+    repository = ReviewedRepository()
+    service = RiskPlanSetupService(repository, client_factory=lambda _domain: Client())
+
+    with pytest.raises(Exception, match=expected_reason):
+        service.rebuild_lake("lake-1")
+
+    snapshot, fresh_through = repository.persisted_snapshot
+    assert snapshot.status == "quarantined"
+    assert snapshot.failure_reason == expected_reason
+    assert fresh_through is None
+    assert repository.persisted_candidate is None
+    assert repository.active_id == "plan-existing"
+
+
+def test_rebuild_rejects_a_reviewed_locator_configured_for_a_different_lake() -> None:
+    class CrossLakeRepository(ProductionShapeRepository):
+        def rebuild_context(self, lake_id):
+            return {
+                "lake_id": lake_id,
+                "station_id": "station-1",
+                "shoreline_wkt": Polygon([
+                    (-122.05, 47.58), (-122.03, 47.58), (-122.03, 47.60), (-122.05, 47.60),
+                ]).wkt,
+                "data_source_status": "reviewed",
+                "sources": [{
+                    "connector_key": "king_county_swim_beach_proxy",
+                    "domain": "data.kingcounty.gov",
+                    "source_configuration": {
+                        "locators": ["A709SB"],
+                        "observations_dataset_id": "mbzm-4r9y",
+                        "sites_dataset_id": "e9bt-i75a",
+                    },
+                }],
+                "patrol_capacity": 5,
+                "safety_reserve": 1,
+                "prior_plan_id": "plan-existing",
+            }
+
+    repository = CrossLakeRepository()
+    repository.active_id = "plan-existing"
+    service = RiskPlanSetupService(
+        repository,
+        client_factory=lambda _domain: (_ for _ in ()).throw(AssertionError("must reject before fetch")),
+    )
+
+    with pytest.raises(Exception, match="connector_schema_failure"):
+        service.rebuild_lake("lake-pine")
+
+    snapshot, fresh_through = repository.persisted_snapshot
+    assert snapshot.status == "quarantined"
+    assert snapshot.failure_reason == "connector_schema_failure"
+    assert fresh_through is None
+    assert repository.persisted_candidate is None
+    assert repository.active_id == "plan-existing"
 
 
 def test_setup_service_rejects_unknown_connector_and_invalid_proxy_locators() -> None:

@@ -17,12 +17,14 @@ class NormalizedRiskPoint:
     source_row_id: str
     latitude: float
     longitude: float
-    occurred_at: datetime
+    occurred_at: datetime | None
     weight: float
     source_payload: dict[str, Any]
     category: Literal["incidents", "access_environment_proxy"] = "incidents"
     is_proxy: bool = False
     provenance: RiskPointProvenance | None = None
+    reviewed_at: datetime | None = None
+    temporal_basis: Literal["publisher_observation", "catalog_review"] = "publisher_observation"
 
 
 @dataclass(frozen=True, slots=True)
