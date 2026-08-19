@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "metadata": {
+    "reviewed_at": "2026-08-18T00:00:00Z",
+    "shore_station_derivation": "Each shore station is a reproducible land-side operational point derived in EPSG:32610 from the nearest WTRBDY_AREA_485 boundary to the lake's named primary monitoring site, then moved outward from the official polygon centroid and verified outside the water polygon. These points locate shore operations only and are not proxy-observation seeds."
+  },
+  "lakes": [
+    {
+      "lake_id": "lake-sammamish",
+      "display_name": "Lake Sammamish",
+      "centroid": {
+        "latitude": 47.6024304834,
+        "longitude": -122.0886869849
+      },
+      "shore_station": {
+        "latitude": 47.55686175,
+        "longitude": -122.07109931,
+        "derivation": "Land-side point near the 0615SB monitoring site, derived from feature 301's nearest boundary in EPSG:32610 and verified outside the selected water polygon."
+      },
+      "locators": [
+        "0615SB",
+        "SAMMLANDINGSB"
+      ],
+      "king_county_feature_id": 301,
+      "geometry_attribution": "King County GIS Open Data",
+      "geometry_query_url": "https://services.arcgis.com/Ej0PsM5Aw677QF1W/arcgis/rest/services/WTRBDY_AREA_485/FeatureServer/0/query?f=geojson&outSR=4326&returnGeometry=true&outFields=NAME%2CFEATURE_ID&where=FEATURE_ID+%3D+301",
+      "socrata_dataset_urls": {
+        "observations": "https://data.kingcounty.gov/resource/mbzm-4r9y.json",
+        "monitoring_sites": "https://data.kingcounty.gov/resource/e9bt-i75a.json"
+      },
+      "official_monitoring_coordinates": [
+        {
+          "locator": "0615SB",
+          "latitude": 47.55684,
+          "longitude": -122.07032
+        },
+        {
+          "locator": "SAMMLANDINGSB",
+          "latitude": 47.64865,
+          "longitude": -122.08846
+        }
+      ]
+    },
+    {
+      "lake_id": "lake-pine",
+      "display_name": "Pine Lake",
+      "centroid": {
+        "latitude": 47.5874795134,
+        "longitude": -122.0448220111
+      },
+      "shore_station": {
+        "latitude": 47.58765615,
+        "longitude": -122.04049324,
+        "derivation": "Land-side point near the E708SB monitoring site, derived from feature 312's nearest boundary in EPSG:32610 and verified outside the selected water polygon."
+      },
+      "locators": [
+        "E708SB"
+      ],
+      "king_county_feature_id": 312,
+      "geometry_attribution": "King County GIS Open Data",
+      "geometry_query_url": "https://services.arcgis.com/Ej0PsM5Aw677QF1W/arcgis/rest/services/WTRBDY_AREA_485/FeatureServer/0/query?f=geojson&outSR=4326&returnGeometry=true&outFields=NAME%2CFEATURE_ID&where=FEATURE_ID+%3D+312",
+      "socrata_dataset_urls": {
+        "observations": "https://data.kingcounty.gov/resource/mbzm-4r9y.json",
+        "monitoring_sites": "https://data.kingcounty.gov/resource/e9bt-i75a.json"
+      },
+      "official_monitoring_coordinates": [
+        {
+          "locator": "E708SB",
+          "latitude": 47.58737,
+          "longitude": -122.03977
+        }
+      ]
+    },
+    {
+      "lake_id": "lake-beaver",
+      "display_name": "Beaver Lake",
+      "centroid": {
+        "latitude": 47.5908648277,
+        "longitude": -121.9967918235
+      },
+      "shore_station": {
+        "latitude": 47.58722738,
+        "longitude": -122.00270725,
+        "derivation": "Land-side point near the A709SB monitoring site, derived from feature 311's nearest boundary in EPSG:32610 and verified outside the selected water polygon."
+      },
+      "locators": [
+        "A709SB"
+      ],
+      "king_county_feature_id": 311,
+      "geometry_attribution": "King County GIS Open Data",
+      "geometry_query_url": "https://services.arcgis.com/Ej0PsM5Aw677QF1W/arcgis/rest/services/WTRBDY_AREA_485/FeatureServer/0/query?f=geojson&outSR=4326&returnGeometry=true&outFields=NAME%2CFEATURE_ID&where=FEATURE_ID+%3D+311",
+      "socrata_dataset_urls": {
+        "observations": "https://data.kingcounty.gov/resource/mbzm-4r9y.json",
+        "monitoring_sites": "https://data.kingcounty.gov/resource/e9bt-i75a.json"
+      },
+      "official_monitoring_coordinates": [
+        {
+          "locator": "A709SB",
+          "latitude": 47.58738,
+          "longitude": -122.00242
+        }
+      ]
+    }
+  ]
+}

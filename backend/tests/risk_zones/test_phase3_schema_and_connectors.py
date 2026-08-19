@@ -1,11 +1,15 @@
 from datetime import datetime, timezone
 from pathlib import Path
+import re
 
 import pytest
 
 from app.risk_zones.connectors.king_county import (
     KingCountyIncidentConnector,
     ReviewedConnectorUnavailable,
+)
+from app.risk_zones.connectors.king_county_swim_beach import (
+    KingCountySwimBeachProxyConnector,
 )
 
 
@@ -88,3 +92,68 @@ def test_connector_never_substitutes_fixture_when_live_fetch_fails() -> None:
         KingCountyIncidentConnector("reviewed-test-dataset").fetch(
             "POLYGON EMPTY", datetime(2026, 1, 1, tzinfo=timezone.utc), FailingClient()
         )
+
+
+def test_reviewed_multi_lake_migration_seeds_exact_sources_and_official_geometry() -> None:
+    sql = (
+        Path(__file__).resolve().parents[3]
+        / "supabase"
+        / "migrations"
+        / "0036_reviewed_multi_lake_sources.sql"
+    ).read_text(encoding="utf-8").lower()
+
+    for lake_id in ("lake-sammamish", "lake-pine", "lake-beaver"):
+        assert lake_id in sql
+    for locator in ("0615sb", "sammlandingsb", "e708sb", "a709sb"):
+        assert locator in sql
+    assert "king_county_swim_beach_proxy" in sql
+    assert "mbzm-4r9y" in sql
+    assert "e9bt-i75a" in sql
+    assert KingCountySwimBeachProxyConnector.attribution.lower() in sql
+    assert "'reviewed'" in sql
+    assert "2026-08-18t00:00:00z" in sql
+    assert "st_setsrid" in sql and "4326" in sql
+    assert "st_multi" in sql
+
+    assert "from public.stations" in sql
+    assert "legacy_org_id = 'org-demo'" in sql
+    assert "public.organizations as organization" in sql
+    assert "org_id = 'org-demo'" in sql
+    assert not re.search(
+        r"'[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}'",
+        sql,
+    )
+
+
+def test_rebuild_context_exposes_source_configuration_and_remains_service_only() -> None:
+    sql = (
+        Path(__file__).resolve().parents[3]
+        / "supabase"
+        / "migrations"
+        / "0036_reviewed_multi_lake_sources.sql"
+    ).read_text(encoding="utf-8").lower()
+
+    function_start = sql.index("create or replace function public.risk_plan_rebuild_context")
+    function_sql = sql[function_start:]
+    assert "security definer" in function_sql
+    assert "set search_path = ''" in function_sql
+    for field in (
+        "connector_key",
+        "domain",
+        "dataset_id",
+        "schema_version",
+        "configuration",
+        "source_configuration",
+        "patrol_capacity",
+        "safety_reserve",
+        "prior_plan_id",
+    ):
+        assert f"'{field}'" in function_sql
+
+    signature = "function public.risk_plan_rebuild_context(text)"
+    assert f"revoke all on {signature} from public, anon, authenticated" in function_sql
+    assert f"grant execute on {signature} to service_role" in function_sql
+    assert not re.search(
+        rf"grant\s+execute\s+on\s+{re.escape(signature)}\s+to\s+(public|anon|authenticated)",
+        function_sql,
+    )
