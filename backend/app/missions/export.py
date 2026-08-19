@@ -28,6 +28,7 @@ DEFAULT_FENCE_TOLERANCE = 0.0008
 # ArduPilot's polygon fence has a bounded point budget; a simplified fence
 # exceeding this must not be shipped.
 MAX_FENCE_VERTICES = 60
+MAX_TOLERANCE_SLACK = 1.05
 
 
 def simplified_fence(lake_id: str, tolerance: float = DEFAULT_FENCE_TOLERANCE) -> list[LatLon]:
@@ -36,9 +37,26 @@ def simplified_fence(lake_id: str, tolerance: float = DEFAULT_FENCE_TOLERANCE) -
     Shapely rings repeat the first coordinate as the last to close the ring;
     QGC/ArduPilot fences expect an open ring, so the closing vertex is sliced
     off (matching `tessellation.py`'s `cell.exterior.coords[:-1]` convention).
+    A narrowly bounded tolerance search absorbs small official-fixture changes;
+    outlines still over budget at five percent slack fail closed.
     """
-    polygon = load_lake_polygon(lake_id).simplify(tolerance, preserve_topology=True)
+    shoreline = load_lake_polygon(lake_id)
+    polygon = shoreline.simplify(tolerance, preserve_topology=True)
     coords = polygon.exterior.coords[:-1]
+    if len(coords) > MAX_FENCE_VERTICES:
+        upper_tolerance = tolerance * MAX_TOLERANCE_SLACK
+        upper_polygon = shoreline.simplify(upper_tolerance, preserve_topology=True)
+        if len(upper_polygon.exterior.coords) - 1 <= MAX_FENCE_VERTICES:
+            lower_tolerance = tolerance
+            for _ in range(20):
+                candidate_tolerance = (lower_tolerance + upper_tolerance) / 2
+                candidate = shoreline.simplify(candidate_tolerance, preserve_topology=True)
+                if len(candidate.exterior.coords) - 1 <= MAX_FENCE_VERTICES:
+                    upper_tolerance, upper_polygon = candidate_tolerance, candidate
+                else:
+                    lower_tolerance = candidate_tolerance
+            polygon = upper_polygon
+            coords = polygon.exterior.coords[:-1]
     if len(coords) > MAX_FENCE_VERTICES:
         raise ValueError(
             f"{lake_id}'s simplified fence has {len(coords)} vertices, "

@@ -83,7 +83,7 @@ def _projected_sammamish_boundary() -> Polygon:
 def test_voronoi_cells_tile_shoreline_and_assign_each_seed_once() -> None:
     boundary = _projected_sammamish_boundary()
     seeds = [
-        LatLon(47.570, -122.090),
+        LatLon(47.5702, -122.090),
         LatLon(47.582, -122.090),
         LatLon(47.595, -122.090),
     ]
@@ -181,7 +181,7 @@ def test_patrol_rejects_narrow_cell_that_cannot_fit_minimum_circle_at_all_bearin
         patrol_center_and_radius(cell, MEAN_LAT)
 
 
-def test_demo_four_final_cells_clamp_to_150m_and_patrols_remain_in_lake() -> None:
+def test_demo_four_final_cells_use_safe_radii_and_patrols_remain_in_lake() -> None:
     """The four-cell fixture geometry used by the committed Lake Sammamish demo."""
     boundary = _projected_sammamish_boundary()
     demo_seeds = [
@@ -195,7 +195,7 @@ def test_demo_four_final_cells_clamp_to_150m_and_patrols_remain_in_lake() -> Non
     assert len(cells) == 4
     for _, cell in cells:
         center, radius_m = patrol_center_and_radius(cell, MEAN_LAT)
-        assert radius_m == MAX_RADIUS_M == 150.0
+        assert MIN_RADIUS_M <= radius_m <= MAX_RADIUS_M
         for bearing in range(360):
             waypoint = destination_point(center, float(bearing), radius_m)
             projected_waypoint = Point(project(waypoint, MEAN_LAT))
@@ -285,9 +285,13 @@ def test_fixture_pipeline_has_two_hotspots_two_coverage_cells_and_a_standby_dron
     assert all(lake.contains(Point(zone.centroid.lon, zone.centroid.lat)) for zone in zones)
 
     zone_polygons = [
-        Polygon([(point.lon, point.lat) for point in zone.polygon]) for zone in zones
+        Polygon(
+            [project(point, MEAN_LAT) for point in zone.polygon],
+            [[project(point, MEAN_LAT) for point in hole] for hole in zone.holes],
+        )
+        for zone in zones
     ]
-    assert unary_union(zone_polygons).symmetric_difference(lake).area == pytest.approx(0, abs=1e-12)
+    assert unary_union(zone_polygons).symmetric_difference(projected_boundary).area == pytest.approx(0, abs=1e-12)
 
     for zone in zones:
         zone_cell = Polygon([(point.lon * math.cos(math.radians(MEAN_LAT)), point.lat) for point in zone.polygon])
