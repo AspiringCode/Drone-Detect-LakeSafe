@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 from shapely import wkt
 
 from app.risk_zones.connectors.king_county import KingCountyIncidentConnector
+from app.risk_zones.connectors.king_county_swim_beach import KingCountySwimBeachProxyConnector
 from app.risk_zones.plan_builder import RiskDataUnavailable, build_candidate
 from app.risk_zones.plan_service import PlanBuildResult, PlanConflict
 from app.risk_zones.snapshots import build_fallback_snapshot, build_snapshot
@@ -56,14 +57,44 @@ class RiskPlanSetupService:
 
     def _fetch(self, source: dict, boundary_wkt: str, since: datetime):
         key = source.get("connector_key")
-        if key != KingCountyIncidentConnector.connector_key:
+        if key not in {
+            KingCountyIncidentConnector.connector_key,
+            KingCountySwimBeachProxyConnector.connector_key,
+        }:
             raise RiskDataUnavailable("unrecognized_reviewed_connector")
-        dataset_id = source.get("dataset_id")
         domain = source.get("domain")
-        if not isinstance(dataset_id, str) or not isinstance(domain, str):
+        if not isinstance(domain, str):
             raise RiskDataUnavailable("invalid_reviewed_connector")
-        connector = KingCountyIncidentConnector(dataset_id)
+        if key == KingCountyIncidentConnector.connector_key:
+            dataset_id = source.get("dataset_id")
+            if not isinstance(dataset_id, str):
+                raise RiskDataUnavailable("invalid_reviewed_connector")
+            connector = KingCountyIncidentConnector(dataset_id)
+        elif key == KingCountySwimBeachProxyConnector.connector_key:
+            configuration = source.get("source_configuration")
+            if not isinstance(configuration, dict):
+                raise RiskDataUnavailable("invalid_reviewed_connector")
+            locators = configuration.get("locators")
+            observations_dataset_id = configuration.get("observations_dataset_id", "mbzm-4r9y")
+            sites_dataset_id = configuration.get("sites_dataset_id", "e9bt-i75a")
+            if (
+                not isinstance(locators, list) or not all(isinstance(locator, str) for locator in locators)
+                or not isinstance(observations_dataset_id, str) or not isinstance(sites_dataset_id, str)
+            ):
+                raise RiskDataUnavailable("invalid_reviewed_connector")
+            try:
+                connector = KingCountySwimBeachProxyConnector(
+                    tuple(locators), observations_dataset_id, sites_dataset_id
+                )
+            except ValueError as error:
+                raise RiskDataUnavailable("invalid_reviewed_connector") from error
         return connector.fetch(boundary_wkt, since, self._client_factory(domain))
+
+    @staticmethod
+    def _lookback_days(source: dict) -> int:
+        if source.get("connector_key") == KingCountySwimBeachProxyConnector.connector_key:
+            return 365
+        return 30
 
     def rebuild_lake(self, lake_id: str, claim_token: str | None = None) -> PlanBuildResult:
         if claim_token is not None and not self._repository.claim_is_current(lake_id, claim_token):
@@ -74,14 +105,17 @@ class RiskPlanSetupService:
         boundary_wkt = context["shoreline_wkt"]
         shoreline = wkt.loads(boundary_wkt)
         now = self._now()
-        since = now - timedelta(days=30)
         sources = tuple(context.get("sources") or ())
+        since = now - timedelta(days=min((self._lookback_days(source) for source in sources), default=30))
         if not sources and context.get("data_source_status") == "fallback_coverage":
             snapshot = build_fallback_snapshot(lake_id, context["station_id"], boundary_wkt, since, now)
         else:
-            fetches = tuple(self._fetch(source, boundary_wkt, since) for source in sources)
+            fetches = tuple(
+                self._fetch(source, boundary_wkt, now - timedelta(days=self._lookback_days(source)))
+                for source in sources
+            )
             snapshot = build_snapshot(lake_id, context["station_id"], fetches, boundary_wkt, since, now)
-        source_fresh_through = now if snapshot.status == "ready" else None
+        source_fresh_through = max((point.occurred_at for point in snapshot.points), default=None) if snapshot.status == "ready" else None
         snapshot_id = self._repository.persist_snapshot(snapshot, source_fresh_through, claim_token)
         if snapshot.status != "ready":
             raise RiskDataUnavailable(snapshot.failure_reason or "risk_snapshot_unavailable")

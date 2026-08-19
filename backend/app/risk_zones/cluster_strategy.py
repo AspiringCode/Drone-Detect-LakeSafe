@@ -5,7 +5,7 @@ from typing import Literal, Protocol, runtime_checkable
 
 from app.models import LatLon
 
-Category = Literal["incidents", "depth", "crowding"]
+Category = Literal["incidents", "access_environment_proxy", "depth", "crowding"]
 
 
 @dataclass(frozen=True)

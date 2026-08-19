@@ -7,10 +7,12 @@ test data to keep a lake looking operational.
 
 from .base import ConnectorFetch, NormalizedRiskPoint, SocrataConnector
 from .king_county import KingCountyIncidentConnector, ReviewedConnectorUnavailable
+from .king_county_swim_beach import KingCountySwimBeachProxyConnector
 
 __all__ = [
     "ConnectorFetch",
     "KingCountyIncidentConnector",
+    "KingCountySwimBeachProxyConnector",
     "NormalizedRiskPoint",
     "ReviewedConnectorUnavailable",
     "SocrataConnector",

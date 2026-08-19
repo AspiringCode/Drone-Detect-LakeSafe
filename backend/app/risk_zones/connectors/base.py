@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Protocol, Sequence
+from typing import Any, Literal, Protocol, Sequence
 
 
 class SocrataClient(Protocol):
@@ -18,6 +18,8 @@ class NormalizedRiskPoint:
     occurred_at: datetime
     weight: float
     source_payload: dict[str, Any]
+    category: Literal["incidents", "access_environment_proxy"] = "incidents"
+    is_proxy: bool = False
 
 
 @dataclass(frozen=True, slots=True)

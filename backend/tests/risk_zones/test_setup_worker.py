@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+import pytest
 from shapely.geometry import Polygon
 
 from app.risk_zones.setup_worker import (
@@ -169,6 +171,57 @@ def test_production_setup_service_persists_and_activates_explicit_fallback_plan(
     assert repository.persisted_snapshot is not None
     assert repository.persisted_candidate.activity_data_unavailable is True
     assert repository.active_id == result.plan_id
+
+
+def test_setup_service_uses_proxy_configuration_and_latest_observation_for_freshness() -> None:
+    class Client:
+        def get(self, dataset_id, **query):
+            if dataset_id == "custom-observations":
+                assert "2025-" in query["where"]
+                return [{
+                    "beach": "Lake Sammamish State Park", "locator": "0615SB", "date": "2026-07-20",
+                    "time": "10:00:00", "watertempc": "20", "watertempf": "68", "hightoday": "5",
+                }]
+            assert dataset_id == "custom-sites"
+            return [{
+                "locator": "0615SB", "site": "Sammamish beach", "latitude": "47.575",
+                "longitude": "-122.095", "status": "Active", "area": "Lake Sammamish",
+            }]
+
+    class ProxyRepository(ProductionShapeRepository):
+        def rebuild_context(self, lake_id):
+            context = super().rebuild_context(lake_id)
+            context["data_source_status"] = "reviewed"
+            context["sources"] = [{
+                "connector_key": "king_county_swim_beach_proxy", "domain": "data.kingcounty.gov",
+                "source_configuration": {
+                    "locators": ["0615SB"], "observations_dataset_id": "custom-observations",
+                    "sites_dataset_id": "custom-sites",
+                },
+            }]
+            return context
+
+    repository = ProxyRepository()
+    result = RiskPlanSetupService(
+        repository, now=lambda: datetime(2026, 7, 27, tzinfo=timezone.utc), client_factory=lambda _: Client()
+    ).rebuild_lake("lake-1")
+
+    assert result.status == "active"
+    assert repository.persisted_snapshot[1] == datetime(2026, 7, 20, 17, tzinfo=timezone.utc)
+    assert repository.persisted_candidate.activity_data_unavailable is False
+
+
+def test_setup_service_rejects_unknown_connector_and_invalid_proxy_locators() -> None:
+    repository = ProductionShapeRepository()
+    service = RiskPlanSetupService(repository)
+
+    with pytest.raises(Exception, match="unrecognized_reviewed_connector"):
+        service._fetch({"connector_key": "unknown"}, "POLYGON EMPTY", datetime.now(timezone.utc))
+    with pytest.raises(Exception, match="invalid_reviewed_connector"):
+        service._fetch({
+            "connector_key": "king_county_swim_beach_proxy", "domain": "data.kingcounty.gov",
+            "source_configuration": {"locators": ["NOT-A-SITE"]},
+        }, "POLYGON EMPTY", datetime.now(timezone.utc))
 
 
 def test_lifespan_worker_start_is_singleton_and_cancels_cleanly() -> None:

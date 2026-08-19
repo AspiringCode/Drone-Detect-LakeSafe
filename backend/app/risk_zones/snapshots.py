@@ -54,6 +54,8 @@ def _point_payload(point: NormalizedRiskPoint) -> dict[str, object]:
         "longitude": point.longitude,
         "occurred_at": _utc(point.occurred_at).isoformat().replace("+00:00", "Z"),
         "weight": point.weight,
+        "category": point.category,
+        "is_proxy": point.is_proxy,
         "source_payload": point.source_payload,
     }
 
@@ -139,7 +141,8 @@ def build_snapshot(
             (row for item in fetches for row in item.rows),
             key=lambda row: (
                 _utc(row.occurred_at), row.source_row_id, row.latitude, row.longitude,
-                row.weight, json.dumps(row.source_payload, sort_keys=True, separators=(",", ":")),
+                row.weight, row.category, row.is_proxy,
+                json.dumps(row.source_payload, sort_keys=True, separators=(",", ":")),
             ),
         ))
         point_payloads = [_point_payload(point) for point in points]
