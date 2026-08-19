@@ -123,3 +123,14 @@ def test_client_exceptions_propagate_without_a_fixture_fallback() -> None:
 
     with pytest.raises(OSError, match="network unavailable"):
         KingCountySwimBeachProxyConnector(("0615SB",)).fetch("POLYGON EMPTY", SINCE, FailingClient())
+
+
+@pytest.mark.parametrize(
+    ("observations_dataset_id", "sites_dataset_id"),
+    [("other-observations", "e9bt-i75a"), ("mbzm-4r9y", "other-sites")],
+)
+def test_constructor_rejects_unreviewed_dataset_ids(observations_dataset_id, sites_dataset_id) -> None:
+    with pytest.raises(ValueError, match="schema drift"):
+        KingCountySwimBeachProxyConnector(
+            ("0615SB",), observations_dataset_id, sites_dataset_id
+        )

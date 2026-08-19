@@ -35,10 +35,10 @@ class KingCountySwimBeachProxyConnector(SocrataConnector):
     ) -> None:
         if not locators or len(set(locators)) != len(locators) or any(locator not in SUPPORTED_LOCATORS for locator in locators):
             raise ValueError("schema drift: unsupported or duplicate swim-beach locator")
-        if not isinstance(observations_dataset_id, str) or not observations_dataset_id:
-            raise ValueError("schema drift: invalid observations dataset ID")
-        if not isinstance(sites_dataset_id, str) or not sites_dataset_id:
-            raise ValueError("schema drift: invalid sites dataset ID")
+        if observations_dataset_id != "mbzm-4r9y":
+            raise ValueError("schema drift: unreviewed observations dataset ID")
+        if sites_dataset_id != "e9bt-i75a":
+            raise ValueError("schema drift: unreviewed sites dataset ID")
         self.locators = tuple(locators)
         self.observations_dataset_id = observations_dataset_id
         self.sites_dataset_id = sites_dataset_id

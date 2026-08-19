@@ -241,6 +241,19 @@ def test_setup_service_rejects_unreviewed_proxy_dataset_ids(observations_dataset
         }, "POLYGON EMPTY", datetime.now(timezone.utc))
 
 
+def test_setup_service_rejects_proxy_sources_outside_the_reviewed_domain() -> None:
+    service = RiskPlanSetupService(ProductionShapeRepository())
+
+    with pytest.raises(Exception, match="invalid_reviewed_connector"):
+        service._fetch({
+            "connector_key": "king_county_swim_beach_proxy", "domain": "example.invalid",
+            "source_configuration": {
+                "locators": ["0615SB"], "observations_dataset_id": "mbzm-4r9y",
+                "sites_dataset_id": "e9bt-i75a",
+            },
+        }, "POLYGON EMPTY", datetime.now(timezone.utc))
+
+
 def test_proxy_freshness_is_not_masked_by_a_newer_incident_observation() -> None:
     class Client:
         def get(self, dataset_id, **query):
@@ -285,6 +298,46 @@ def test_proxy_freshness_is_not_masked_by_a_newer_incident_observation() -> None
     ).rebuild_lake("lake-1")
 
     assert repository.persisted_snapshot[1] == datetime(2026, 7, 20, 17, tzinfo=timezone.utc)
+
+
+def test_empty_configured_proxy_source_does_not_fall_back_to_incident_freshness() -> None:
+    class Client:
+        def get(self, dataset_id, **query):
+            if dataset_id == "mbzm-4r9y":
+                return []
+            if dataset_id == "e9bt-i75a":
+                return []
+            assert dataset_id == "reviewed-incidents"
+            return [{
+                "incident_id": "newer", "latitude": "47.58", "longitude": "-122.09",
+                "occurred_at": "2026-07-26T00:00:00Z", "severity": "1",
+            }]
+
+    class MixedRepository(ProductionShapeRepository):
+        def rebuild_context(self, lake_id):
+            context = super().rebuild_context(lake_id)
+            context["data_source_status"] = "reviewed"
+            context["sources"] = [
+                {
+                    "connector_key": "king_county_swim_beach_proxy", "domain": "data.kingcounty.gov",
+                    "source_configuration": {
+                        "locators": ["0615SB"], "observations_dataset_id": "mbzm-4r9y",
+                        "sites_dataset_id": "e9bt-i75a",
+                    },
+                },
+                {
+                    "connector_key": "king_county_incidents", "domain": "data.kingcounty.gov",
+                    "dataset_id": "reviewed-incidents",
+                },
+            ]
+            return context
+
+    repository = MixedRepository()
+    RiskPlanSetupService(
+        repository, now=lambda: datetime(2026, 7, 27, tzinfo=timezone.utc), client_factory=lambda _: Client()
+    ).rebuild_lake("lake-1")
+
+    assert repository.persisted_snapshot[1] is None
 
 
 def test_lifespan_worker_start_is_singleton_and_cancels_cleanly() -> None:

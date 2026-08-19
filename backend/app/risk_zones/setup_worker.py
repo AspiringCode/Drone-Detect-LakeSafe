@@ -71,6 +71,8 @@ class RiskPlanSetupService:
                 raise RiskDataUnavailable("invalid_reviewed_connector")
             connector = KingCountyIncidentConnector(dataset_id)
         elif key == KingCountySwimBeachProxyConnector.connector_key:
+            if domain != KingCountySwimBeachProxyConnector.domain:
+                raise RiskDataUnavailable("invalid_reviewed_connector")
             configuration = source.get("source_configuration")
             if not isinstance(configuration, dict):
                 raise RiskDataUnavailable("invalid_reviewed_connector")
@@ -116,14 +118,20 @@ class RiskPlanSetupService:
             )
             snapshot = build_snapshot(lake_id, context["station_id"], fetches, boundary_wkt, since, now)
         if snapshot.status == "ready":
+            has_proxy_source = any(
+                source.get("connector_key") == KingCountySwimBeachProxyConnector.connector_key
+                for source in sources
+            )
             proxy_times = [
                 point.occurred_at
                 for point in snapshot.points
                 if point.category == "access_environment_proxy" and point.is_proxy
             ]
-            source_fresh_through = max(proxy_times, default=max(
-                (point.occurred_at for point in snapshot.points), default=None
-            ))
+            source_fresh_through = (
+                max(proxy_times, default=None)
+                if has_proxy_source
+                else max((point.occurred_at for point in snapshot.points), default=None)
+            )
         else:
             source_fresh_through = None
         snapshot_id = self._repository.persist_snapshot(snapshot, source_fresh_through, claim_token)
