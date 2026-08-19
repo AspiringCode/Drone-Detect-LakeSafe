@@ -63,13 +63,16 @@ describe("OnboardingGate", () => {
 
 describe("operator workflow", () => {
   it("uses the authenticated operational connector only for the lake's matching station", async () => {
-    const principal: Principal = { user_id: "officer", email: "officer@example.gov", aal: "aal2", account_class: "officer", verification_status: "verified", reviewer: false, memberships: [{ station_id: "station-a", station_name: "A", status: "active", roles: ["station_admin"], capabilities: ["station.read", "inventory.manage"] }] };
+    const principal: Principal = { user_id: "officer", email: "officer@example.gov", aal: "aal2", account_class: "officer", verification_status: "verified", reviewer: false, memberships: [{ station_id: "station-a", station_name: "A", status: "active", roles: ["station_admin"], capabilities: ["station.read", "inventory.manage", "autonomy.manage"] }] };
     const auth = { getSession: vi.fn().mockResolvedValue({ data: { session } }), onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } })) };
-    const client = { auth, from: vi.fn(() => ({ select: vi.fn(() => ({ eq: vi.fn(() => ({ maybeSingle: vi.fn().mockResolvedValue({ data: { station_id: "station-a", drone_inventory_cap: 5, organizations: { station_lat: 47.5, station_lon: -122.1 } }, error: null }) })) })) })) };
+    const client = { auth, from: vi.fn(() => ({ select: vi.fn(() => ({ eq: vi.fn(() => ({ maybeSingle: vi.fn().mockResolvedValue({ data: { name: "Lake Sammamish", centroid_lat: 47.591, centroid_lon: -122.098, station_id: "station-a", drone_inventory_cap: 5, organizations: { station_lat: 47.5, station_lon: -122.1 } }, error: null }) })) })) })) };
     const operational = vi.fn(() => () => {});
     const fetcher = vi.fn((url: string) => Promise.resolve({ ok: true, status: 200, json: async () => url.includes("alerts") ? [] : { type: "FeatureCollection", features: [] } }));
     render(<PrincipalProvider client={client as never} request={(async () => principal) as never}><ActiveStationProvider><MemoryRouter initialEntries={["/lakes/lake-sammamish"]}><Routes><Route path="/lakes/:lakeId" element={<LakeLiveView client={client as never} fetcher={fetcher as never} connectOperational={operational as never} />} /></Routes></MemoryRouter></ActiveStationProvider></PrincipalProvider>);
-    expect(await screen.findByRole("button", { name: /deploy drone/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "Lake Sammamish" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /fleet inventory/i })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /autonomous circulation controls/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /deploy drone/i })).not.toBeInTheDocument();
     await waitFor(() => expect(operational).toHaveBeenCalledWith(expect.stringContaining("/ws/operations/lakes/lake-sammamish"), "token", expect.any(Function)));
   });
   it("does not borrow a capability from a different station's membership", () => {
@@ -146,26 +149,25 @@ describe("operator workflow", () => {
     expect(screen.getByRole("link", { name: /first lake/i })).toBeInTheDocument();
   });
 
-  it("uses the signed-in organization's station coordinates and disables deployment at the cap", async () => {
-    const metadataClient = { auth: { getSession: vi.fn().mockResolvedValue({ data: { session } }) }, from: vi.fn(() => ({ select: vi.fn(() => ({ eq: vi.fn(() => ({ maybeSingle: vi.fn().mockResolvedValue({ data: { drone_inventory_cap: 1, organizations: { station_lat: 47.5301, station_lon: -122.0326 } }, error: null }) })) })) })) };
+  it("uses persisted lake identity and station coordinates without exposing manual deployment", async () => {
+    const metadataClient = { auth: { getSession: vi.fn().mockResolvedValue({ data: { session } }) }, from: vi.fn(() => ({ select: vi.fn(() => ({ eq: vi.fn(() => ({ maybeSingle: vi.fn().mockResolvedValue({ data: { name: "Lake Sammamish", centroid_lat: 47.591, centroid_lon: -122.098, station_id: "station-a", drone_inventory_cap: 1, organizations: { station_lat: 47.5301, station_lon: -122.0326 } }, error: null }) })) })) })) };
     const fetcher = vi.fn((url: string) => { if (url.includes("riskmap")) return Promise.resolve({ ok: true, status: 200, json: async () => ({ type: "FeatureCollection", features: [] }) }); if (url.includes("alerts")) return Promise.resolve({ ok: true, status: 200, json: async () => [] }); return Promise.resolve({ ok: true, status: 200, json: async () => ({}) }); });
-    render(<MemoryRouter initialEntries={["/lakes/lake-sammamish"]}><Routes><Route path="/lakes/:lakeId" element={<LakeLiveView client={metadataClient as never} accessToken="token" fetcher={fetcher as never} connect={(_url, onState) => { onState({ drones: [{ drone_id: "d1", pos: { lat: 1, lon: 1 }, battery: 1, status: "idle", assigned_zone: null, source: "simulated" }], conflicts: [], t: 0 }); return () => {}; }} />} /></Routes></MemoryRouter>);
+    render(<MemoryRouter initialEntries={["/lakes/lake-sammamish"]}><Routes><Route path="/lakes/:lakeId" element={<LakeLiveView client={metadataClient as never} accessToken="token" fetcher={fetcher as never} />} /></Routes></MemoryRouter>);
+    expect(await screen.findByRole("heading", { level: 1, name: "Lake Sammamish" })).toBeInTheDocument();
     expect(await screen.findByTestId("lake-map")).toHaveTextContent("47.5301,-122.0326");
-    const fleetCard = screen.getByRole("heading", { name: /drone status/i }).closest("section");
-    expect(fleetCard).not.toBeNull();
-    expect(within(fleetCard!).getByRole("alert")).toHaveTextContent(/fleet capacity reached/i);
+    expect(screen.getByRole("progressbar", { name: /fleet capacity/i })).toHaveAttribute("aria-valuemax", "1");
     const breadcrumb = screen.getByRole("navigation", { name: /breadcrumb/i });
     expect(breadcrumb).toHaveTextContent("Lakes > Operations");
     expect(within(breadcrumb).getByRole("link", { name: "Lakes" })).toHaveAttribute("href", "/lakes");
     expect(screen.queryByText("Live operations")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /inventory cap reached/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /deploy drone|inventory cap reached/i })).not.toBeInTheDocument();
     expect(fetcher).not.toHaveBeenCalledWith(expect.stringContaining("/drones/deploy"), expect.anything());
   });
 
-  it("reports a backend inventory-cap conflict that races the client-side check", async () => {
-    const metadataClient = { auth: { getSession: vi.fn().mockResolvedValue({ data: { session } }) }, from: vi.fn(() => ({ select: vi.fn(() => ({ eq: vi.fn(() => ({ maybeSingle: vi.fn().mockResolvedValue({ data: { drone_inventory_cap: 5, organizations: { station_lat: 47.5301, station_lon: -122.0326 } }, error: null }) })) })) })) };
-    const fetcher = vi.fn((url: string) => { if (url.includes("riskmap")) return Promise.resolve({ ok: true, status: 200, json: async () => ({ type: "FeatureCollection", features: [] }) }); if (url.includes("alerts")) return Promise.resolve({ ok: true, status: 200, json: async () => [] }); if (url.includes("deploy")) return Promise.resolve({ ok: false, status: 409, json: async () => ({ detail: "Drone inventory cap reached" }) }); return Promise.resolve({ ok: true, status: 200, json: async () => ({}) }); });
-    render(<MemoryRouter initialEntries={["/lakes/lake-sammamish"]}><Routes><Route path="/lakes/:lakeId" element={<LakeLiveView client={metadataClient as never} accessToken="token" fetcher={fetcher as never} connect={() => () => {}} />} /></Routes></MemoryRouter>);
+  it("does not offer legacy manual deployment without operational privileges", async () => {
+    const metadataClient = { auth: { getSession: vi.fn().mockResolvedValue({ data: { session } }) }, from: vi.fn(() => ({ select: vi.fn(() => ({ eq: vi.fn(() => ({ maybeSingle: vi.fn().mockResolvedValue({ data: { name: "Lake Sammamish", centroid_lat: 47.591, centroid_lon: -122.098, station_id: "station-a", drone_inventory_cap: 5, organizations: { station_lat: 47.5301, station_lon: -122.0326 } }, error: null }) })) })) })) };
+    const fetcher = vi.fn((url: string) => { if (url.includes("riskmap")) return Promise.resolve({ ok: true, status: 200, json: async () => ({ type: "FeatureCollection", features: [] }) }); if (url.includes("alerts")) return Promise.resolve({ ok: true, status: 200, json: async () => [] }); return Promise.resolve({ ok: true, status: 200, json: async () => ({}) }); });
+    render(<MemoryRouter initialEntries={["/lakes/lake-sammamish"]}><Routes><Route path="/lakes/:lakeId" element={<LakeLiveView client={metadataClient as never} accessToken="token" fetcher={fetcher as never} />} /></Routes></MemoryRouter>);
     await screen.findByRole("heading", { name: /drone status/i });
     expect(screen.queryByRole("button", { name: /deploy drone/i })).not.toBeInTheDocument();
     expect(fetcher).not.toHaveBeenCalledWith(expect.stringContaining("/drones/deploy"), expect.anything());
