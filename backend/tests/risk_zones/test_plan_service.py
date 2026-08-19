@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 import pytest
 from shapely.geometry import Polygon
 
-from app.models import LatLon
+from app.models import LatLon, RiskPointProvenance
 from app.risk_zones.connectors.base import NormalizedRiskPoint
 from app.risk_zones.plan_builder import build_candidate
 from app.risk_zones.plan_repository import InMemoryRiskPlanRepository
@@ -51,6 +51,9 @@ def _proxy(source_row_id: str, latitude: float, longitude: float) -> NormalizedR
     return NormalizedRiskPoint(
         source_row_id, latitude, longitude, NOW, 1.0, {},
         category="access_environment_proxy", is_proxy=True,
+        provenance=RiskPointProvenance(
+            "king_county_swim_beach_proxy", source_row_id, "0615SB", NOW,
+        ),
     )
 
 
@@ -63,6 +66,11 @@ def test_one_proxy_observation_becomes_a_proxy_priority_cell_at_its_official_coo
         ("hotspot", LatLon(47.575, -122.095), True),
     ]
     assert plan.activity_data_unavailable is False
+    assert plan.cells[0].provenance == (
+        RiskPointProvenance(
+            "king_county_swim_beach_proxy", "0615SB:2026-07-27T00:00:00+00:00", "0615SB", NOW,
+        ),
+    )
 
 
 def test_distinct_proxy_observations_remain_distinct_priority_seeds() -> None:

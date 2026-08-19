@@ -176,13 +176,13 @@ def test_production_setup_service_persists_and_activates_explicit_fallback_plan(
 def test_setup_service_uses_proxy_configuration_and_latest_observation_for_freshness() -> None:
     class Client:
         def get(self, dataset_id, **query):
-            if dataset_id == "custom-observations":
+            if dataset_id == "mbzm-4r9y":
                 assert "2025-" in query["where"]
                 return [{
                     "beach": "Lake Sammamish State Park", "locator": "0615SB", "date": "2026-07-20",
                     "time": "10:00:00", "watertempc": "20", "watertempf": "68", "hightoday": "5",
                 }]
-            assert dataset_id == "custom-sites"
+            assert dataset_id == "e9bt-i75a"
             return [{
                 "locator": "0615SB", "site": "Sammamish beach", "latitude": "47.575",
                 "longitude": "-122.095", "status": "Active", "area": "Lake Sammamish",
@@ -195,8 +195,8 @@ def test_setup_service_uses_proxy_configuration_and_latest_observation_for_fresh
             context["sources"] = [{
                 "connector_key": "king_county_swim_beach_proxy", "domain": "data.kingcounty.gov",
                 "source_configuration": {
-                    "locators": ["0615SB"], "observations_dataset_id": "custom-observations",
-                    "sites_dataset_id": "custom-sites",
+                    "locators": ["0615SB"], "observations_dataset_id": "mbzm-4r9y",
+                    "sites_dataset_id": "e9bt-i75a",
                 },
             }]
             return context
@@ -222,6 +222,69 @@ def test_setup_service_rejects_unknown_connector_and_invalid_proxy_locators() ->
             "connector_key": "king_county_swim_beach_proxy", "domain": "data.kingcounty.gov",
             "source_configuration": {"locators": ["NOT-A-SITE"]},
         }, "POLYGON EMPTY", datetime.now(timezone.utc))
+
+
+@pytest.mark.parametrize(
+    ("observations_dataset_id", "sites_dataset_id"),
+    [("other-observations", "e9bt-i75a"), ("mbzm-4r9y", "other-sites")],
+)
+def test_setup_service_rejects_unreviewed_proxy_dataset_ids(observations_dataset_id, sites_dataset_id) -> None:
+    service = RiskPlanSetupService(ProductionShapeRepository())
+
+    with pytest.raises(Exception, match="invalid_reviewed_connector"):
+        service._fetch({
+            "connector_key": "king_county_swim_beach_proxy", "domain": "data.kingcounty.gov",
+            "source_configuration": {
+                "locators": ["0615SB"], "observations_dataset_id": observations_dataset_id,
+                "sites_dataset_id": sites_dataset_id,
+            },
+        }, "POLYGON EMPTY", datetime.now(timezone.utc))
+
+
+def test_proxy_freshness_is_not_masked_by_a_newer_incident_observation() -> None:
+    class Client:
+        def get(self, dataset_id, **query):
+            if dataset_id == "mbzm-4r9y":
+                return [{
+                    "beach": "Lake Sammamish State Park", "locator": "0615SB", "date": "2026-07-20",
+                    "time": "10:00:00", "watertempc": "20", "watertempf": "68", "hightoday": "5",
+                }]
+            if dataset_id == "e9bt-i75a":
+                return [{
+                    "locator": "0615SB", "site": "Sammamish beach", "latitude": "47.575",
+                    "longitude": "-122.095", "status": "Active", "area": "Lake Sammamish",
+                }]
+            assert dataset_id == "reviewed-incidents"
+            return [{
+                "incident_id": "newer", "latitude": "47.58", "longitude": "-122.09",
+                "occurred_at": "2026-07-26T00:00:00Z", "severity": "1",
+            }]
+
+    class MixedRepository(ProductionShapeRepository):
+        def rebuild_context(self, lake_id):
+            context = super().rebuild_context(lake_id)
+            context["data_source_status"] = "reviewed"
+            context["sources"] = [
+                {
+                    "connector_key": "king_county_swim_beach_proxy", "domain": "data.kingcounty.gov",
+                    "source_configuration": {
+                        "locators": ["0615SB"], "observations_dataset_id": "mbzm-4r9y",
+                        "sites_dataset_id": "e9bt-i75a",
+                    },
+                },
+                {
+                    "connector_key": "king_county_incidents", "domain": "data.kingcounty.gov",
+                    "dataset_id": "reviewed-incidents",
+                },
+            ]
+            return context
+
+    repository = MixedRepository()
+    RiskPlanSetupService(
+        repository, now=lambda: datetime(2026, 7, 27, tzinfo=timezone.utc), client_factory=lambda _: Client()
+    ).rebuild_lake("lake-1")
+
+    assert repository.persisted_snapshot[1] == datetime(2026, 7, 20, 17, tzinfo=timezone.utc)
 
 
 def test_lifespan_worker_start_is_singleton_and_cancels_cleanly() -> None:

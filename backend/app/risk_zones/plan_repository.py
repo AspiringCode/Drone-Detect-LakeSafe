@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import asdict
+from datetime import timezone
 from typing import Protocol
 
 from app.models import ZonePlanCandidate
@@ -73,7 +74,19 @@ class SupabaseRiskPlanRepository:
                 "boundary_wkt": "POLYGON((" + ",".join(
                     f"{point.lon} {point.lat}" for point in cell.polygon
                 ) + "))",
-                "metadata": {"radius_m": cell.radius_m, "is_proxy": cell.is_proxy},
+                "metadata": {
+                    "radius_m": cell.radius_m,
+                    "is_proxy": cell.is_proxy,
+                    "provenance": [
+                        {
+                            "connector_key": provenance.connector_key,
+                            "source_row_id": provenance.source_row_id,
+                            "locator": provenance.locator,
+                            "observed_at": provenance.observed_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+                        }
+                        for provenance in cell.provenance
+                    ],
+                },
             }
             for ordinal, cell in enumerate(candidate.cells)
         ]

@@ -98,6 +98,7 @@ def test_fetches_reviewed_datasets_and_keeps_newest_requested_proxy_per_locator(
         ([{"locator": "0615SB"}], [_site("0615SB")]),
         ([_observation("NOT-A-SITE", "2026-07-02")], [_site("0615SB")]),
         ([_observation("0615SB", "not-a-date")], [_site("0615SB")]),
+        ([_observation("0615SB", "2026-07-02junk")], [_site("0615SB")]),
         ([_observation("0615SB", "2026-07-02")], [_site("0615SB", "95", "-122.0452")]),
         ([_observation("0615SB", "2026-07-02")], [_site("0615SB"), _site("0615SB")]),
     ],

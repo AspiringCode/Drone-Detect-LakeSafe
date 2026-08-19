@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import json
 
 from app.risk_zones.adaptive_clusters import select_hotspots
 from app.risk_zones.cluster_strategy import WeightedPoint
@@ -50,6 +51,30 @@ def test_snapshot_is_canonical_across_connector_and_row_order() -> None:
     assert first.sha256 == second.sha256
     assert first.points == second.points
     assert first.connector_versions == (("king_county_incidents", "1"),)
+
+
+def test_flattened_connector_rows_keep_their_connector_identity() -> None:
+    point = NormalizedRiskPoint(
+        source_row_id="0615SB:2026-07-01T00:00:00+00:00", latitude=47.58, longitude=-122.09,
+        occurred_at=NOW, weight=1.0, source_payload={},
+        category="access_environment_proxy", is_proxy=True,
+    )
+    fetch = ConnectorFetch(
+        connector_key="king_county_swim_beach_proxy", connector_schema_version="1",
+        attribution="King County Open Data", rows=(point,),
+    )
+
+    snapshot = build_snapshot("lake-1", "st-1", (fetch,), "POLYGON EMPTY", NOW, NOW)
+
+    assert snapshot.points[0].provenance is not None
+    assert snapshot.points[0].provenance.connector_key == "king_county_swim_beach_proxy"
+    assert snapshot.points[0].provenance.source_row_id == point.source_row_id
+    assert json.loads(snapshot.canonical_json)["points"][0]["provenance"] == {
+        "connector_key": "king_county_swim_beach_proxy",
+        "source_row_id": "0615SB:2026-07-01T00:00:00+00:00",
+        "locator": None,
+        "observed_at": "2026-07-27T00:00:00Z",
+    }
 
 
 def test_connector_failures_are_quarantined() -> None:

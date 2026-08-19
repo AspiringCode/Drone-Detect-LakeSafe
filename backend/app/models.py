@@ -14,6 +14,16 @@ class LatLon:
     lon: float
 
 
+@dataclass(frozen=True)
+class RiskPointProvenance:
+    """Reviewed publisher identity retained from a normalized point to a plan cell."""
+
+    connector_key: str
+    source_row_id: str
+    locator: str | None
+    observed_at: datetime
+
+
 @dataclass
 class RiskZone:
     zone_id: str
@@ -37,6 +47,7 @@ class ZonePlanCell:
     radius_m: float
     risk_score: float
     is_proxy: bool
+    provenance: tuple[RiskPointProvenance, ...] = ()
 
 
 @dataclass(frozen=True)

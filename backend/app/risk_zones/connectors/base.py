@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal, Protocol, Sequence
 
+from app.models import RiskPointProvenance
+
 
 class SocrataClient(Protocol):
     def get(self, dataset_id: str, **query: Any) -> Sequence[dict[str, Any]]: ...
@@ -20,6 +22,7 @@ class NormalizedRiskPoint:
     source_payload: dict[str, Any]
     category: Literal["incidents", "access_environment_proxy"] = "incidents"
     is_proxy: bool = False
+    provenance: RiskPointProvenance | None = None
 
 
 @dataclass(frozen=True, slots=True)

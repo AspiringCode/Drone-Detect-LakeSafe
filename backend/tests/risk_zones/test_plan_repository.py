@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.models import LatLon, ZonePlanCandidate, ZonePlanCell
+from datetime import datetime, timezone
+
+from app.models import LatLon, RiskPointProvenance, ZonePlanCandidate, ZonePlanCell
 from app.risk_zones.plan_repository import SupabaseRiskPlanRepository
 
 
@@ -36,6 +38,29 @@ def test_candidate_and_cells_are_persisted_by_one_station_bound_rpc() -> None:
     assert payload["p_station_id"] == "station-1"
     assert payload["p_cells"][0]["kind"] == "fallback"
     assert len(client.calls) == 1
+
+
+def test_persisted_proxy_priority_cell_retains_exact_source_provenance() -> None:
+    provenance = RiskPointProvenance(
+        "king_county_swim_beach_proxy", "0615SB:2026-07-20T17:00:00+00:00", "0615SB",
+        datetime(2026, 7, 20, 17, tzinfo=timezone.utc),
+    )
+    cell = ZonePlanCell(
+        "cell-0", "hotspot", LatLon(47.5, -122.1), LatLon(47.5, -122.1),
+        (LatLon(47.4, -122.2), LatLon(47.4, -122.0), LatLon(47.6, -122.0), LatLon(47.4, -122.2)),
+        25, 1, True, (provenance,),
+    )
+    candidate = ZonePlanCandidate("plan-1", "lake-1", "station-1", "snapshot-1", None, False, (cell,))
+    client = _Client()
+
+    SupabaseRiskPlanRepository(client).persist_candidate(candidate)
+
+    assert client.calls[0][1]["p_cells"][0]["metadata"]["provenance"] == [{
+        "connector_key": "king_county_swim_beach_proxy",
+        "source_row_id": "0615SB:2026-07-20T17:00:00+00:00",
+        "locator": "0615SB",
+        "observed_at": "2026-07-20T17:00:00Z",
+    }]
 
 
 def test_activation_maps_database_guard_failure_to_false() -> None:

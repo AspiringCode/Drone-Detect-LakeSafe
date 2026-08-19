@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 import hashlib
 import json
 from typing import Sequence
 
 from .connectors.base import ConnectorFetch, NormalizedRiskPoint
+from app.models import RiskPointProvenance
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,7 +49,7 @@ def _canonical_boundary(boundary: object) -> str:
 
 
 def _point_payload(point: NormalizedRiskPoint) -> dict[str, object]:
-    return {
+    payload = {
         "source_row_id": point.source_row_id,
         "latitude": point.latitude,
         "longitude": point.longitude,
@@ -58,6 +59,29 @@ def _point_payload(point: NormalizedRiskPoint) -> dict[str, object]:
         "is_proxy": point.is_proxy,
         "source_payload": point.source_payload,
     }
+    if point.provenance is not None:
+        payload["provenance"] = {
+            "connector_key": point.provenance.connector_key,
+            "source_row_id": point.provenance.source_row_id,
+            "locator": point.provenance.locator,
+            "observed_at": _utc(point.provenance.observed_at).isoformat().replace("+00:00", "Z"),
+        }
+    return payload
+
+
+def _with_connector_provenance(
+    point: NormalizedRiskPoint, connector_key: str
+) -> NormalizedRiskPoint:
+    provenance = point.provenance
+    return replace(
+        point,
+        provenance=RiskPointProvenance(
+            connector_key,
+            point.source_row_id,
+            provenance.locator if provenance is not None else None,
+            provenance.observed_at if provenance is not None else point.occurred_at,
+        ),
+    )
 
 
 def _empty_snapshot(
@@ -138,7 +162,7 @@ def build_snapshot(
         fetches = sorted(connectors, key=lambda item: (item.connector_key, item.connector_schema_version, item.attribution))
         sources = tuple(SnapshotSource(item.connector_key, item.connector_schema_version, item.attribution) for item in fetches)
         points = tuple(sorted(
-            (row for item in fetches for row in item.rows),
+            (_with_connector_provenance(row, item.connector_key) for item in fetches for row in item.rows),
             key=lambda row: (
                 _utc(row.occurred_at), row.source_row_id, row.latitude, row.longitude,
                 row.weight, row.category, row.is_proxy,

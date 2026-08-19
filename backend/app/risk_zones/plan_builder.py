@@ -8,7 +8,7 @@ from uuid import uuid4
 from shapely.geometry import Point, Polygon
 from shapely.ops import transform
 
-from app.models import LatLon, ZonePlanCandidate, ZonePlanCell
+from app.models import LatLon, RiskPointProvenance, ZonePlanCandidate, ZonePlanCell
 from app.risk_zones.adaptive_clusters import select_hotspots
 from app.risk_zones.cluster_strategy import WeightedPoint
 from app.risk_zones.tessellation import (
@@ -37,27 +37,33 @@ def _incident_points(snapshot, shoreline: Polygon) -> list[WeightedPoint]:
     ]
 
 
-def _proxy_seeds(snapshot, shoreline: Polygon) -> list[LatLon]:
-    return sorted(
-        {
-            LatLon(point.latitude, point.longitude)
-            for point in snapshot.points
-            if point.category == "access_environment_proxy" and point.is_proxy
-            and shoreline.buffer(1e-12).contains(Point(point.longitude, point.latitude))
-        },
-        key=lambda seed: (seed.lat, seed.lon),
-    )
+def _proxy_seeds(
+    snapshot, shoreline: Polygon
+) -> list[tuple[LatLon, tuple[RiskPointProvenance, ...]]]:
+    by_seed: dict[LatLon, list[RiskPointProvenance]] = {}
+    for point in snapshot.points:
+        if (
+            point.category != "access_environment_proxy" or not point.is_proxy
+            or not shoreline.buffer(1e-12).contains(Point(point.longitude, point.latitude))
+        ):
+            continue
+        seed = LatLon(point.latitude, point.longitude)
+        if point.provenance is not None and point.provenance not in by_seed.setdefault(seed, []):
+            by_seed[seed].append(point.provenance)
+        else:
+            by_seed.setdefault(seed, [])
+    return [(seed, tuple(by_seed[seed])) for seed in sorted(by_seed, key=lambda item: (item.lat, item.lon))]
 
 
 def _cell(
     cell_id: str, kind: str, seed: LatLon, polygon: Polygon, mean_lat: float,
-    risk_score: float, is_proxy: bool,
+    risk_score: float, is_proxy: bool, provenance: tuple[RiskPointProvenance, ...] = (),
 ) -> ZonePlanCell:
     center, radius_m = patrol_center_and_radius(polygon, mean_lat)
     return ZonePlanCell(
         cell_id=cell_id, kind=kind, seed=seed, centroid=center,
         polygon=tuple(unproject((x, y), mean_lat) for x, y in polygon.exterior.coords),
-        radius_m=radius_m, risk_score=risk_score, is_proxy=is_proxy,
+        radius_m=radius_m, risk_score=risk_score, is_proxy=is_proxy, provenance=provenance,
     )
 
 
@@ -78,12 +84,16 @@ def build_candidate(snapshot, shoreline: Polygon, patrol_capacity: int, reserve:
     minx, miny, maxx, maxy = shoreline.bounds
     selection = select_hotspots(_incident_points(snapshot, shoreline), (miny, minx, maxy, maxx))
     proxy_seeds = _proxy_seeds(snapshot, shoreline)
-    priority_by_seed: dict[LatLon, tuple[float, bool]] = {
-        cluster.centroid: (cluster.weight, False) for cluster in selection.hotspots
+    priority_by_seed: dict[LatLon, tuple[float, bool, tuple[RiskPointProvenance, ...]]] = {
+        cluster.centroid: (cluster.weight, False, ()) for cluster in selection.hotspots
     }
-    for seed in proxy_seeds:
-        weight, is_proxy = priority_by_seed.get(seed, (1.0, True))
-        priority_by_seed[seed] = (weight, is_proxy)
+    for seed, provenance in proxy_seeds:
+        weight, is_proxy, existing_provenance = priority_by_seed.get(seed, (1.0, True, ()))
+        priority_by_seed[seed] = (
+            weight,
+            is_proxy,
+            tuple(dict.fromkeys((*existing_provenance, *provenance))),
+        )
     priority_seeds = list(priority_by_seed)
     unavailable = not priority_seeds
     if unavailable:
@@ -99,12 +109,13 @@ def build_candidate(snapshot, shoreline: Polygon, patrol_capacity: int, reserve:
                 break
             seeds.append(candidate)
             kinds.append("coverage")
-        max_weight = max(weight for weight, _ in priority_by_seed.values())
+        max_weight = max(weight for weight, _, _ in priority_by_seed.values())
         cells = tuple(
             _cell(
                 f"cell-{index}", kind, seed, polygon, mean_lat,
                 round(priority_by_seed[seed][0] / max_weight, 6) if kind == "hotspot" else 0.0,
                 priority_by_seed[seed][1] if kind == "hotspot" else True,
+                priority_by_seed[seed][2] if kind == "hotspot" else (),
             )
             for index, ((seed, polygon), kind) in enumerate(zip(voronoi_cells(seeds, projected, mean_lat), kinds, strict=True))
         )

@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import date, datetime, time, timezone
 from zoneinfo import ZoneInfo
 
+from app.models import RiskPointProvenance
+
 from .base import ConnectorFetch, NormalizedRiskPoint, SocrataClient, SocrataConnector
 
 
@@ -49,7 +51,11 @@ class KingCountySwimBeachProxyConnector(SocrataConnector):
     @staticmethod
     def _occurred_at(row: dict[str, object]) -> datetime:
         try:
-            observed_date = date.fromisoformat(str(row["date"])[:10])
+            raw_date = str(row["date"])
+            try:
+                observed_date = date.fromisoformat(raw_date)
+            except ValueError:
+                observed_date = datetime.fromisoformat(raw_date.replace("Z", "+00:00")).date()
             raw_time = row.get("time")
             if raw_time in (None, ""):
                 observed_time = time.min
@@ -98,6 +104,9 @@ class KingCountySwimBeachProxyConnector(SocrataConnector):
             source_payload={"observation": dict(observation), "site": dict(site)},
             category="access_environment_proxy",
             is_proxy=True,
+            provenance=RiskPointProvenance(
+                self.connector_key, f"{locator}:{occurred_at.isoformat()}", locator, occurred_at,
+            ),
         )
 
     def fetch(

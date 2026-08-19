@@ -79,7 +79,7 @@ class RiskPlanSetupService:
             sites_dataset_id = configuration.get("sites_dataset_id", "e9bt-i75a")
             if (
                 not isinstance(locators, list) or not all(isinstance(locator, str) for locator in locators)
-                or not isinstance(observations_dataset_id, str) or not isinstance(sites_dataset_id, str)
+                or observations_dataset_id != "mbzm-4r9y" or sites_dataset_id != "e9bt-i75a"
             ):
                 raise RiskDataUnavailable("invalid_reviewed_connector")
             try:
@@ -115,7 +115,17 @@ class RiskPlanSetupService:
                 for source in sources
             )
             snapshot = build_snapshot(lake_id, context["station_id"], fetches, boundary_wkt, since, now)
-        source_fresh_through = max((point.occurred_at for point in snapshot.points), default=None) if snapshot.status == "ready" else None
+        if snapshot.status == "ready":
+            proxy_times = [
+                point.occurred_at
+                for point in snapshot.points
+                if point.category == "access_environment_proxy" and point.is_proxy
+            ]
+            source_fresh_through = max(proxy_times, default=max(
+                (point.occurred_at for point in snapshot.points), default=None
+            ))
+        else:
+            source_fresh_through = None
         snapshot_id = self._repository.persist_snapshot(snapshot, source_fresh_through, claim_token)
         if snapshot.status != "ready":
             raise RiskDataUnavailable(snapshot.failure_reason or "risk_snapshot_unavailable")
