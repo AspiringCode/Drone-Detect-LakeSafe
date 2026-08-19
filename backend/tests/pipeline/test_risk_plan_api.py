@@ -19,7 +19,12 @@ class PlanRepository:
         return {
             "plan_id": "plan-1", "snapshot_id": "snapshot-1", "algorithm_version": "risk-zone-v1",
             "source_fresh_through": "2026-07-28T00:00:00Z", "activity_data_unavailable": False,
-            "cells": [{"kind": "hotspot", "risk_score": 2.0, "seed": {"lat": 47.6, "lon": -122.1}}],
+            "source_attribution": ["King County Open Data — Freshwater Swim Beach Data and Water Quality Monitoring Sites"],
+            "cells": [
+                {"kind": "hotspot", "risk_score": 2.0, "seed": {"lat": 47.6, "lon": -122.1}, "metadata": {"is_proxy": True}},
+                {"kind": "hotspot", "risk_score": 1.0, "seed": {"lat": 47.61, "lon": -122.11}, "metadata": {"is_proxy": False}},
+                {"kind": "coverage", "risk_score": 0.0, "seed": {"lat": 47.62, "lon": -122.12}, "metadata": {"is_proxy": True}},
+            ],
         }
 
     def queue_lake(self, lake_id: str, reason: str = "manual") -> None:
@@ -47,6 +52,23 @@ def test_viewer_reads_stored_plan_versions_and_freshness_without_rebuild() -> No
     assert response.status_code == 200
     assert {"plan_id", "snapshot_id", "algorithm_version", "source_fresh_through", "cells"} <= response.json().keys()
     assert repository.queued == []
+
+
+def test_viewer_plan_exposes_attribution_and_derivable_priority_counts_without_raw_payloads() -> None:
+    client, _ = _client(StationRole.VIEWER)
+
+    payload = client.get("/api/stations/station-1/lakes/lake-1/zone-plan").json()
+
+    assert payload["source_attribution"] == [
+        "King County Open Data — Freshwater Swim Beach Data and Water Quality Monitoring Sites"
+    ]
+    assert sum(cell["kind"] == "hotspot" for cell in payload["cells"]) == 2
+    assert sum(cell["kind"] == "hotspot" and cell["metadata"]["is_proxy"] for cell in payload["cells"]) == 1
+    assert sum(cell["kind"] == "coverage" for cell in payload["cells"]) == 1
+    serialized = str(payload).lower()
+    assert "canonical_payload" not in serialized
+    assert "source_payload" not in serialized
+    assert "source_row_id" not in serialized
 
 
 def test_viewer_cannot_request_a_risk_refresh() -> None:

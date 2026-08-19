@@ -3,12 +3,16 @@ import json
 
 import pytest
 from fastapi.testclient import TestClient
+from shapely.geometry import shape
+from shapely.ops import unary_union
 
 from app.coordination.assignment import haversine_m
 from app.main import app, lake_runtimes
+from app.risk_zones.shoreline import load_lake_polygon
 
 
 LAKE_ID = "lake-sammamish"
+SUPPORTED_LAKE_IDS = ("lake-sammamish", "lake-pine", "lake-beaver")
 
 
 def _read_headers(monkeypatch):
@@ -25,7 +29,7 @@ class FakeAccessRepository:
         }]}
 
     def lake_station_id(self, lake_id):
-        return "station-1" if lake_id == LAKE_ID else None
+        return "station-1" if lake_id in SUPPORTED_LAKE_IDS else None
 
 
 @pytest.fixture(autouse=True)
@@ -33,9 +37,10 @@ def fake_access_repository(monkeypatch):
     monkeypatch.setattr("app.main.get_access_repository", lambda: FakeAccessRepository())
 
 
-def test_get_riskmap_returns_feature_collection(monkeypatch):
+@pytest.mark.parametrize("lake_id", SUPPORTED_LAKE_IDS)
+def test_get_riskmap_returns_feature_collection_for_each_local_runtime(monkeypatch, lake_id):
     client = TestClient(app)
-    response = client.get(f"/api/lakes/{LAKE_ID}/riskmap", headers=_read_headers(monkeypatch))
+    response = client.get(f"/api/lakes/{lake_id}/riskmap", headers=_read_headers(monkeypatch))
     assert response.status_code == 200
     assert response.json()["type"] == "FeatureCollection"
 
@@ -71,8 +76,8 @@ def test_positions_ws_receives_state_with_source(monkeypatch):
 def test_startup_launches_background_tick_task_that_stays_alive():
     with TestClient(app) as client:
         tasks = getattr(client.app.state, "tick_tasks", {})
-        assert set(tasks) == {LAKE_ID}
-        assert not tasks[LAKE_ID].done()
+        assert set(tasks) == set(SUPPORTED_LAKE_IDS)
+        assert all(not task.done() for task in tasks.values())
 
 
 def test_riskmap_allows_cross_origin_dashboard_dev_server(monkeypatch):
@@ -91,6 +96,17 @@ def test_riskmap_returns_nonempty_closed_tessellated_cell_rings(monkeypatch):
         assert feature["properties"]["zone_id"].startswith("cell-")
         coords = feature["geometry"]["coordinates"][0]
         assert coords[0] == coords[-1]
+
+
+def test_sammamish_riskmap_geojson_preserves_official_shoreline_holes(monkeypatch):
+    response = TestClient(app).get(
+        f"/api/lakes/{LAKE_ID}/riskmap", headers=_read_headers(monkeypatch)
+    )
+    cells = [shape(feature["geometry"]) for feature in response.json()["features"]]
+
+    assert unary_union(cells).symmetric_difference(
+        load_lake_polygon(LAKE_ID)
+    ).area == pytest.approx(0, abs=1e-12)
 
 
 def test_simulation_assigns_from_every_rendered_zone():
@@ -217,7 +233,7 @@ def test_deploy_allows_aal2_owner_when_tessellated_zones_are_fully_staffed(monke
     deployed = response.json()
     assert deployed["status"] == "idle"
     assert deployed["assigned_zone"] is None
-    assert deployed["position"] == {"lat": 47.606, "lon": -122.09}
+    assert deployed["position"] == {"lat": 47.55686175, "lon": -122.07109931}
     runtime.engine.drones.pop()
     runtime.engine._initial_assign()
 

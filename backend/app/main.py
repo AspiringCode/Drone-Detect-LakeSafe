@@ -21,11 +21,18 @@ from app.config import SUPABASE_KEY, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL
 from app.coordination.engine import SimulationEngine
 from app.detection.detector import ThermalDetector
 from app.detection.temporal import TemporalPersistenceFilter
-from app.models import Detection, Drone, DroneStatus, LatLon
+from app.models import (
+    Detection, Drone, DroneStatus, LatLon, RiskPointProvenance, RiskZone,
+)
 from app.pipeline.alerts import AlertRepository, InMemoryBackend, assemble_alert
 from app.pipeline.ws import ConnectionHub, tick_loop
 from app.risk_zones.heatmap import zones_to_geojson
-from app.risk_zones.tessellation import compute_tessellated_zones
+from app.lakes.catalog import SUPPORTED_LAKE_IDS, load_reviewed_lake
+from app.risk_zones.connectors.base import ConnectorFetch, NormalizedRiskPoint
+from app.risk_zones.connectors.king_county_swim_beach import KingCountySwimBeachProxyConnector
+from app.risk_zones.plan_builder import build_candidate
+from app.risk_zones.shoreline import load_lake_polygon
+from app.risk_zones.snapshots import build_snapshot
 from app.onboarding.geo_lookup import AddressNotFoundError, lookup_nearby_lakes
 from app.verification.routes import router as idme_router
 from app.stations.routes import router as station_router
@@ -128,6 +135,7 @@ async def attach_request_correlation_id(request: Request, call_next):
 @dataclass
 class LakeRuntime:
     lake_id: str
+    name: str
     zones: list
     engine: SimulationEngine
     alerts: AlertRepository
@@ -139,29 +147,82 @@ class LakeRuntime:
     shore_station: LatLon
 
 
-def _build_sammamish_runtime() -> LakeRuntime:
-    zones = compute_tessellated_zones(
-        "lake-sammamish", drone_count=len(DEMO_DRONE_POSITIONS), use_fixture=True
+def build_lake_runtime(lake_id: str) -> LakeRuntime:
+    lake = load_reviewed_lake(lake_id)
+    shoreline = load_lake_polygon(lake_id)
+    reviewed_at = datetime(2026, 8, 18, tzinfo=timezone.utc)
+    rows = tuple(
+        NormalizedRiskPoint(
+            source_row_id=f"catalog:{point.locator}",
+            latitude=point.latitude,
+            longitude=point.longitude,
+            occurred_at=reviewed_at,
+            weight=1.0,
+            source_payload={},
+            category="access_environment_proxy",
+            is_proxy=True,
+            provenance=RiskPointProvenance(
+                connector_key="king_county_swim_beach_proxy",
+                source_row_id=f"catalog:{point.locator}",
+                locator=point.locator,
+                observed_at=reviewed_at,
+                source_latitude=point.latitude,
+                source_longitude=point.longitude,
+            ),
+        )
+        for point in lake.official_priority_coordinates
     )
-    shore_station = LatLon(47.606, -122.090)
-    drones = [Drone(f"d{i}", position, 1.0, DroneStatus.IDLE, None) for i, position in enumerate(DEMO_DRONE_POSITIONS)]
+    snapshot = build_snapshot(
+        lake_id=lake_id,
+        station_id=f"catalog:{lake_id}",
+        connectors=(ConnectorFetch(
+            connector_key="king_county_swim_beach_proxy",
+            connector_schema_version="1",
+            attribution=KingCountySwimBeachProxyConnector.attribution,
+            rows=rows,
+        ),),
+        boundary=shoreline,
+        since=reviewed_at,
+        now=reviewed_at,
+    )
+    candidate = build_candidate(
+        snapshot, shoreline, patrol_capacity=5, reserve=1, prior_plan_id=None,
+        reassign_detached_pieces=True,
+    )
+    zones = [
+        RiskZone(
+            zone_id=cell.cell_id,
+            centroid=cell.centroid,
+            polygon=list(cell.polygon),
+            risk_score=cell.risk_score,
+            components={"access_environment_proxy": float(cell.risk_score)}
+            if cell.kind == "hotspot"
+            else {},
+            is_proxy=cell.is_proxy,
+            radius_m=cell.radius_m,
+            seed=cell.seed,
+            provenance=cell.provenance,
+            holes=cell.holes,
+        )
+        for cell in candidate.cells
+    ]
+    drones = [
+        Drone(f"{lake_id}-d{index}", cell.centroid, 1.0, DroneStatus.IDLE, None)
+        for index, cell in enumerate(candidate.cells[:5])
+    ]
+    shore_station = lake.shore_station.as_lat_lon()
     backend = InMemoryBackend()
     return LakeRuntime(
-        lake_id="lake-sammamish", zones=zones,
+        lake_id=lake_id, name=lake.name, zones=zones,
         engine=SimulationEngine(drones, zones, shore_stations=[shore_station]),
         alerts=AlertRepository(backend), alert_backend=backend, hub=ConnectionHub(),
         public_hub=ConnectionHub(), shore_station=shore_station,
     )
 
 
-DEMO_DRONE_POSITIONS = [
-    LatLon(47.600, -122.090),
-    LatLon(47.590, -122.098),
-    LatLon(47.580, -122.084),
-    LatLon(47.570, -122.098),
-    LatLon(47.560, -122.088),
-]
-lake_runtimes: dict[str, LakeRuntime] = {"lake-sammamish": _build_sammamish_runtime()}
+lake_runtimes: dict[str, LakeRuntime] = {
+    lake_id: build_lake_runtime(lake_id) for lake_id in SUPPORTED_LAKE_IDS
+}
 
 
 class NearbyLakesRequest(BaseModel):

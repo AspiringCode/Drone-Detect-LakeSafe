@@ -60,12 +60,20 @@ def _point_payload(point: NormalizedRiskPoint) -> dict[str, object]:
         "source_payload": point.source_payload,
     }
     if point.provenance is not None:
-        payload["provenance"] = {
+        provenance_payload = {
             "connector_key": point.provenance.connector_key,
             "source_row_id": point.provenance.source_row_id,
             "locator": point.provenance.locator,
             "observed_at": _utc(point.provenance.observed_at).isoformat().replace("+00:00", "Z"),
         }
+        for field in (
+            "source_latitude", "source_longitude", "derived_seed_latitude",
+            "derived_seed_longitude", "adjustment_distance_m", "adjustment_reason",
+        ):
+            value = getattr(point.provenance, field)
+            if value is not None:
+                provenance_payload[field] = value
+        payload["provenance"] = provenance_payload
     return payload
 
 
@@ -75,11 +83,10 @@ def _with_connector_provenance(
     provenance = point.provenance
     return replace(
         point,
-        provenance=RiskPointProvenance(
-            connector_key,
-            point.source_row_id,
-            provenance.locator if provenance is not None else None,
-            provenance.observed_at if provenance is not None else point.occurred_at,
+        provenance=replace(
+            provenance, connector_key=connector_key, source_row_id=point.source_row_id
+        ) if provenance is not None else RiskPointProvenance(
+            connector_key, point.source_row_id, None, point.occurred_at,
         ),
     )
 

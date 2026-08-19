@@ -22,6 +22,12 @@ class RiskPointProvenance:
     source_row_id: str
     locator: str | None
     observed_at: datetime
+    source_latitude: float | None = None
+    source_longitude: float | None = None
+    derived_seed_latitude: float | None = None
+    derived_seed_longitude: float | None = None
+    adjustment_distance_m: float | None = None
+    adjustment_reason: str | None = None
 
 
 @dataclass
@@ -33,6 +39,9 @@ class RiskZone:
     components: dict[str, float]
     is_proxy: bool
     radius_m: float | None = None
+    seed: LatLon | None = None
+    provenance: tuple[RiskPointProvenance, ...] = ()
+    holes: tuple[tuple[LatLon, ...], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -48,6 +57,7 @@ class ZonePlanCell:
     risk_score: float
     is_proxy: bool
     provenance: tuple[RiskPointProvenance, ...] = ()
+    holes: tuple[tuple[LatLon, ...], ...] = ()
 
 
 @dataclass(frozen=True)

@@ -56,7 +56,8 @@ def patrol_center_and_radius(cell: Polygon, mean_lat: float) -> tuple[LatLon, fl
 
 
 def voronoi_cells(
-    seeds: list[LatLon], boundary: Polygon, mean_lat: float
+    seeds: list[LatLon], boundary: Polygon, mean_lat: float,
+    reassign_detached_pieces: bool = False,
 ) -> list[tuple[LatLon, Polygon]]:
     """Return shoreline-clipped Voronoi cells in the input seed order."""
     unique_seeds = _deduplicate_seeds(seeds, mean_lat)
@@ -67,7 +68,19 @@ def voronoi_cells(
 
     seed_points = [Point(project(seed, mean_lat)) for seed in unique_seeds]
     regions = voronoi_diagram(MultiPoint(seed_points), envelope=boundary).geoms
-    cells: list[tuple[LatLon, Polygon]] = []
+    if not reassign_detached_pieces:
+        cells: list[tuple[LatLon, Polygon]] = []
+        for seed, seed_point in zip(unique_seeds, seed_points, strict=True):
+            region = next(region for region in regions if region.contains(seed_point))
+            clipped = region.intersection(boundary)
+            cell = clipped if isinstance(clipped, Polygon) else next(
+                piece for piece in clipped.geoms if piece.contains(seed_point)
+            )
+            cells.append((seed, cell))
+        return cells
+
+    cell_polygons: list[Polygon] = []
+    orphan_pieces: list[Polygon] = []
 
     for seed, seed_point in zip(unique_seeds, seed_points, strict=True):
         region = next(region for region in regions if region.contains(seed_point))
@@ -75,8 +88,28 @@ def voronoi_cells(
         if isinstance(clipped, Polygon):
             cell = clipped
         else:
-            cell = next(piece for piece in clipped.geoms if piece.contains(seed_point))
-        cells.append((seed, cell))
+            pieces = list(clipped.geoms)
+            cell = next(
+                piece for piece in pieces
+                if piece.buffer(1e-12).contains(seed_point)
+            )
+            orphan_pieces.extend(piece for piece in pieces if piece is not cell)
+        cell_polygons.append(cell)
+
+    # A concave shoreline can split one Voronoi region into multiple pieces.
+    # Attach each detached piece to the adjacent assignable cell with which it
+    # shares the longest boundary, retaining one polygon per operational seed.
+    for orphan in orphan_pieces:
+        candidates = []
+        for index, cell in enumerate(cell_polygons):
+            merged = cell.union(orphan)
+            if isinstance(merged, Polygon):
+                candidates.append((cell.boundary.intersection(orphan.boundary).length, index, merged))
+        if candidates:
+            _, index, merged = max(candidates, key=lambda item: (item[0], -item[1]))
+            cell_polygons[index] = merged
+
+    cells = list(zip(unique_seeds, cell_polygons, strict=True))
 
     return cells
 
@@ -149,11 +182,12 @@ def _deduplicate_hotspot_clusters(
 
 
 def _farthest_coverage_candidate(
-    seeds: list[LatLon], boundary: Polygon, mean_lat: float
+    seeds: list[LatLon], boundary: Polygon, mean_lat: float,
+    reassign_detached_pieces: bool = False,
 ) -> tuple[LatLon, float]:
     """Return the sampled shoreline point with the worst nearest-seed response reach."""
     candidates: list[LatLon] = []
-    for _, cell in voronoi_cells(seeds, boundary, mean_lat):
+    for _, cell in voronoi_cells(seeds, boundary, mean_lat, reassign_detached_pieces):
         candidates.extend(unproject((x, y), mean_lat) for x, y in cell.exterior.coords[:-1])
         representative = cell.representative_point()
         candidates.append(unproject((representative.x, representative.y), mean_lat))
@@ -240,6 +274,10 @@ def compute_tessellated_zones(
                 components=components,
                 is_proxy=is_proxy,
                 radius_m=radius_m,
+                holes=tuple(
+                    tuple(unproject((x, y), mean_lat) for x, y in ring.coords)
+                    for ring in cell.interiors
+                ),
             )
         )
     return zones

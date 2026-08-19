@@ -10,11 +10,17 @@ from app.risk_zones.tessellation import compute_tessellated_zones
 def zones_to_geojson(zones: list[RiskZone]) -> dict:
     features = []
     for zone in zones:
-        coordinates = [[point.lon, point.lat] for point in zone.polygon]
+        coordinates = [
+            [[point.lon, point.lat] for point in zone.polygon],
+            *[
+                [[point.lon, point.lat] for point in ring]
+                for ring in zone.holes
+            ],
+        ]
         features.append(
             {
                 "type": "Feature",
-                "geometry": {"type": "Polygon", "coordinates": [coordinates]},
+                "geometry": {"type": "Polygon", "coordinates": coordinates},
                 "properties": {
                     "zone_id": zone.zone_id,
                     "risk_score": zone.risk_score,

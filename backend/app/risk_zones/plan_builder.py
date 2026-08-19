@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 from uuid import uuid4
 
+from pyproj import CRS, Transformer
 from shapely.geometry import Point, Polygon
-from shapely.ops import transform
+from shapely.ops import nearest_points, transform
 
 from app.models import LatLon, RiskPointProvenance, ZonePlanCandidate, ZonePlanCell
 from app.risk_zones.adaptive_clusters import select_hotspots
@@ -22,6 +24,74 @@ from app.risk_zones.validation import require_valid_plan
 
 class RiskDataUnavailable(RuntimeError):
     """A reviewed snapshot cannot safely produce a candidate."""
+
+
+MAX_NEAR_SHORE_PROXY_DISTANCE_M = 100.0
+PROXY_SEED_INSET_M = 5.0
+
+
+def _local_metric_transforms(shoreline: Polygon):
+    center = shoreline.centroid
+    local_crs = CRS.from_proj4(
+        f"+proj=aeqd +lat_0={center.y} +lon_0={center.x} +datum=WGS84 +units=m +no_defs"
+    )
+    forward = Transformer.from_crs("EPSG:4326", local_crs, always_xy=True).transform
+    reverse = Transformer.from_crs(local_crs, "EPSG:4326", always_xy=True).transform
+    return forward, reverse
+
+
+def _assignable_proxy_seed(point, shoreline: Polygon):
+    source = Point(point.longitude, point.latitude)
+    provenance = point.provenance
+    catalog_adjustment = (
+        provenance is not None
+        and provenance.source_latitude is not None
+        and provenance.source_longitude is not None
+    )
+    if shoreline.buffer(1e-12).contains(source) and not catalog_adjustment:
+        return LatLon(point.latitude, point.longitude), provenance
+    if not catalog_adjustment:
+        return None
+    forward, reverse = _local_metric_transforms(shoreline)
+    metric_shoreline = transform(forward, shoreline)
+    metric_source = transform(forward, source)
+    adjustment_reason = None
+    if metric_shoreline.contains(metric_source):
+        seed = LatLon(point.latitude, point.longitude)
+        adjustment_distance_m = 0.0
+    else:
+        boundary, _ = nearest_points(metric_shoreline.boundary, metric_source)
+        outside_distance = metric_source.distance(boundary)
+        if outside_distance > MAX_NEAR_SHORE_PROXY_DISTANCE_M:
+            raise RiskDataUnavailable("proxy_source_outside_reviewed_tolerance")
+        interior = metric_shoreline.representative_point()
+        dx, dy = interior.x - boundary.x, interior.y - boundary.y
+        length = math.hypot(dx, dy)
+        if length == 0:
+            raise RiskDataUnavailable("proxy_seed_projection_failed")
+        metric_seed = Point(
+            boundary.x + dx * PROXY_SEED_INSET_M / length,
+            boundary.y + dy * PROXY_SEED_INSET_M / length,
+        )
+        if not metric_shoreline.contains(metric_seed):
+            raise RiskDataUnavailable("proxy_seed_projection_failed")
+        adjustment_reason = "projected_inside_official_shoreline"
+        seed_point = transform(reverse, metric_seed)
+        seed = LatLon(seed_point.y, seed_point.x)
+        adjustment_distance_m = metric_source.distance(metric_seed)
+        if adjustment_distance_m > MAX_NEAR_SHORE_PROXY_DISTANCE_M:
+            raise RiskDataUnavailable("proxy_source_outside_reviewed_tolerance")
+    if provenance is not None:
+        provenance = replace(
+            provenance,
+            source_latitude=point.latitude,
+            source_longitude=point.longitude,
+            derived_seed_latitude=seed.lat,
+            derived_seed_longitude=seed.lon,
+            adjustment_distance_m=adjustment_distance_m,
+            adjustment_reason=adjustment_reason,
+        )
+    return seed, provenance
 
 
 def _project_boundary(shoreline: Polygon, mean_lat: float) -> Polygon:
@@ -42,14 +112,14 @@ def _proxy_seeds(
 ) -> list[tuple[LatLon, tuple[RiskPointProvenance, ...]]]:
     by_seed: dict[LatLon, list[RiskPointProvenance]] = {}
     for point in snapshot.points:
-        if (
-            point.category != "access_environment_proxy" or not point.is_proxy
-            or not shoreline.buffer(1e-12).contains(Point(point.longitude, point.latitude))
-        ):
+        if point.category != "access_environment_proxy" or not point.is_proxy:
             continue
-        seed = LatLon(point.latitude, point.longitude)
-        if point.provenance is not None and point.provenance not in by_seed.setdefault(seed, []):
-            by_seed[seed].append(point.provenance)
+        assignment = _assignable_proxy_seed(point, shoreline)
+        if assignment is None:
+            continue
+        seed, provenance = assignment
+        if provenance is not None and provenance not in by_seed.setdefault(seed, []):
+            by_seed[seed].append(provenance)
         else:
             by_seed.setdefault(seed, [])
     return [(seed, tuple(by_seed[seed])) for seed in sorted(by_seed, key=lambda item: (item.lat, item.lon))]
@@ -64,10 +134,17 @@ def _cell(
         cell_id=cell_id, kind=kind, seed=seed, centroid=center,
         polygon=tuple(unproject((x, y), mean_lat) for x, y in polygon.exterior.coords),
         radius_m=radius_m, risk_score=risk_score, is_proxy=is_proxy, provenance=provenance,
+        holes=tuple(
+            tuple(unproject((x, y), mean_lat) for x, y in ring.coords)
+            for ring in polygon.interiors
+        ),
     )
 
 
-def build_candidate(snapshot, shoreline: Polygon, patrol_capacity: int, reserve: int, prior_plan_id: str | None) -> ZonePlanCandidate:
+def build_candidate(
+    snapshot, shoreline: Polygon, patrol_capacity: int, reserve: int,
+    prior_plan_id: str | None, reassign_detached_pieces: bool = False,
+) -> ZonePlanCandidate:
     """Create a fully validated candidate without changing the active-plan pointer.
 
     Hotspot selection is driven entirely by the snapshot.  Fleet capacity can
@@ -104,7 +181,9 @@ def build_candidate(snapshot, shoreline: Polygon, patrol_capacity: int, reserve:
         kinds = ["hotspot"] * len(seeds)
         coverage_capacity = max(0, patrol_capacity - reserve)
         while len(seeds) < len(priority_seeds) + coverage_capacity:
-            candidate, _ = _farthest_coverage_candidate(seeds, projected, mean_lat)
+            candidate, _ = _farthest_coverage_candidate(
+                seeds, projected, mean_lat, reassign_detached_pieces
+            )
             if any(candidate == existing for existing in seeds):
                 break
             seeds.append(candidate)
@@ -117,7 +196,10 @@ def build_candidate(snapshot, shoreline: Polygon, patrol_capacity: int, reserve:
                 priority_by_seed[seed][1] if kind == "hotspot" else True,
                 priority_by_seed[seed][2] if kind == "hotspot" else (),
             )
-            for index, ((seed, polygon), kind) in enumerate(zip(voronoi_cells(seeds, projected, mean_lat), kinds, strict=True))
+            for index, ((seed, polygon), kind) in enumerate(zip(
+                voronoi_cells(seeds, projected, mean_lat, reassign_detached_pieces),
+                kinds, strict=True,
+            ))
         )
     require_valid_plan(cells, shoreline)
     return ZonePlanCandidate(

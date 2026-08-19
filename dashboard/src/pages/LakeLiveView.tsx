@@ -20,7 +20,7 @@ import { ApiError } from "../lib/apiClient";
 const API = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 const wsFor = (lakeId: string) => `${API.replace(/^http/, "ws")}/ws/operations/lakes/${lakeId}`;
 type Organization = { station_lat: number; station_lon: number };
-type LakeMetadata = { drone_inventory_cap: number; station_id?: string; organizations: Organization | Organization[] | null };
+type LakeMetadata = { name: string; drone_inventory_cap: number; station_id?: string; organizations: Organization | Organization[] | null };
 
 export function hasLakeCapability(principal: Principal | null | undefined, lakeStationId: string | null, capability: Capability): boolean {
   return Boolean(lakeStationId && principal?.aal === "aal2" && principal.memberships.some((item) => item.station_id === lakeStationId && item.status === "active" && item.capabilities.includes(capability)));
@@ -37,6 +37,7 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
   const [noLive, setNoLive] = useState(false);
   const [station, setStation] = useState<{ lat: number; lon: number } | null>(null);
   const [inventoryCap, setInventoryCap] = useState<number | null>(null);
+  const [lakeName, setLakeName] = useState("Lake operations");
   const [lakeStationId, setLakeStationId] = useState<string | null>(null);
   const [fleet, setFleet] = useState<FleetDrone[]>([]);
   const [zonePlan, setZonePlan] = useState<ZonePlanSummary | null>(null);
@@ -56,9 +57,10 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
   useEffect(() => { void fetcher(`${API}/api/lakes/${lakeId}/alerts`).then((r) => r.ok ? r.json() : []).then((alerts: Alert[]) => setAlert(alerts[0] ?? null)); }, [lakeId, fetcher]);
   useEffect(() => {
     let active = true;
-    void client.from("lakes").select("station_id,drone_inventory_cap,organizations(station_lat,station_lon)").eq("lake_id", lakeId).maybeSingle().then(({ data, error }: { data: LakeMetadata | null; error: unknown }) => {
+    void client.from("lakes").select("name,station_id,drone_inventory_cap,organizations(station_lat,station_lon)").eq("lake_id", lakeId).maybeSingle().then(({ data, error }: { data: LakeMetadata | null; error: unknown }) => {
       if (error || !data || !active) return;
       const org = Array.isArray(data.organizations) ? data.organizations[0] : data.organizations;
+      setLakeName(data.name);
       setLakeStationId(data.station_id ?? null);
       if (!org) return;
       setStation({ lat: org.station_lat, lon: org.station_lon });
@@ -108,8 +110,6 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
   async function demo() { if (!canManageAlerts) return; const token = accessToken ?? (await client.auth.getSession()).data.session?.access_token; const response = await fetcher(`${API}/api/lakes/${lakeId}/demo/trigger`, { method: "POST", headers: { Authorization: `Bearer ${token ?? ""}` } }); if (response.ok) setAlert(await response.json()); }
   async function escalate(id: string) { if (!canManageAlerts) return; const token = accessToken ?? (await client.auth.getSession()).data.session?.access_token; await fetcher(`${API}/api/lakes/${lakeId}/alerts/${id}/escalate`, { method: "POST", headers: { Authorization: `Bearer ${token ?? ""}` } }); }
   if (noLive) return <main className="no-live"><p className="kicker">LakeSafe Initiative</p><h1>No live data for this lake</h1><p>This lake is saved to your organization, but its operator runtime is not active.</p><Link to="/lakes">Return to lakes</Link></main>;
-  const lakeName = lakeId === "lake-sammamish" ? "Lake Sammamish" : "Live lake";
-
   return (
     <main ref={ref} className="app-page live-shell">
       <AppHeader active="operations" contextLabel={lakeName} operationsHref={`/lakes/${lakeId}`} client={client} />

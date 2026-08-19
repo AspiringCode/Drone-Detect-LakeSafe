@@ -115,8 +115,10 @@ export interface ZonePlanSummary {
   algorithmVersion: string;
   sourceFreshThrough: string | null;
   activityDataUnavailable: boolean;
-  hotspotCells: number;
+  priorityCells: number;
+  proxyPriorityCells: number;
   coverageCells: number;
+  sourceAttribution: string[];
 }
 
 export interface ReconcileStatus {

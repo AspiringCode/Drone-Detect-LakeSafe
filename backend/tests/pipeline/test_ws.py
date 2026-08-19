@@ -5,6 +5,9 @@ from app.main import app, lake_runtimes, publish_public_patrol_presence, public_
 from app.pipeline.ws import ConnectionHub, tick_loop
 
 
+SUPPORTED_LAKE_IDS = ("lake-sammamish", "lake-pine", "lake-beaver")
+
+
 @pytest.mark.anyio
 async def test_connection_hub_broadcasts_to_clients():
     class Client:
@@ -129,9 +132,13 @@ def test_message_sending_client_is_revalidated_and_closed_after_deadline(monkeyp
     assert repository.calls == 2
 
 
-def test_public_websocket_accepts_no_token_and_rejects_url_credentials():
-    with TestClient(app).websocket_connect("/ws/public/lakes/lake-sammamish") as ws:
+@pytest.mark.parametrize("lake_id", SUPPORTED_LAKE_IDS)
+def test_public_websocket_accepts_no_token_for_each_local_runtime(lake_id):
+    with TestClient(app).websocket_connect(f"/ws/public/lakes/{lake_id}") as ws:
         ws.send_text("keepalive")
+
+
+def test_public_websocket_rejects_url_credentials():
 
     with pytest.raises(Exception):
         with TestClient(app).websocket_connect(

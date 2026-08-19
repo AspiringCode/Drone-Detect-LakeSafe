@@ -11,6 +11,31 @@ from app.models import ZonePlanCandidate
 from app.risk_zones.snapshots import RiskSnapshotInput
 
 
+def _provenance_metadata(provenance) -> dict[str, object]:
+    payload = {
+        "connector_key": provenance.connector_key,
+        "source_row_id": provenance.source_row_id,
+        "locator": provenance.locator,
+        "observed_at": provenance.observed_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+    }
+    for field in (
+        "source_latitude", "source_longitude", "derived_seed_latitude",
+        "derived_seed_longitude", "adjustment_distance_m", "adjustment_reason",
+    ):
+        value = getattr(provenance, field, None)
+        if value is not None:
+            payload[field] = value
+    return payload
+
+
+def _cell_boundary_wkt(cell) -> str:
+    rings = (cell.polygon, *cell.holes)
+    return "POLYGON(" + ",".join(
+        "(" + ",".join(f"{point.lon} {point.lat}" for point in ring) + ")"
+        for ring in rings
+    ) + ")"
+
+
 class RiskPlanRepository(Protocol):
     def persist_candidate(self, candidate: ZonePlanCandidate) -> None: ...
     def activate_candidate(self, lake_id: str, candidate_id: str, expected_prior_id: str | None) -> bool: ...
@@ -71,21 +96,11 @@ class SupabaseRiskPlanRepository:
                 "ordinal": ordinal, "kind": cell.kind,
                 "risk_score": cell.risk_score,
                 "seed_wkt": f"POINT({cell.seed.lon} {cell.seed.lat})",
-                "boundary_wkt": "POLYGON((" + ",".join(
-                    f"{point.lon} {point.lat}" for point in cell.polygon
-                ) + "))",
+                "boundary_wkt": _cell_boundary_wkt(cell),
                 "metadata": {
                     "radius_m": cell.radius_m,
                     "is_proxy": cell.is_proxy,
-                    "provenance": [
-                        {
-                            "connector_key": provenance.connector_key,
-                            "source_row_id": provenance.source_row_id,
-                            "locator": provenance.locator,
-                            "observed_at": provenance.observed_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
-                        }
-                        for provenance in cell.provenance
-                    ],
+                    "provenance": [_provenance_metadata(provenance) for provenance in cell.provenance],
                 },
             }
             for ordinal, cell in enumerate(candidate.cells)
@@ -126,7 +141,7 @@ class SupabaseRiskPlanRepository:
     def active_plan(self, lake_id: str) -> dict | None:
         row = self._client.table("zone_plans").select(
             "zone_plan_id,snapshot_id,algorithm_version,validation_payload,"
-            "risk_snapshots(source_fresh_through),"
+            "risk_snapshots(source_fresh_through,source_metadata),"
             "zone_plan_cells(kind,risk_score,seed,metadata)"
         ).eq("lake_id", lake_id).eq("status", "active").maybe_single().execute().data
         if not row:
@@ -136,14 +151,28 @@ class SupabaseRiskPlanRepository:
             snapshot = snapshot[0] if snapshot else {}
         cells = []
         for cell in row.get("zone_plan_cells") or []:
+            metadata = cell.get("metadata") or {}
             cells.append({
                 "kind": cell["kind"], "risk_score": cell["risk_score"],
-                "seed": cell.get("seed"), "metadata": cell.get("metadata") or {},
+                "seed": cell.get("seed"),
+                # Plan consumers need proxy semantics, not raw per-row source
+                # provenance or canonical publisher payloads.
+                "metadata": {"is_proxy": bool(metadata.get("is_proxy"))},
             })
+        source_metadata = snapshot.get("source_metadata") or {}
+        sources = source_metadata.get("sources") if isinstance(source_metadata, dict) else []
+        source_attribution = sorted({
+            attribution.strip()
+            for source in sources or []
+            if isinstance(source, dict)
+            and isinstance((attribution := source.get("attribution")), str)
+            and attribution.strip()
+        })
         return {
             "plan_id": str(row["zone_plan_id"]), "snapshot_id": str(row["snapshot_id"]),
             "algorithm_version": row["algorithm_version"],
             "source_fresh_through": snapshot.get("source_fresh_through"),
+            "source_attribution": source_attribution,
             "activity_data_unavailable": bool((row.get("validation_payload") or {}).get("activity_data_unavailable")),
             "cells": cells,
         }

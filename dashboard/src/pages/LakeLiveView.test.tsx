@@ -7,6 +7,42 @@ import { PrincipalProvider } from "../auth/PrincipalProvider";
 const response = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 describe("LakeLiveView autonomous plan state", () => {
+  it.each([
+    ["lake-pine", "Pine Lake"],
+    ["lake-beaver", "Beaver Lake"],
+  ])("loads and renders the persisted name for %s", async (lakeId, lakeName) => {
+    const fetcher = vi.fn(async (url: string) => {
+      if (url.includes("/riskmap")) return response({ type: "FeatureCollection", features: [] });
+      if (url.includes("/alerts")) return response([]);
+      return response({});
+    }) as unknown as typeof fetch;
+    const select = vi.fn(() => ({
+      eq: vi.fn(() => ({
+        maybeSingle: vi.fn(async () => ({
+          data: { name: lakeName, station_id: null, drone_inventory_cap: 5, organizations: { station_lat: 47.6, station_lon: -122.1 } },
+          error: null,
+        })),
+      })),
+    }));
+    const client = {
+      auth: {
+        getSession: vi.fn(async () => ({ data: { session: { access_token: "token" } } })),
+        onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } })),
+      },
+      from: vi.fn(() => ({ select })),
+    } as never;
+    const request = vi.fn(async () => ({
+      user_id: "civilian-1", email: "civilian@example.com", aal: "aal1", account_class: "civilian",
+      verification_status: "not_started", reviewer: false, memberships: [],
+    }));
+
+    render(<PrincipalProvider client={client} request={request as never}><MemoryRouter initialEntries={[`/lakes/${lakeId}`]}><Routes><Route path="/lakes/:lakeId" element={<LakeLiveView client={client} fetcher={fetcher} />} /></Routes></MemoryRouter></PrincipalProvider>);
+
+    expect(await screen.findByRole("heading", { name: lakeName })).toBeVisible();
+    expect(select).toHaveBeenCalledWith(expect.stringContaining("name"));
+    expect(screen.queryByText("Live lake")).not.toBeInTheDocument();
+  });
+
   it("shows real fleet status to a station viewer without safety controls", async () => {
     const fetcher = vi.fn(async (url: string) => {
       if (url.includes("/riskmap")) return response({ type: "FeatureCollection", features: [] });

@@ -4,7 +4,7 @@ import type { SupabaseLike } from "./supabase";
 
 type FleetWire = { inventory_id: string; source: Source; lifecycle: string; battery_percent: number | null; health: string; connectivity: string; maintenance_due?: string | null; heartbeat_age_seconds?: number | null; eligible?: boolean | null; desired_state_version: number; acknowledged_state_version: number };
 type RealSafetyWire = { autonomy: RealFleetSafetyStatus["realAutonomy"]; source?: "real"; heartbeat_age_seconds?: number | null; eligible?: boolean | null; desired_state_version?: number; acknowledged_state_version?: number; active_assignments?: string[]; pending_assignments?: string[] };
-type PlanWire = { plan_id: string; snapshot_id: string; algorithm_version: string; source_fresh_through: string | null; activity_data_unavailable?: boolean; cells: Array<{ kind: string }> };
+type PlanWire = { plan_id: string; snapshot_id: string; algorithm_version: string; source_fresh_through: string | null; source_attribution?: string[]; activity_data_unavailable?: boolean; cells: Array<{ kind: string; metadata?: { is_proxy?: boolean } }> };
 
 const fleetDrone = (item: FleetWire): FleetDrone => ({
   inventoryId: item.inventory_id, source: item.source, lifecycle: item.lifecycle,
@@ -24,8 +24,10 @@ export async function loadZonePlan(stationId: string, lakeId: string, client?: S
   return {
     planId: plan.plan_id, snapshotId: plan.snapshot_id, algorithmVersion: plan.algorithm_version,
     sourceFreshThrough: plan.source_fresh_through, activityDataUnavailable: Boolean(plan.activity_data_unavailable),
-    hotspotCells: plan.cells.filter((cell) => cell.kind === "hotspot").length,
+    priorityCells: plan.cells.filter((cell) => cell.kind === "hotspot").length,
+    proxyPriorityCells: plan.cells.filter((cell) => cell.kind === "hotspot" && cell.metadata?.is_proxy === true).length,
     coverageCells: plan.cells.filter((cell) => cell.kind === "coverage").length,
+    sourceAttribution: plan.source_attribution ?? [],
   };
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { loadRealFleetSafetyStatus, requestSafeReturn, setRealAutonomy } from "./fleetData";
+import { loadRealFleetSafetyStatus, loadZonePlan, requestSafeReturn, setRealAutonomy } from "./fleetData";
 
 const client = { auth: { getSession: vi.fn().mockResolvedValue({ data: { session: { access_token: "token" } } }) } } as never;
 const response = (body: unknown) => new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
@@ -20,5 +20,30 @@ describe("real fleet safety API client", () => {
     await requestSafeReturn("station-1", "lake-1", "Weather", client, fetcher);
     const [, returnInit] = fetcher.mock.calls[1];
     expect(JSON.parse(returnInit.body)).toEqual({ reason: "Weather" });
+  });
+});
+
+describe("zone plan API client", () => {
+  it("derives priority, proxy-priority, and baseline coverage counts with attribution", async () => {
+    const fetcher = vi.fn().mockResolvedValue(response({
+      plan_id: "plan-1", snapshot_id: "snapshot-1", algorithm_version: "risk-zone-v1",
+      source_fresh_through: "2026-08-18T00:00:00Z", activity_data_unavailable: false,
+      source_attribution: ["King County Open Data — Freshwater Swim Beach Data and Water Quality Monitoring Sites"],
+      cells: [
+        { kind: "hotspot", metadata: { is_proxy: true } },
+        { kind: "hotspot", metadata: { is_proxy: false } },
+        { kind: "coverage", metadata: { is_proxy: true } },
+        { kind: "fallback", metadata: { is_proxy: true } },
+      ],
+    }));
+
+    const plan = await loadZonePlan("station-1", "lake-pine", client, fetcher);
+
+    expect(plan).toMatchObject({
+      priorityCells: 2,
+      proxyPriorityCells: 1,
+      coverageCells: 1,
+      sourceAttribution: ["King County Open Data — Freshwater Swim Beach Data and Water Quality Monitoring Sites"],
+    });
   });
 });

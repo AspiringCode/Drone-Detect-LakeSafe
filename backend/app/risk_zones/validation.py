@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import math
 
 from shapely.geometry import Point, Polygon
-from shapely.ops import unary_union
+from shapely.ops import transform, unary_union
 
 from app.models import LatLon, ZonePlanCell
 from app.risk_zones.tessellation import project
@@ -22,8 +22,14 @@ class PlanValidation:
     failures: tuple[str, ...] = ()
 
 
-def _projected_polygon(points: tuple[LatLon, ...], mean_lat: float) -> Polygon:
-    return Polygon([project(point, mean_lat) for point in points])
+def _projected_polygon(
+    points: tuple[LatLon, ...], mean_lat: float,
+    holes: tuple[tuple[LatLon, ...], ...] = (),
+) -> Polygon:
+    return Polygon(
+        [project(point, mean_lat) for point in points],
+        [[project(point, mean_lat) for point in ring] for ring in holes],
+    )
 
 
 def validate_plan(
@@ -35,14 +41,16 @@ def validate_plan(
     if not shoreline.is_valid or shoreline.is_empty:
         return PlanValidation(False, ("invalid_shoreline",))
     mean_lat = shoreline.centroid.y
-    boundary = Polygon([(x * math.cos(math.radians(mean_lat)), y) for x, y in shoreline.exterior.coords])
+    boundary = transform(
+        lambda x, y, z=None: (x * math.cos(math.radians(mean_lat)), y), shoreline
+    )
     failures: list[str] = []
     polygons: list[Polygon] = []
     for cell in cells:
         if len(cell.polygon) < 4 or cell.polygon[0] != cell.polygon[-1]:
             failures.append(f"{cell.cell_id}:open_ring")
             continue
-        polygon = _projected_polygon(cell.polygon, mean_lat)
+        polygon = _projected_polygon(cell.polygon, mean_lat, cell.holes)
         seed = Point(project(cell.seed, mean_lat))
         center = Point(project(cell.centroid, mean_lat))
         if not polygon.is_valid or polygon.is_empty:
