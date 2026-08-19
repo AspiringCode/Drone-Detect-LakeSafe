@@ -42,7 +42,7 @@ npm run dev
 
 The full database release gate and every environment-variable name are documented in
 [`submission/judge-setup.md`](submission/judge-setup.md). Apply Supabase migrations in
-filename order through `0036_reviewed_multi_lake_sources.sql`; never place service-role,
+filename order through `0037_risk_plan_safety_reserve.sql`; never place service-role,
 identity-provider, or real-device secrets in browser-exposed `VITE_` variables.
 
 ## Transparency

@@ -118,6 +118,7 @@ or real-device signing secret in a `VITE_` variable. Those values are backend-on
 0034_privileged_rate_limits.sql
 0035_rate_limit_and_safety_idempotency_hardening.sql
 0036_reviewed_multi_lake_sources.sql
+0037_risk_plan_safety_reserve.sql
 ```
 
 Do not rename one of the two `0009` migrations casually; their current lexical ordering
@@ -145,7 +146,7 @@ database cannot claim the database portion passed.
 
 ## Local demonstration flow
 
-1. Start the local Supabase stack and apply all migrations through `0036`.
+1. Start the local Supabase stack and apply all migrations through `0037`.
 2. Configure a test user with current officer verification, MFA (`aal2`), active station
    membership, and the minimum role needed for each action. Use only test identities.
 3. Start the backend and dashboard with the environment names above.
