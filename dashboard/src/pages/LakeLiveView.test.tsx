@@ -4,13 +4,19 @@ import { describe, expect, it, vi } from "vitest";
 import { LakeLiveView } from "./LakeLiveView";
 import { PrincipalProvider } from "../auth/PrincipalProvider";
 
+vi.mock("../components/LakeMap", () => ({
+  LakeMap: ({ lakeName, lakeCenter }: { lakeName: string; lakeCenter: { lat: number; lon: number } }) => (
+    <div role="region" aria-label={`${lakeName} operator map`} data-center={`${lakeCenter.lat},${lakeCenter.lon}`} />
+  ),
+}));
+
 const response = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 describe("LakeLiveView autonomous plan state", () => {
   it.each([
-    ["lake-pine", "Pine Lake"],
-    ["lake-beaver", "Beaver Lake"],
-  ])("loads and renders the persisted name for %s", async (lakeId, lakeName) => {
+    ["lake-pine", "Pine Lake", 47.587, -122.052],
+    ["lake-beaver", "Beaver Lake", 47.585, -121.997],
+  ])("loads the persisted identity and map center for %s", async (lakeId, lakeName, centroidLat, centroidLon) => {
     const fetcher = vi.fn(async (url: string) => {
       if (url.includes("/riskmap")) return response({ type: "FeatureCollection", features: [] });
       if (url.includes("/alerts")) return response([]);
@@ -19,7 +25,7 @@ describe("LakeLiveView autonomous plan state", () => {
     const select = vi.fn(() => ({
       eq: vi.fn(() => ({
         maybeSingle: vi.fn(async () => ({
-          data: { name: lakeName, station_id: null, drone_inventory_cap: 5, organizations: { station_lat: 47.6, station_lon: -122.1 } },
+          data: { name: lakeName, centroid_lat: centroidLat, centroid_lon: centroidLon, station_id: null, drone_inventory_cap: 5, organizations: { station_lat: 47.6, station_lon: -122.1 } },
           error: null,
         })),
       })),
@@ -39,7 +45,8 @@ describe("LakeLiveView autonomous plan state", () => {
     render(<PrincipalProvider client={client} request={request as never}><MemoryRouter initialEntries={[`/lakes/${lakeId}`]}><Routes><Route path="/lakes/:lakeId" element={<LakeLiveView client={client} fetcher={fetcher} />} /></Routes></MemoryRouter></PrincipalProvider>);
 
     expect(await screen.findByRole("heading", { name: lakeName })).toBeVisible();
-    expect(select).toHaveBeenCalledWith(expect.stringContaining("name"));
+    expect(await screen.findByRole("region", { name: `${lakeName} operator map` })).toHaveAttribute("data-center", `${centroidLat},${centroidLon}`);
+    expect(select).toHaveBeenCalledWith(expect.stringContaining("centroid_lat,centroid_lon"));
     expect(screen.queryByText("Live lake")).not.toBeInTheDocument();
   });
 

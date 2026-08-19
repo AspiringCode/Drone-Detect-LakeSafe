@@ -7,6 +7,7 @@ from app.risk_zones.adaptive_clusters import select_hotspots
 from app.risk_zones.cluster_strategy import WeightedPoint
 from app.risk_zones.connectors.base import ConnectorFetch, NormalizedRiskPoint
 from app.risk_zones.snapshots import build_snapshot
+from app.models import RiskPointProvenance
 
 
 BBOX = (47.556, -122.104, 47.606, -122.078)
@@ -51,6 +52,39 @@ def test_snapshot_is_canonical_across_connector_and_row_order() -> None:
     assert first.sha256 == second.sha256
     assert first.points == second.points
     assert first.connector_versions == (("king_county_incidents", "1"),)
+
+
+def test_snapshot_sort_includes_complete_canonical_provenance() -> None:
+    def point(*, source_latitude: float, derived_seed_latitude: float) -> NormalizedRiskPoint:
+        return NormalizedRiskPoint(
+            source_row_id="same-row",
+            latitude=47.58,
+            longitude=-122.09,
+            occurred_at=NOW,
+            weight=1.0,
+            source_payload={"incident_id": "same-row"},
+            provenance=RiskPointProvenance(
+                connector_key="will-be-normalized",
+                source_row_id="same-row",
+                locator="official-location",
+                observed_at=NOW,
+                source_latitude=source_latitude,
+                source_longitude=-122.09,
+                derived_seed_latitude=derived_seed_latitude,
+                derived_seed_longitude=-122.091,
+                adjustment_distance_m=5.0,
+                adjustment_reason="projected_inside_official_shoreline",
+            ),
+        )
+
+    first_point = point(source_latitude=47.5801, derived_seed_latitude=47.5802)
+    second_point = point(source_latitude=47.5803, derived_seed_latitude=47.5804)
+    first = build_snapshot("lake-1", "st-1", (_fetch(rows=(first_point, second_point)),), "POLYGON EMPTY", NOW, NOW)
+    second = build_snapshot("lake-1", "st-1", (_fetch(rows=(second_point, first_point)),), "POLYGON EMPTY", NOW, NOW)
+
+    assert first.canonical_json == second.canonical_json
+    assert first.sha256 == second.sha256
+    assert first.points == second.points
 
 
 def test_flattened_connector_rows_keep_their_connector_identity() -> None:

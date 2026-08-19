@@ -168,15 +168,17 @@ def build_snapshot(
     try:
         fetches = sorted(connectors, key=lambda item: (item.connector_key, item.connector_schema_version, item.attribution))
         sources = tuple(SnapshotSource(item.connector_key, item.connector_schema_version, item.attribution) for item in fetches)
-        points = tuple(sorted(
-            (_with_connector_provenance(row, item.connector_key) for item in fetches for row in item.rows),
-            key=lambda row: (
-                _utc(row.occurred_at), row.source_row_id, row.latitude, row.longitude,
-                row.weight, row.category, row.is_proxy,
-                json.dumps(row.source_payload, sort_keys=True, separators=(",", ":")),
-            ),
+        point_pairs = [
+            (point, _point_payload(point))
+            for item in fetches
+            for row in item.rows
+            for point in (_with_connector_provenance(row, item.connector_key),)
+        ]
+        point_pairs.sort(key=lambda pair: json.dumps(
+            pair[1], sort_keys=True, separators=(",", ":"), ensure_ascii=True,
         ))
-        point_payloads = [_point_payload(point) for point in points]
+        points = tuple(point for point, _payload in point_pairs)
+        point_payloads = [point_payload for _point, point_payload in point_pairs]
     except (AttributeError, TypeError, ValueError, OverflowError):
         return _empty_snapshot(lake_id, station_id, boundary_wkt, utc_since, captured_at, "connector_schema_failure")
     payload = {

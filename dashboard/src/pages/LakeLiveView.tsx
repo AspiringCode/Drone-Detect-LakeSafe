@@ -7,7 +7,7 @@ import { SimulatedBadge } from "../components/SimulatedBadge";
 import { supabase, type SupabaseLike } from "../lib/supabase";
 import { connectOperationalPositions, connectPositions } from "../lib/ws";
 import { useOrientation } from "../lib/useOrientation";
-import type { Alert, Capability, FleetDrone, Principal, RealFleetSafetyStatus, SimulationState, ZonePlanSummary } from "../lib/types";
+import type { Alert, Capability, FleetDrone, LatLon, Principal, RealFleetSafetyStatus, SimulationState, ZonePlanSummary } from "../lib/types";
 import { AppHeader } from "../components/AppHeader";
 import { useOptionalPrincipal } from "../auth/PrincipalProvider";
 import { applyReconcileStatus, loadFleet, loadRealFleetSafetyStatus, loadZonePlan, requestCirculation, requestSafeReturn, setRealAutonomy } from "../lib/fleetData";
@@ -20,7 +20,7 @@ import { ApiError } from "../lib/apiClient";
 const API = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 const wsFor = (lakeId: string) => `${API.replace(/^http/, "ws")}/ws/operations/lakes/${lakeId}`;
 type Organization = { station_lat: number; station_lon: number };
-type LakeMetadata = { name: string; drone_inventory_cap: number; station_id?: string; organizations: Organization | Organization[] | null };
+type LakeMetadata = { name: string; centroid_lat: number; centroid_lon: number; drone_inventory_cap: number; station_id?: string; organizations: Organization | Organization[] | null };
 
 export function hasLakeCapability(principal: Principal | null | undefined, lakeStationId: string | null, capability: Capability): boolean {
   return Boolean(lakeStationId && principal?.aal === "aal2" && principal.memberships.some((item) => item.station_id === lakeStationId && item.status === "active" && item.capabilities.includes(capability)));
@@ -38,6 +38,7 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
   const [station, setStation] = useState<{ lat: number; lon: number } | null>(null);
   const [inventoryCap, setInventoryCap] = useState<number | null>(null);
   const [lakeName, setLakeName] = useState("Lake operations");
+  const [lakeCenter, setLakeCenter] = useState<LatLon | null>(null);
   const [lakeStationId, setLakeStationId] = useState<string | null>(null);
   const [fleet, setFleet] = useState<FleetDrone[]>([]);
   const [zonePlan, setZonePlan] = useState<ZonePlanSummary | null>(null);
@@ -57,10 +58,13 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
   useEffect(() => { void fetcher(`${API}/api/lakes/${lakeId}/alerts`).then((r) => r.ok ? r.json() : []).then((alerts: Alert[]) => setAlert(alerts[0] ?? null)); }, [lakeId, fetcher]);
   useEffect(() => {
     let active = true;
-    void client.from("lakes").select("name,station_id,drone_inventory_cap,organizations(station_lat,station_lon)").eq("lake_id", lakeId).maybeSingle().then(({ data, error }: { data: LakeMetadata | null; error: unknown }) => {
+    void client.from("lakes").select("name,centroid_lat,centroid_lon,station_id,drone_inventory_cap,organizations(station_lat,station_lon)").eq("lake_id", lakeId).maybeSingle().then(({ data, error }: { data: LakeMetadata | null; error: unknown }) => {
       if (error || !data || !active) return;
       const org = Array.isArray(data.organizations) ? data.organizations[0] : data.organizations;
       setLakeName(data.name);
+      if (Number.isFinite(data.centroid_lat) && Number.isFinite(data.centroid_lon)) {
+        setLakeCenter({ lat: data.centroid_lat, lon: data.centroid_lon });
+      }
       setLakeStationId(data.station_id ?? null);
       if (!org) return;
       setStation({ lat: org.station_lat, lon: org.station_lon });
@@ -128,7 +132,7 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
       </section>
       <section className="operator-layout" aria-label={`${lakeName} live operations`}>
         <section className="map-card" aria-label="Live lake map">
-          {station && <LakeMap riskmap={riskmap} drones={drones} stationLocation={station} />}
+          {station && lakeCenter && <LakeMap lakeName={lakeName} lakeCenter={lakeCenter} riskmap={riskmap} drones={drones} stationLocation={station} />}
         </section>
         <aside className="side-panel" aria-label="Operations details">
           {operationsDataError && <p className="operations-data-error" role="alert" aria-label="Operational data error">{operationsDataError}</p>}

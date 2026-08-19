@@ -4,8 +4,7 @@ import "leaflet/dist/leaflet.css";
 import type { Drone, LatLon, RiskZone } from "../lib/types";
 import { droneMarkerColor, riskZoneStyle } from "../lib/mapStyle";
 
-const LAKE_SAMMAMISH_CENTER: L.LatLngExpression = [47.581, -122.091];
-const LAKE_SAMMAMISH_ZOOM = 13;
+const LAKE_ZOOM = 13;
 
 export interface RiskGeoJSON {
   type: "FeatureCollection";
@@ -17,12 +16,14 @@ export interface RiskGeoJSON {
 }
 
 interface LakeMapProps {
+  lakeName: string;
+  lakeCenter: LatLon;
   riskmap: RiskGeoJSON | null;
   drones: Drone[];
   stationLocation?: LatLon;
 }
 
-export function LakeMap({ riskmap, drones, stationLocation }: LakeMapProps) {
+export function LakeMap({ lakeName, lakeCenter, riskmap, drones, stationLocation }: LakeMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const riskLayerRef = useRef<L.GeoJSON | null>(null);
@@ -31,7 +32,7 @@ export function LakeMap({ riskmap, drones, stationLocation }: LakeMapProps) {
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
-    const map = L.map(containerRef.current).setView(LAKE_SAMMAMISH_CENTER, LAKE_SAMMAMISH_ZOOM);
+    const map = L.map(containerRef.current);
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       attribution: "&copy; OpenStreetMap contributors",
     }).addTo(map);
@@ -41,6 +42,10 @@ export function LakeMap({ riskmap, drones, stationLocation }: LakeMapProps) {
       mapRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    mapRef.current?.setView([lakeCenter.lat, lakeCenter.lon], LAKE_ZOOM);
+  }, [lakeCenter.lat, lakeCenter.lon]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -87,5 +92,5 @@ export function LakeMap({ riskmap, drones, stationLocation }: LakeMapProps) {
     }
   }, [drones]);
 
-  return <div ref={containerRef} className="lake-map" role="region" aria-label="Lake Sammamish operator map" />;
+  return <div ref={containerRef} className="lake-map" role="region" aria-label={`${lakeName} operator map`} />;
 }
