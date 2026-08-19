@@ -10,7 +10,12 @@ from app.models import LatLon, RiskPointProvenance
 from app.risk_zones.connectors.base import NormalizedRiskPoint
 from app.risk_zones.plan_builder import build_candidate
 from app.risk_zones.plan_repository import InMemoryRiskPlanRepository
-from app.risk_zones.plan_service import PlanBuildRequest, PlanConflict, RiskPlanService
+from app.risk_zones.plan_service import (
+    PlanBuildRequest,
+    PlanConflict,
+    RiskDataUnavailable,
+    RiskPlanService,
+)
 from app.risk_zones.snapshots import RiskSnapshotInput
 
 
@@ -42,9 +47,9 @@ def test_supported_hotspots_are_preserved_before_coverage_capacity() -> None:
         NormalizedRiskPoint("c", 47.585, -122.085, NOW, 2.0, {}),
         NormalizedRiskPoint("d", 47.5851, -122.0851, NOW, 2.0, {}),
     ]
-    plan = build_candidate(_snapshot(points), SHORELINE, patrol_capacity=2, reserve=1, prior_plan_id=None)
+    plan = build_candidate(_snapshot(points), SHORELINE, patrol_capacity=3, reserve=1, prior_plan_id=None)
 
-    assert [cell.kind for cell in plan.cells] == ["hotspot"]
+    assert [cell.kind for cell in plan.cells] == ["hotspot", "hotspot"]
 
 
 def _proxy(source_row_id: str, latitude: float, longitude: float) -> NormalizedRiskPoint:
@@ -117,6 +122,21 @@ def test_eligible_patrol_capacity_caps_total_cells_after_priority_seeds() -> Non
     assert len(expanded.cells) == 2
     assert [cell.kind for cell in expanded.cells].count("hotspot") == 1
     assert all(cell.is_proxy for cell in expanded.cells if cell.kind == "coverage")
+
+
+def test_priority_overflow_fails_closed_without_replacing_active_plan() -> None:
+    snapshot = _snapshot((
+        _proxy("a", 47.575, -122.095),
+        _proxy("b", 47.585, -122.085),
+    ))
+    repository = InMemoryRiskPlanRepository(active_id="plan-existing")
+    service = RiskPlanService(repository, lambda _: snapshot, lambda _: SHORELINE)
+
+    with pytest.raises(RiskDataUnavailable, match="insufficient_patrol_capacity"):
+        service.rebuild(PlanBuildRequest("lake-1", "snapshot-1", 2, 1, "plan-existing"))
+
+    assert repository.active_id == "plan-existing"
+    assert repository.candidates == {}
 
 
 def test_stale_candidate_preserves_active_plan() -> None:

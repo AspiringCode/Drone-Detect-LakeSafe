@@ -147,8 +147,8 @@ def build_candidate(
 ) -> ZonePlanCandidate:
     """Create a fully validated candidate without changing the active-plan pointer.
 
-    Hotspot selection is driven entirely by the snapshot.  Usable fleet
-    capacity is filled with priority cells first, then coverage cells.
+    Hotspot selection is driven entirely by the snapshot.  Every priority
+    cell must fit within usable fleet capacity before coverage cells are added.
     """
     if snapshot.status != "ready":
         raise RiskDataUnavailable(snapshot.failure_reason or "risk_snapshot_unavailable")
@@ -181,9 +181,9 @@ def build_candidate(
         seed = unproject((projected.representative_point().x, projected.representative_point().y), mean_lat)
         cells = (_cell("fallback-0", "fallback", seed, projected, mean_lat, 0.0, True),)
     else:
-        if usable_capacity == 0:
+        if len(priority_seeds) > usable_capacity:
             raise RiskDataUnavailable("insufficient_patrol_capacity")
-        seeds = list(priority_seeds[:usable_capacity])
+        seeds = list(priority_seeds)
         kinds = ["hotspot"] * len(seeds)
         while len(seeds) < usable_capacity:
             candidate, _ = _farthest_coverage_candidate(
