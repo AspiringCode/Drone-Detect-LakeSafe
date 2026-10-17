@@ -56,16 +56,21 @@ def _verify_hs256(token: str, parts: list[str]) -> dict[str, object]:
 
 
 def _verify_es256(token: str, header: dict[str, object]) -> dict[str, object]:
-    if not SUPABASE_URL or not isinstance(header.get("kid"), str):
+    if not SUPABASE_URL:
+        raise HTTPException(status_code=503, detail="Authorization service is unavailable")
+    if not isinstance(header.get("kid"), str):
         raise HTTPException(status_code=401, detail="Invalid bearer token")
     try:
         response = httpx.get(f"{SUPABASE_URL.rstrip('/')}/auth/v1/.well-known/jwks.json", timeout=5.0)
         response.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=503, detail="Authorization service is unavailable") from exc
+    try:
         keys = response.json().get("keys", [])
         jwk_data = next(key for key in keys if key.get("kid") == header["kid"])
         key = jwt.PyJWK.from_dict(jwk_data).key
         return jwt.decode(token, key, algorithms=["ES256"], options={"verify_aud": False})
-    except (httpx.HTTPError, jwt.PyJWTError, KeyError, StopIteration, TypeError, ValueError) as exc:
+    except (jwt.PyJWTError, KeyError, StopIteration, TypeError, ValueError) as exc:
         raise HTTPException(status_code=401, detail="Invalid bearer token") from exc
 
 

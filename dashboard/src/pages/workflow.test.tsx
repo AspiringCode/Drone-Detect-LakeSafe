@@ -3,7 +3,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { AuthGate } from "../auth/AuthGate";
 import { OnboardingGate } from "../auth/OnboardingGate";
-import { PrincipalProvider } from "../auth/PrincipalProvider";
+import { PrincipalProvider, usePrincipal } from "../auth/PrincipalProvider";
 import { ActiveStationProvider } from "../hooks/useActiveStation";
 import { LoginPage } from "./LoginPage";
 import { SignupPage } from "./SignupPage";
@@ -45,6 +45,27 @@ describe("AuthGate", () => {
   it("permits an AAL1 civilian session into the public workspace", async () => { const { client } = authClient({ currentLevel: "aal1" }); render(gated(client)); expect(await screen.findByText("Protected lakes")).toBeInTheDocument(); });
   it("permits a civilian without an organization into the public workspace", async () => { const { client } = authClient({ orgs: [] }); render(gated(client)); expect(await screen.findByText("Protected lakes")).toBeInTheDocument(); });
   it("permits an AAL2 user with an organization and listens for auth changes", async () => { const { client, unsubscribe } = authClient(); const { unmount } = render(gated(client)); expect(await screen.findByText("Protected lakes")).toBeInTheDocument(); expect(client.auth.onAuthStateChange).toHaveBeenCalledOnce(); unmount(); expect(unsubscribe).toHaveBeenCalledOnce(); });
+});
+
+function PrincipalStatus() {
+  const { error, refresh } = usePrincipal();
+  return <>{error && <p role="alert">{error}</p>}<button onClick={() => void refresh()}>Retry</button></>;
+}
+
+describe("PrincipalProvider", () => {
+  it("surfaces an unreachable operator API and lets the user retry", async () => {
+    const { client } = authClient();
+    const request = vi.fn()
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce({ user_id: "admin", account_class: "officer", memberships: [] });
+
+    render(<PrincipalProvider client={client as never} request={request as never}><PrincipalStatus /></PrincipalProvider>);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/could not reach the lakesafe api/i);
+    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
 });
 
 describe("OnboardingGate", () => {

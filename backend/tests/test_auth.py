@@ -89,3 +89,16 @@ def test_verify_supabase_jwt_rejects_hs256_when_only_es256_jwks_is_configured(
         auth.verify_supabase_jwt(token)
 
     assert error.value.status_code == 401
+
+
+def test_verify_supabase_jwt_reports_unavailable_when_es256_project_url_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    private_key = ec.generate_private_key(ec.SECP256R1())
+    monkeypatch.setattr(auth, "SUPABASE_URL", None)
+    monkeypatch.setattr(auth, "SUPABASE_JWT_SECRET", None)
+
+    with pytest.raises(HTTPException, match="Authorization service is unavailable") as error:
+        auth.verify_supabase_jwt(_es256_token(private_key))
+
+    assert error.value.status_code == 503

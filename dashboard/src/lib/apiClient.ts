@@ -26,7 +26,15 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}, client
   const contentType = response.headers.get("content-type") ?? "";
   const body: unknown = contentType.includes("application/json") ? await response.json() : await response.text();
   if (!response.ok) {
-    if (response.status === 401 && client?.auth.signOut) await client.auth.signOut();
+    if (response.status === 401 && client?.auth.getUser && client.auth.signOut) {
+      try {
+        const { data, error } = await client.auth.getUser();
+        if (error || !data.user) await client.auth.signOut();
+      } catch {
+        // A resource-server or network failure must not destroy a session that
+        // the identity provider has not actually rejected.
+      }
+    }
     const parsed = messageFrom(body, `Request failed (${response.status})`);
     throw new ApiError(response.status, parsed.code, parsed.message);
   }
