@@ -1,32 +1,40 @@
-# LakeSafe — Congressional App Challenge software
+# LakeSafe
 
-LakeSafe is a safety-oriented proof-of-concept for three reviewed King County lakes:
-**Lake Sammamish, Pine Lake, and Beaver Lake**. It combines reviewed public access and
-environmental proxy observations, shoreline-clipped planning, role-separated public and
-station views, and a clearly labeled fleet/alert simulation.
+LakeSafe is a lake-safety platform for coordinating drone patrols over local lakes. It
+divides each lake into patrol zones, shows where coverage matters most, and gives
+public-safety stations a live view of their fleet and alerts. Civilians get a separate,
+privacy-safe view of lake status.
 
-Backend: Python 3.11+ / FastAPI / WebSocket. Dashboard: React / TypeScript / Vite /
-Leaflet. Storage and authorization: Supabase/PostgreSQL.
+Built for the 2026 Congressional App Challenge. It currently covers three King County
+lakes: **Lake Sammamish, Pine Lake, and Beaver Lake**.
 
-## Current scope
+## What it does
 
-- Reviewed King County swim-beach observations and monitoring-site coordinates are real
-  public proxy data; they are not incident history.
-- Reviewed King County polygons supply the three local shoreline fixtures.
-- Planning creates proxy-priority and baseline-coverage cells, validates shoreline-
-  clipped geometry, and atomically retains safe active state across refresh failures.
-- Fleet coordination and demo alerts are simulated.
-- A signed real-device software pathway exists but has not been physically flight-
-  validated.
-- Thermal detector code exists, but real open-water accuracy, false-positive rate, and
-  latency are unproven. There is no live CAD/911 integration.
-- Civilian output is delayed/generalized; operational access requires verified/MFA/
-  station/capability checks and database row-level security.
+- **Patrol planning.** Pulls King County swim-beach and water-monitoring data, marks the
+  areas that need the most attention, and splits each lake into patrol zones clipped to
+  the real shoreline.
+- **Station dashboard.** Verified public-safety members see a live lake map, drone
+  positions, patrol zones, and alerts for their own station's lakes only.
+- **Civilian view.** The public sees lake status and alerts by general area, delayed, with
+  no exact drone positions or operational details.
+- **Thermal detection.** A YOLO-based detector with a filter that only reports a person
+  when they appear across several consecutive frames.
+- **Mission export.** Exports a zone's patrol route as a QGroundControl `.plan` file for
+  ArduPilot drones.
+- **Access control.** Officer verification, multi-factor sign-in, station roles, and
+  database row-level security.
 
-Draft CAC materials, setup instructions, AI disclosure, architecture, results,
-privacy notes, and attribution are in [`submission/`](submission/).
+In this version, drone flight and alerts are simulated; the app has not been flown with
+real aircraft yet.
 
-## Local development
+## Tech stack
+
+- **Backend:** Python, FastAPI, WebSockets, Shapely/GeoPandas
+- **Dashboard:** React, TypeScript, Vite, Leaflet
+- **Database and auth:** Supabase (PostgreSQL)
+- **Tests:** Pytest, Vitest
+
+## Running it locally
 
 ```text
 # Backend
@@ -40,14 +48,12 @@ npm ci
 npm run dev
 ```
 
-The full database release gate and every environment-variable name are documented in
-[`submission/judge-setup.md`](submission/judge-setup.md). Apply Supabase migrations in
-filename order through `0037_risk_plan_safety_reserve.sql`; never place service-role,
-identity-provider, or real-device secrets in browser-exposed `VITE_` variables.
+Environment variables and database setup are in
+[`submission/judge-setup.md`](submission/judge-setup.md).
 
-## Transparency
+## More detail
 
-All AI assistance must be disclosed accurately. The draft disclosure names Codex and
-Claude and requires student personalization. Open-source and data terms—including GSAP's
-Standard License, Ultralytics deployment review, King County sources, and OpenStreetMap
-attribution—are documented in [`submission/open-source-attribution.md`](submission/open-source-attribution.md).
+- [Architecture and algorithms](submission/architecture-and-algorithms.md)
+- [Privacy and safety design](submission/privacy-and-safety.md)
+- [AI assistance disclosure](submission/ai-disclosure.md)
+- [Open-source and data attribution](submission/open-source-attribution.md)
