@@ -32,6 +32,7 @@ async def tick_loop(
     jsonify: Callable[[Any], Any],
     interval: float = 0.5,
     iterations: int | None = None,
+    decorate: Callable[[dict], dict] = lambda state: state,
 ) -> None:
     """Advance the simulation and broadcast state every `interval` seconds.
 
@@ -41,7 +42,7 @@ async def tick_loop(
     """
     count = 0
     while iterations is None or count < iterations:
-        state = engine.step(interval)
+        state = decorate(engine.step(interval))
         await hub.broadcast(jsonify(state))
         count += 1
         if iterations is None or count < iterations:

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from contextlib import asynccontextmanager
+from pathlib import Path
 from time import monotonic
 from uuid import uuid4
 from dataclasses import asdict, dataclass, is_dataclass
@@ -47,6 +49,7 @@ from app.api.devices import router as devices_router
 from app.api.safety import router as safety_router
 from app.public_api import PublicPatrolPresence, router as public_router
 from app.evidence import router as evidence_router
+from app.devices import live_positions
 from app.devices.monitor import HeartbeatMonitor, monitor_loop
 from app.devices.repository import DeviceRepositoryError, get_device_repository
 from app.devices.reconciler import RealCapacityReconciler, configure_real_autonomy_service, has_real_autonomy_service
@@ -62,7 +65,8 @@ async def _lifespan(application: FastAPI):
     # under TestClient and makes shutdown cancellation deterministic.
     application.state.tick_tasks = {
         lake_id: asyncio.create_task(
-            tick_loop(runtime.engine, runtime.hub, _jsonable, interval=TICK_INTERVAL_S)
+            tick_loop(runtime.engine, runtime.hub, _jsonable, interval=TICK_INTERVAL_S,
+                      decorate=lambda state, lake_id=lake_id: live_positions.with_real_drones(lake_id, state))
         )
         for lake_id, runtime in lake_runtimes.items()
     }
@@ -230,9 +234,29 @@ def build_lake_runtime(lake_id: str) -> LakeRuntime:
     )
 
 
+TEST_AREA_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "drone_test_area.json"
+
+
+def build_test_area_runtime() -> LakeRuntime:
+    """A real-drone bring-up square: one zone, no simulated drones, not in the reviewed lake catalog."""
+    area = json.loads(TEST_AREA_PATH.read_text(encoding="utf-8"))
+    center = LatLon(area["center"]["lat"], area["center"]["lon"])
+    polygon = [LatLon(p["lat"], p["lon"]) for p in area["polygon"]]
+    zone = RiskZone(f"{area['lake_id']}-z0", center, polygon, 0.0, {}, is_proxy=False)
+    backend = InMemoryBackend()
+    return LakeRuntime(
+        lake_id=area["lake_id"], name=area["name"], zones=[zone],
+        engine=SimulationEngine([], [zone], shore_stations=[center]),
+        alerts=AlertRepository(backend), alert_backend=backend, hub=ConnectionHub(),
+        public_hub=ConnectionHub(), shore_station=center,
+    )
+
+
 lake_runtimes: dict[str, LakeRuntime] = {
     lake_id: build_lake_runtime(lake_id) for lake_id in SUPPORTED_LAKE_IDS
 }
+_test_area = build_test_area_runtime()
+lake_runtimes[_test_area.lake_id] = _test_area
 
 
 class NearbyLakesRequest(BaseModel):
@@ -357,7 +381,7 @@ def authorize_operational_websocket(lake_id: str, token: str) -> Principal:
 
 
 def current_state(runtime: LakeRuntime) -> dict:
-    return _jsonable(runtime.engine.step(0.1))
+    return _jsonable(live_positions.with_real_drones(runtime.lake_id, runtime.engine.step(0.1)))
 
 
 def public_patrol_payload(payload: object) -> dict[str, object]:

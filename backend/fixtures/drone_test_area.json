@@ -1,0 +1,12 @@
+{
+  "lake_id": "test-drone-field",
+  "name": "Drone Test Field (not a lake)",
+  "center": {"lat": 47.592028, "lon": -122.032472},
+  "square_half_side_m": 100,
+  "polygon": [
+    {"lat": 47.591130, "lon": -122.033804},
+    {"lat": 47.591130, "lon": -122.031140},
+    {"lat": 47.592926, "lon": -122.031140},
+    {"lat": 47.592926, "lon": -122.033804}
+  ]
+}

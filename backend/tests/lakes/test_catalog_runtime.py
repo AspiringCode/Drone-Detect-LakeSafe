@@ -64,10 +64,16 @@ def test_reviewed_catalog_rejects_wrong_schema_ids_and_nonnumeric_coordinates(
 
 
 def test_all_three_reviewed_runtimes_are_registered_with_exact_names() -> None:
-    assert set(lake_runtimes) == set(EXPECTED_LAKES)
-    assert {lake_id: runtime.name for lake_id, runtime in lake_runtimes.items()} == {
+    assert set(lake_runtimes) == set(EXPECTED_LAKES) | {"test-drone-field"}
+    assert {lake_id: lake_runtimes[lake_id].name for lake_id in EXPECTED_LAKES} == {
         lake_id: expected[0] for lake_id, expected in EXPECTED_LAKES.items()
     }
+
+
+def test_drone_test_area_is_one_square_zone_with_no_simulated_drones() -> None:
+    runtime = lake_runtimes["test-drone-field"]
+    assert len(runtime.zones) == 1 and len(runtime.zones[0].polygon) == 4
+    assert runtime.engine.step(0.5)["drones"] == []
 
 
 def test_all_three_runtimes_have_distinct_valid_risk_map_bounds() -> None:

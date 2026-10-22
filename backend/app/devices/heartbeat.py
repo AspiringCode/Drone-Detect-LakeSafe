@@ -8,7 +8,15 @@ from typing import Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.devices import live_positions
 from app.devices.auth import DevicePrincipal
+
+
+class Position(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-180, le=180)
+    alt_m: float | None = Field(default=None, ge=-100, le=1000)
 
 
 class HeartbeatPayload(BaseModel):
@@ -18,12 +26,16 @@ class HeartbeatPayload(BaseModel):
     battery_percent: int = Field(ge=0, le=100)
     health: Literal["healthy", "fault"]
     connected: bool
+    # Optional so position-less drones keep working; only feeds the live map.
+    position: Position | None = None
+    flight_status: Literal["idle", "en_route", "patrolling", "investigating", "returning", "charging"] = "idle"
 
 
 @dataclass(frozen=True)
 class HeartbeatResult:
     eligible: bool
     reconcile_trigger: str | None
+    lake_id: str | None = None
 
 
 class HeartbeatRepository(Protocol):
@@ -43,11 +55,16 @@ class HeartbeatService:
         value = heartbeat if isinstance(heartbeat, HeartbeatPayload) else HeartbeatPayload.model_validate(heartbeat)
         if principal.sequence is None:
             raise ValueError("heartbeat is missing its authenticated sequence")
-        outcome = self._repository.record_heartbeat(principal, value, received_at or datetime.now(timezone.utc))
+        received = received_at or datetime.now(timezone.utc)
+        outcome = self._repository.record_heartbeat(principal, value, received)
         eligible = bool(outcome.get("eligible"))
         lake_id = outcome.get("lake_id")
         transitioned = bool(outcome.get("eligibility_changed"))
         trigger = "heartbeat_recovery" if eligible and transitioned else None
         # The database transaction queues reconciliation together with the
         # capacity transition.  A leased worker invokes autonomy after commit.
-        return HeartbeatResult(eligible=eligible, reconcile_trigger=trigger)
+        if value.position is not None and isinstance(lake_id, str):
+            live_positions.record(lake_id, live_positions.real_drone(
+                principal.drone_id, value.position.lat, value.position.lon, value.battery_percent, value.flight_status,
+            ), received)
+        return HeartbeatResult(eligible=eligible, reconcile_trigger=trigger, lake_id=lake_id if isinstance(lake_id, str) else None)

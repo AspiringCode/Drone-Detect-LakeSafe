@@ -76,7 +76,7 @@ def test_positions_ws_receives_state_with_source(monkeypatch):
 def test_startup_launches_background_tick_task_that_stays_alive():
     with TestClient(app) as client:
         tasks = getattr(client.app.state, "tick_tasks", {})
-        assert set(tasks) == set(SUPPORTED_LAKE_IDS)
+        assert set(tasks) == set(SUPPORTED_LAKE_IDS) | {"test-drone-field"}
         assert all(not task.done() for task in tasks.values())
 
 
