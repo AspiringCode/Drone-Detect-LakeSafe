@@ -1,7 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import { CivilianHomePage } from "./CivilianHomePage";
+import { PrincipalProvider } from "../auth/PrincipalProvider";
 
 const fetcher = async (url: string) => ({
   ok: true,
@@ -13,6 +14,84 @@ const fetcher = async (url: string) => ({
 });
 
 describe("CivilianHomePage", () => {
+  it("lets a signed-in civilian reach profile settings without showing sign-in actions", async () => {
+    const client = { auth: {
+      getSession: async () => ({ data: { session: { access_token: "civilian-session" } } }),
+      onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => undefined } } }),
+    } };
+    const request = async <T,>() => ({ user_id: "civilian", account_class: "civilian", memberships: [] } as T);
+    render(<MemoryRouter><PrincipalProvider client={client as never} request={request}><CivilianHomePage fetcher={fetcher} /></PrincipalProvider></MemoryRouter>);
+    expect(await screen.findByRole("link", { name: "Profile settings" })).toHaveAttribute("href", "/profile");
+    expect(screen.getByRole("link", { name: "LakeSafe" })).toHaveAttribute("href", "/lakes");
+    expect(screen.queryByRole("link", { name: "Sign in" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Create account" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Operations" })).not.toBeInTheDocument();
+  });
+
+  it("keeps account entry links available to anonymous visitors", () => {
+    render(<MemoryRouter><CivilianHomePage fetcher={fetcher} /></MemoryRouter>);
+    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/login");
+    expect(screen.getByRole("link", { name: "Create account" })).toHaveAttribute("href", "/signup");
+    expect(screen.getByRole("link", { name: "LakeSafe" })).toHaveAttribute("href", "/");
+    expect(screen.queryByRole("link", { name: "Profile settings" })).not.toBeInTheDocument();
+  });
+
+  it("browses the published catalog and ignores updates for a previously selected lake", async () => {
+    let resolveSlow!: (value: unknown) => void;
+    const catalogFetcher = async (url: string) => ({ ok: true, json: async () => {
+      if (url.endsWith("/lakes")) return ["one", "two", "three"].map((id) => ({ lake_id: id, name: `Lake ${id}` }));
+      if (url.includes("/two/") && url.endsWith("/alerts")) return new Promise((resolve) => { resolveSlow = resolve; });
+      if (url.endsWith("/alerts")) return [{ lake_id: "test", category: url.includes("/three/") ? "Third lake notice" : "First lake notice", approximate_area_label: "Lake area", public_status: "active", occurred_at: "2026-07-30T12:00:00Z", published_at: "2026-07-30T12:05:00Z" }];
+      return [];
+    } });
+    render(<MemoryRouter><CivilianHomePage fetcher={catalogFetcher} /></MemoryRouter>);
+    expect(await screen.findByText("First lake notice")).toBeVisible();
+    fireEvent.change(screen.getByRole("combobox", { name: "Lake" }), { target: { value: "two" } });
+    expect(await screen.findByRole("status")).toHaveTextContent("Loading lake updates");
+    expect(screen.queryByText("First lake notice")).not.toBeInTheDocument();
+    await act(async () => { await Promise.resolve(); });
+    fireEvent.change(screen.getByRole("combobox", { name: "Lake" }), { target: { value: "three" } });
+    expect(await screen.findByText("Third lake notice")).toBeVisible();
+    await act(async () => { resolveSlow([]); });
+    expect(screen.getByText("Third lake notice")).toBeVisible();
+    expect(screen.getByRole("combobox", { name: "Lake" })).toHaveValue("three");
+  });
+
+  it("keeps secondary data failures unavailable until Retry succeeds", async () => {
+    let offline = true;
+    const secondaryFailure = async (url: string) => {
+      if (url.endsWith("/alerts") && offline) throw new TypeError("Failed to fetch");
+      return fetcher(url);
+    };
+    render(<MemoryRouter><CivilianHomePage fetcher={secondaryFailure} /></MemoryRouter>);
+    expect(await screen.findByRole("alert")).toBeVisible();
+    expect(screen.queryByText("No current public safety notices.")).not.toBeInTheDocument();
+    offline = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("Safety notice")).toBeVisible();
+  });
+
+  it("explains an outage and recovers through Retry without showing a false all-clear", async () => {
+    let offline = true;
+    const recoverable = async (url: string) => {
+      if (offline) throw new TypeError("Failed to fetch");
+      return fetcher(url);
+    };
+    render(<MemoryRouter><CivilianHomePage fetcher={recoverable} /></MemoryRouter>);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Lake updates are unavailable");
+    expect(screen.queryByText("No current public safety notices.")).not.toBeInTheDocument();
+    offline = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("Patrol presence")).toBeVisible();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("distinguishes an empty catalog from an outage", async () => {
+    render(<MemoryRouter><CivilianHomePage fetcher={async () => ({ ok: true, json: async () => [] })} /></MemoryRouter>);
+    expect(await screen.findByText("No lake updates published yet")).toBeVisible();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("renders public patrol and alert summaries without operational fields", async () => {
     render(<MemoryRouter><CivilianHomePage fetcher={fetcher} /></MemoryRouter>);
 

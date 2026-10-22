@@ -5,22 +5,22 @@ select plan(21);
 select has_table('public', 'profiles', 'profiles table exists');
 select has_table('public', 'platform_staff_roles', 'platform staff roles table exists');
 select col_is_pk('public', 'profiles', 'user_id', 'profiles user_id is the primary key');
-select col_has_fk('public', 'profiles', 'user_id', 'profiles user_id references auth.users');
-select col_default_is('public', 'profiles', 'account_class', '''civilian''::text', 'profiles default to civilian');
-select col_has_check('public', 'profiles', 'account_class', 'profiles account class is constrained');
-select col_has_check('public', 'profiles', 'verification_version', 'profiles verification version is constrained');
+select fk_ok('public', 'profiles', 'user_id', 'auth', 'users', 'id', 'profiles user_id references auth.users');
+select col_default_is('public', 'profiles', 'account_class', 'civilian', 'profiles default to civilian');
+select ok(exists (select 1 from pg_constraint c join pg_attribute a on a.attrelid = c.conrelid and a.attnum = any(c.conkey) where c.conrelid = 'public.profiles'::regclass and c.contype = 'c' and a.attname = 'account_class'), 'profiles account class is constrained');
+select ok(exists (select 1 from pg_constraint c join pg_attribute a on a.attrelid = c.conrelid and a.attnum = any(c.conkey) where c.conrelid = 'public.profiles'::regclass and c.contype = 'c' and a.attname = 'verification_version'), 'profiles verification version is constrained');
 select has_function('private', 'handle_new_user', array[]::text[], 'new user handler exists');
 select has_function('private', 'jwt_aal', array[]::text[], 'jwt aal helper exists');
 select has_function('private', 'is_platform_staff', array['text'], 'platform staff helper exists');
-select policy_exists('public', 'profiles', 'profiles_select_own', 'profiles has own-row select policy');
-select policy_exists('public', 'profiles', 'profiles_update_own_display_name', 'profiles has own-row update policy');
+select ok(exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'profiles' and policyname = 'profiles_select_own'), 'profiles has own-row select policy');
+select ok(exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'profiles' and policyname = 'profiles_update_own_display_name'), 'profiles has own-row update policy');
 select ok(
   (select relrowsecurity and relforcerowsecurity from pg_class where oid = 'public.profiles'::regclass),
   'profiles has forced row level security'
 );
 select ok(
   (
-    select prosecdef and proconfig @> array['search_path=']
+    select prosecdef and proconfig && array['search_path=', 'search_path=""']
     from pg_proc
     where oid = 'private.handle_new_user()'::regprocedure
   ),

@@ -8,10 +8,10 @@ select has_table('public', 'station_memberships', 'station memberships table exi
 select has_table('public', 'station_membership_roles', 'station membership roles table exists');
 select has_table('public', 'station_invitations', 'station invitations table exists');
 select has_table('public', 'station_join_requests', 'station join requests table exists');
-select col_has_check('public', 'stations', 'status', 'station status is constrained');
-select col_has_check('public', 'station_memberships', 'status', 'membership status is constrained');
-select col_has_check('public', 'station_membership_roles', 'role', 'station role is constrained');
-select col_has_check('public', 'station_join_requests', 'status', 'join request status is constrained');
+select ok(exists (select 1 from pg_constraint c join pg_attribute a on a.attrelid = c.conrelid and a.attnum = any(c.conkey) where c.conrelid = 'public.stations'::regclass and c.contype = 'c' and a.attname = 'status'), 'station status is constrained');
+select ok(exists (select 1 from pg_constraint c join pg_attribute a on a.attrelid = c.conrelid and a.attnum = any(c.conkey) where c.conrelid = 'public.station_memberships'::regclass and c.contype = 'c' and a.attname = 'status'), 'membership status is constrained');
+select ok(exists (select 1 from pg_constraint c join pg_attribute a on a.attrelid = c.conrelid and a.attnum = any(c.conkey) where c.conrelid = 'public.station_membership_roles'::regclass and c.contype = 'c' and a.attname = 'role'), 'station role is constrained');
+select ok(exists (select 1 from pg_constraint c join pg_attribute a on a.attrelid = c.conrelid and a.attnum = any(c.conkey) where c.conrelid = 'public.station_join_requests'::regclass and c.contype = 'c' and a.attname = 'status'), 'join request status is constrained');
 select col_is_unique('public', 'station_invitations', array['token_hash'], 'invitation token hashes are unique');
 
 insert into auth.users (id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
@@ -86,15 +86,15 @@ select ok(not private.is_active_station_member('00000000-0000-0000-0000-00000000
 reset role;
 
 insert into public.station_invitations (station_id, token_hash, intended_email, expires_at)
-values ('00000000-0000-0000-0000-000000000311', 'token-hash-1', 'invitee@example.test', now() + interval '1 day');
+values ('00000000-0000-0000-0000-000000000311', repeat('a', 64), 'invitee@example.test', now() + interval '1 day');
 select throws_like(
-  $$ insert into public.station_invitations (station_id, token_hash, intended_email, expires_at) values ('00000000-0000-0000-0000-000000000311', 'token-hash-1', 'other@example.test', now() + interval '1 day') $$,
+  $$ insert into public.station_invitations (station_id, token_hash, intended_email, expires_at) values ('00000000-0000-0000-0000-000000000311', repeat('a', 64), 'other@example.test', now() + interval '1 day') $$,
   '%duplicate key%',
   'an invitation hash cannot be reused'
 );
-update public.station_invitations set used_at = now() where token_hash = 'token-hash-1';
+update public.station_invitations set used_at = now() where token_hash = repeat('a', 64);
 select throws_like(
-  $$ update public.station_invitations set used_at = now() where token_hash = 'token-hash-1' $$,
+  $$ update public.station_invitations set used_at = now() + interval '1 second' where token_hash = repeat('a', 64) $$,
   '%invitation has already been used%',
   'an invitation cannot be used twice'
 );
@@ -161,8 +161,8 @@ reset role;
 select ok((select relrowsecurity and relforcerowsecurity from pg_class where oid = 'public.stations'::regclass), 'stations have forced RLS');
 select ok((select relrowsecurity and relforcerowsecurity from pg_class where oid = 'public.station_memberships'::regclass), 'memberships have forced RLS');
 select ok((select relrowsecurity and relforcerowsecurity from pg_class where oid = 'public.station_membership_roles'::regclass), 'membership roles have forced RLS');
-select ok((select prosecdef and proconfig @> array['search_path='] from pg_proc where oid = 'private.is_active_station_member(uuid,uuid)'::regprocedure), 'station membership helper is hardened');
-select ok((select prosecdef and proconfig @> array['search_path='] from pg_proc where oid = 'private.has_station_role(uuid,text[])'::regprocedure), 'station role helper is hardened');
+select ok((select prosecdef and proconfig && array['search_path=', 'search_path=""'] from pg_proc where oid = 'private.is_active_station_member(uuid,uuid)'::regprocedure), 'station membership helper is hardened');
+select ok((select prosecdef and proconfig && array['search_path=', 'search_path=""'] from pg_proc where oid = 'private.has_station_role(uuid,text[])'::regprocedure), 'station role helper is hardened');
 
 select * from finish();
 rollback;

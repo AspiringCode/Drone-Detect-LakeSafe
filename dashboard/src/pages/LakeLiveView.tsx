@@ -54,8 +54,35 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
   const canManageAlerts = hasLakeCapability(principal, lakeStationId, "alert.manage");
   const canManageAutonomy = hasLakeCapability(principal, lakeStationId, "autonomy.manage");
   const stationCapabilities = lakeStationId ? principal?.memberships.find((item) => item.station_id === lakeStationId && item.status === "active")?.capabilities ?? [] : [];
-  useEffect(() => { let active = true; void fetcher(`${API}/api/lakes/${lakeId}/riskmap`).then(async (r) => { if (r.status === 404) return active && setNoLive(true); if (r.ok) setRiskmap(await r.json()); }).catch(() => active && setNoLive(true)); let stop = () => {}; if (canReadOperations) { void (async () => { const token = accessToken ?? (await client.auth.getSession()).data.session?.access_token; if (token && active) stop = connectOperational(wsFor(lakeId), token, (state) => setDrones(state.drones)); })(); } return () => { active = false; stop(); }; }, [lakeId, fetcher, connectOperational, client, accessToken, canReadOperations]);
-  useEffect(() => { void fetcher(`${API}/api/lakes/${lakeId}/alerts`).then((r) => r.ok ? r.json() : []).then((alerts: Alert[]) => setAlert(alerts[0] ?? null)); }, [lakeId, fetcher]);
+  useEffect(() => {
+    let active = true;
+    let stop = () => {};
+    setNoLive(false);
+    setRiskmap(null);
+    setAlert(null);
+    setDrones([]);
+    if (canReadOperations) void (async () => {
+      const token = accessToken ?? (await client.auth.getSession()).data.session?.access_token;
+      if (!active) return;
+      if (!token) throw new Error("Missing operator session");
+      stop = connectOperational(wsFor(lakeId), token, (state) => { if (active) setDrones(state.drones); });
+      const options = { headers: { Authorization: `Bearer ${token}` } };
+      await Promise.all([
+        fetcher(`${API}/api/lakes/${lakeId}/riskmap`, options).then(async (response) => {
+          if (response.status === 404) { if (active) setNoLive(true); return; }
+          if (!response.ok) throw new Error("Risk map unavailable");
+          const data = await response.json();
+          if (active) setRiskmap(data);
+        }),
+        fetcher(`${API}/api/lakes/${lakeId}/alerts`, options).then(async (response) => {
+          if (!response.ok) throw new Error("Alerts unavailable");
+          const data: Alert[] = await response.json();
+          if (active) setAlert(data[0] ?? null);
+        }),
+      ]);
+    })().catch(() => { if (active) setOperationsDataError("Live lookout data could not be loaded. Return to lakes and reopen this workspace to retry."); });
+    return () => { active = false; stop(); };
+  }, [lakeId, fetcher, connectOperational, client, accessToken, canReadOperations]);
   useEffect(() => {
     let active = true;
     void client.from("lakes").select("name,centroid_lat,centroid_lon,station_id,drone_inventory_cap,organizations(station_lat,station_lon)").eq("lake_id", lakeId).maybeSingle().then(({ data, error }: { data: LakeMetadata | null; error: unknown }) => {
@@ -113,7 +140,7 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
   }
   async function demo() { if (!canManageAlerts) return; const token = accessToken ?? (await client.auth.getSession()).data.session?.access_token; const response = await fetcher(`${API}/api/lakes/${lakeId}/demo/trigger`, { method: "POST", headers: { Authorization: `Bearer ${token ?? ""}` } }); if (response.ok) setAlert(await response.json()); }
   async function escalate(id: string) { if (!canManageAlerts) return; const token = accessToken ?? (await client.auth.getSession()).data.session?.access_token; await fetcher(`${API}/api/lakes/${lakeId}/alerts/${id}/escalate`, { method: "POST", headers: { Authorization: `Bearer ${token ?? ""}` } }); }
-  if (noLive) return <main className="no-live"><p className="kicker">LakeSafe Initiative</p><h1>No live data for this lake</h1><p>This lake is saved to your organization, but its operator runtime is not active.</p><Link to="/lakes">Return to lakes</Link></main>;
+  if (noLive) return <main className="app-page"><AppHeader active="operations" contextLabel={lakeName} client={client} /><section className="runtime-unavailable"><h1>No live data for this lake</h1><p>The operator runtime is unavailable. Return to your lakes to choose another workspace.</p><Link className="button-link" to="/lakes">Return to lakes</Link></section></main>;
   return (
     <main ref={ref} className="app-page live-shell">
       <AppHeader active="operations" contextLabel={lakeName} operationsHref={`/lakes/${lakeId}`} client={client} />
@@ -126,13 +153,15 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
               <span aria-current="page">Operations</span>
             </nav>
             <h1>{lakeName}</h1>
+            <p className="live-description">Patrol coverage, fleet telemetry and incident response.</p>
           </div>
           <SimulatedBadge source="simulated" />
         </div>
       </section>
       <section className="operator-layout" aria-label={`${lakeName} live operations`}>
         <section className="map-card" aria-label="Live lake map">
-          {station && lakeCenter && <LakeMap lakeName={lakeName} lakeCenter={lakeCenter} riskmap={riskmap} drones={drones} stationLocation={station} />}
+          <header className="map-heading"><h2>Patrol lookout</h2><span>Lake coverage</span></header>
+          {lakeCenter ? <LakeMap lakeName={lakeName} lakeCenter={lakeCenter} riskmap={riskmap} drones={drones} stationLocation={station ?? undefined} /> : <div className="map-placeholder" role="status"><h2>Map not available yet</h2><p>Waiting for this lake’s location data.</p></div>}
         </section>
         <aside className="side-panel" aria-label="Operations details">
           {operationsDataError && <p className="operations-data-error" role="alert" aria-label="Operational data error">{operationsDataError}</p>}
@@ -142,7 +171,7 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
               <div><p className="panel-eyebrow">Fleet</p><h2>Drone status</h2></div>
               <div className="fleet-capacity" aria-label={`${drones.length} of ${inventoryCap ?? "unknown"} drones deployed`}>
                 <span><strong>{drones.length}</strong><small> / {inventoryCap ?? "—"}</small></span>
-                {inventoryCap !== null && <span className="fleet-capacity__meter" role="progressbar" aria-label="Fleet capacity" aria-valuemin={0} aria-valuemax={inventoryCap} aria-valuenow={Math.min(drones.length, inventoryCap)}><span style={{ width: `${Math.min(100, (drones.length / inventoryCap) * 100)}%` }} /></span>}
+                {inventoryCap !== null && inventoryCap > 0 && <span className="fleet-capacity__meter" role="progressbar" aria-label="Fleet capacity" aria-valuemin={0} aria-valuemax={inventoryCap} aria-valuenow={Math.min(drones.length, inventoryCap)}><span style={{ width: `${Math.min(100, (drones.length / inventoryCap) * 100)}%` }} /></span>}
               </div>
             </div>
             <DroneRoster drones={drones} />

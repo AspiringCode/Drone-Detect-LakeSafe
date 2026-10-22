@@ -1,14 +1,14 @@
 begin;
 
-select plan(51);
+select plan(53);
 
 select has_table('public', 'officer_verifications', 'officer verifications table exists');
 select has_table('public', 'verification_reviews', 'verification reviews table exists');
 select has_table('public', 'verification_evidence', 'verification evidence table exists');
-select col_has_check('public', 'officer_verifications', 'provider', 'provider is constrained');
-select col_has_check('public', 'officer_verifications', 'method', 'method is constrained');
-select col_has_check('public', 'officer_verifications', 'affiliation', 'affiliation is constrained');
-select col_has_check('public', 'officer_verifications', 'status', 'status is constrained');
+select ok(exists (select 1 from pg_constraint c join pg_attribute a on a.attrelid = c.conrelid and a.attnum = any(c.conkey) where c.conrelid = 'public.officer_verifications'::regclass and c.contype = 'c' and a.attname = 'provider'), 'provider is constrained');
+select ok(exists (select 1 from pg_constraint c join pg_attribute a on a.attrelid = c.conrelid and a.attnum = any(c.conkey) where c.conrelid = 'public.officer_verifications'::regclass and c.contype = 'c' and a.attname = 'method'), 'method is constrained');
+select ok(exists (select 1 from pg_constraint c join pg_attribute a on a.attrelid = c.conrelid and a.attnum = any(c.conkey) where c.conrelid = 'public.officer_verifications'::regclass and c.contype = 'c' and a.attname = 'affiliation'), 'affiliation is constrained');
+select ok(exists (select 1 from pg_constraint c join pg_attribute a on a.attrelid = c.conrelid and a.attnum = any(c.conkey) where c.conrelid = 'public.officer_verifications'::regclass and c.contype = 'c' and a.attname = 'status'), 'status is constrained');
 select col_is_unique('public', 'officer_verifications', array['user_id'], 'a user has one verification');
 select col_is_unique('public', 'officer_verifications', array['provider_subject'], 'provider subject is unique');
 
@@ -28,9 +28,16 @@ values
 set local role authenticated;
 select tests.authenticate_as('00000000-0000-0000-0000-000000000201'::uuid, 'aal2');
 
+select throws_like(
+  $$ select public.submit_officer_verification('id_me', 'idme-officer-201', 'oidc', 'us_law_enforcement') $$,
+  '%permission denied%',
+  'a browser cannot submit verification directly'
+);
+
+set local role service_role;
 select lives_ok(
   $$ select public.submit_officer_verification('id_me', 'idme-officer-201', 'oidc', 'us_law_enforcement') $$,
-  'an officer can submit a verification'
+  'the backend submits verification for the JWT subject'
 );
 
 select is(
@@ -46,6 +53,11 @@ select throws_like(
 );
 
 select tests.authenticate_as('00000000-0000-0000-0000-000000000202'::uuid, 'aal2');
+select set_config(
+  'tests.verification_version_before_review',
+  (select verification_version::text from public.profiles where user_id = '00000000-0000-0000-0000-000000000201'),
+  true
+);
 
 select lives_ok(
   $$ select public.review_officer_verification((select verification_id from public.officer_verifications where user_id = '00000000-0000-0000-0000-000000000201'), 'verified') $$,
@@ -100,7 +112,7 @@ select is(
 );
 select is(
   (select verification_version from public.profiles where user_id = '00000000-0000-0000-0000-000000000201'),
-  1,
+  current_setting('tests.verification_version_before_review')::integer + 1,
   'verification transition increments profile version'
 );
 select ok(
@@ -139,20 +151,22 @@ select is((select status from public.officer_verifications where user_id = '0000
 select is((select account_class from public.profiles where user_id = '00000000-0000-0000-0000-000000000204'), 'civilian', 'time-only expiry evaluation demotes the profile');
 select is((select verification_version from public.profiles where user_id = '00000000-0000-0000-0000-000000000204'), 6, 'time-only expiry evaluation increments the profile version');
 
-set local role authenticated;
+set local role service_role;
 select tests.authenticate_as('00000000-0000-0000-0000-000000000203'::uuid, 'aal2');
 select throws_like(
   $$ select public.review_officer_verification((select verification_id from public.officer_verifications where user_id = '00000000-0000-0000-0000-000000000203'), 'verified') $$,
   '%reviewers cannot approve their own verification%',
   'an active reviewer cannot approve their own verification through the review RPC'
 );
+set local role authenticated;
 select throws_like(
   $$ insert into public.verification_reviews (verification_id, reviewer_user_id, decision) select verification_id, '00000000-0000-0000-0000-000000000203'::uuid, 'verified' from public.officer_verifications where user_id = '00000000-0000-0000-0000-000000000203' $$,
-  '%row-level security%',
-  'a reviewer cannot directly review their own pending verification'
+  '%permission denied%',
+  'a browser reviewer cannot directly insert a verification review'
 );
 select tests.authenticate_as('00000000-0000-0000-0000-000000000205'::uuid, 'aal2');
-select results_eq($$ select verification_id from public.officer_verifications $$, $$ select null::uuid where false $$, 'a different user cannot read another verification');
+select throws_like($$ select verification_id from public.officer_verifications $$, '%permission denied%', 'a browser cannot read raw verification records');
+select throws_like($$ select public.review_officer_verification('00000000-0000-0000-0000-000000000000'::uuid, 'verified') $$, '%permission denied%', 'a browser cannot execute the review RPC');
 select throws_like($$ update public.officer_verifications set status = 'verified' $$, '%permission denied%', 'clients cannot update verification state directly');
 select throws_like($$ insert into public.verification_evidence (verification_id, storage_path, evidence_type, content_hash) values ('00000000-0000-0000-0000-000000000201', 'private/path', 'badge', 'hash') $$, '%permission denied%', 'clients cannot append evidence directly');
 reset role;
@@ -164,8 +178,8 @@ select throws_like($$ delete from public.verification_reviews $$, '%append-only%
 select ok((select relrowsecurity and relforcerowsecurity from pg_class where oid = 'public.officer_verifications'::regclass), 'verifications have forced RLS');
 select ok((select relrowsecurity and relforcerowsecurity from pg_class where oid = 'public.verification_reviews'::regclass), 'reviews have forced RLS');
 select ok((select relrowsecurity and relforcerowsecurity from pg_class where oid = 'public.verification_evidence'::regclass), 'evidence has forced RLS');
-select ok((select prosecdef and proconfig @> array['search_path='] from pg_proc where oid = 'private.transition_officer_verification(uuid,text)'::regprocedure), 'transition helper is hardened');
-select ok((select prosecdef and proconfig @> array['search_path='] from pg_proc where oid = 'private.officer_verification_is_current(uuid)'::regprocedure), 'current verification helper is hardened');
+select ok((select prosecdef and proconfig && array['search_path=', 'search_path=""'] from pg_proc where oid = 'private.transition_officer_verification(uuid,text)'::regprocedure), 'transition helper is hardened');
+select ok((select prosecdef and proconfig && array['search_path=', 'search_path=""'] from pg_proc where oid = 'private.officer_verification_is_current(uuid)'::regprocedure), 'current verification helper is hardened');
 
 select * from finish();
 rollback;

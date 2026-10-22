@@ -69,7 +69,7 @@ end; $$;
 -- A bounded delivery worker may retry only unexpired real commands.  Expired
 -- commands become failed; acknowledged_state_version is deliberately untouched.
 create or replace function public.expire_real_command_delivery(p_station_id uuid,p_lake_id text,p_max_attempts integer default 3)
-returns setof text language plpgsql security definer set search_path = '' as $$
+returns setof text language sql security definer set search_path = '' as $$
   update public.command_outbox command set status='failed',claimed_at=null,next_attempt_at=null
    where command.station_id=p_station_id and command.lake_id=p_lake_id
      and command.payload->>'source'='real' and command.status in ('pending','claimed')

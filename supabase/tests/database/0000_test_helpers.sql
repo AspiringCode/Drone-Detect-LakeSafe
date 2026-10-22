@@ -1,7 +1,7 @@
 create extension if not exists pgtap;
 
 create schema if not exists tests;
-grant usage on schema tests to authenticated;
+grant usage on schema tests to authenticated, service_role;
 
 create or replace function tests.authenticate_as(
   target_user_id uuid,
@@ -30,7 +30,7 @@ begin
 end;
 $$;
 
-grant execute on function tests.authenticate_as(uuid, text) to authenticated;
+grant execute on function tests.authenticate_as(uuid, text) to authenticated, service_role;
 
 select plan(1);
 select pass('database authentication helper is installed');

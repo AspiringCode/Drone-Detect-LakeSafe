@@ -7,6 +7,7 @@ from typing import Annotated
 from fastapi import Header, HTTPException
 
 from app.auth import verify_supabase_jwt
+from app.access.repository import ACCESS_REPOSITORY_ERRORS
 
 
 class StationRole(StrEnum):
@@ -45,7 +46,10 @@ def principal_from_claims(claims: dict[str, object], repository) -> Principal:
     user_id = claims.get("sub")
     if not isinstance(user_id, str):
         raise HTTPException(status_code=401, detail="Invalid bearer token")
-    profile = repository.load_principal_state(user_id)
+    try:
+        profile = repository.load_principal_state(user_id)
+    except ACCESS_REPOSITORY_ERRORS as exc:
+        raise HTTPException(status_code=503, detail="Account data is temporarily unavailable") from exc
     if profile is None:
         # A valid token without a server-side profile is never operational.
         return Principal(user_id, None, None, "civilian", None, ())
@@ -80,4 +84,9 @@ def get_principal(
     # no credentials are needed until a protected request is made.
     from app.access.repository import get_access_repository
 
-    return principal_from_claims(verify_supabase_jwt(_bearer_token(authorization)), get_access_repository())
+    claims = verify_supabase_jwt(_bearer_token(authorization))
+    try:
+        repository = get_access_repository()
+    except ACCESS_REPOSITORY_ERRORS as exc:
+        raise HTTPException(status_code=503, detail="Account data is temporarily unavailable") from exc
+    return principal_from_claims(claims, repository)

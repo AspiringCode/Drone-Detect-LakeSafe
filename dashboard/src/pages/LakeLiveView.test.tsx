@@ -80,6 +80,8 @@ describe("LakeLiveView autonomous plan state", () => {
     expect(await screen.findByText("Active coverage plan")).toBeVisible();
     expect(screen.getByText("risk-zone-v1")).toBeVisible();
     expect(fetcher).toHaveBeenCalledWith(expect.stringContaining("/api/stations/station-1/lakes/lake-1/zone-plan"), expect.anything());
+    expect(fetcher).toHaveBeenCalledWith(expect.stringContaining("/lake-1/riskmap"), expect.objectContaining({ headers: { Authorization: "Bearer token" } }));
+    expect(fetcher).toHaveBeenCalledWith(expect.stringContaining("/lake-1/alerts"), expect.objectContaining({ headers: { Authorization: "Bearer token" } }));
   });
 
   it("announces a station-scoped plan fetch failure", async () => {

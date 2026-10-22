@@ -34,7 +34,6 @@ export function ReportsPage({ client = supabase, fetcher = fetch }: { client?: S
       <AppHeader active="reports" client={client} />
       <section className="data-shell">
         <header className="page-heading">
-          <p className="kicker">Operational record</p>
           <h1>Operational reports</h1>
           <p>Live summaries calculated from the alerts currently available to this account.</p>
         </header>

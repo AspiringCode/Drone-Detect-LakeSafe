@@ -8,7 +8,7 @@ select has_column('public', 'lakes', 'station_id', 'lakes are station-owned');
 select has_column('public', 'lakes', 'shoreline', 'lakes store shorelines');
 select col_not_null('public', 'lakes', 'station_id', 'every lake has a station');
 select col_not_null('public', 'lakes', 'shoreline', 'every lake has a shoreline value');
-select col_has_check('public', 'lakes', 'status', 'lake status is constrained');
+select ok(exists (select 1 from pg_constraint c join pg_attribute a on a.attrelid = c.conrelid and a.attnum = any(c.conkey) where c.conrelid = 'public.lakes'::regclass and c.contype = 'c' and a.attname = 'status'), 'lake status is constrained');
 
 select is(
   (select count(*) from public.lakes where station_id is null),
@@ -18,7 +18,7 @@ select is(
 
 select throws_ok(
   $$ update public.lakes set shoreline = st_setsrid(st_geomfromtext('MULTIPOLYGON EMPTY'), 3857) where lake_id = 'lake-sammamish' $$,
-  '23514',
+  '22023',
   null,
   'a non-4326 shoreline is rejected'
 );
@@ -35,7 +35,7 @@ select is(
   'a migrated legacy station remains pending'
 );
 select is(
-  (select status from public.station_memberships as membership join public.stations as station on station.station_id = membership.station_id where station.legacy_org_id = 'org-demo' and membership.user_id = 'bc14340d-ea56-4a7a-9b74-7b679f9055c4'::uuid),
+  (select membership.status from public.station_memberships as membership join public.stations as station on station.station_id = membership.station_id where station.legacy_org_id = 'org-demo' and membership.user_id = 'bc14340d-ea56-4a7a-9b74-7b679f9055c4'::uuid),
   'suspended',
   'an unverified legacy owner is suspended rather than active'
 );

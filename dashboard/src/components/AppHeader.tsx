@@ -80,6 +80,7 @@ export function AppHeader({ active, contextLabel, operationsHref = "/lakes", cli
           <div className="account-menu">
             <Link to="/profile">Profile settings</Link>
             <Link to="/station-access">Station access</Link>
+            {activeContext?.station?.status === "active" && activeContext.station.capabilities.includes("member.manage") && <Link to={`/stations/${activeContext.station.station_id}/admin`}>Station administration</Link>}
             {principalContext?.principal?.reviewer && <Link to="/internal/reviews">LakeSafe review</Link>}
             <button type="button" onClick={signOut} disabled={signingOut}>{signingOut ? "Signing out…" : "Sign out"}</button>
             {signOutError && <span className="header-error" role="alert">{signOutError}</span>}

@@ -53,7 +53,6 @@ export function ProfileSettingsPage({ client = supabase }: { client?: SupabaseLi
       <AppHeader active="profile" contextLabel="Account settings" client={client} />
       <section className="profile-shell">
         <header className="page-heading">
-          <p className="kicker">Account settings</p>
           <h1>Profile settings</h1>
           <p>Manage the identity shown across your LakeSafe workspace.</p>
         </header>

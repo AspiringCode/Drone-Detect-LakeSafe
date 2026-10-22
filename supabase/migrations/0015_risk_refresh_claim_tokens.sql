@@ -4,6 +4,11 @@
 alter table public.risk_refresh_jobs add column claim_token uuid;
 alter table public.risk_source_refresh_state add column claim_token uuid;
 
+-- PostgreSQL cannot replace a TABLE return type when adding claim_token.
+-- Recreate both claim functions and restore their server-only grants below.
+drop function public.claim_queued_risk_refreshes(integer);
+drop function public.claim_due_risk_source_refreshes(integer);
+
 create or replace function public.claim_queued_risk_refreshes(p_limit integer default 25)
 returns table(lake_id text, claim_token uuid) language plpgsql security definer set search_path = '' as $$
 begin
@@ -65,5 +70,5 @@ begin
 end;
 $$;
 
-revoke all on function public.complete_risk_refresh(text, uuid), public.fail_risk_refresh(text, uuid, text) from public, anon, authenticated;
-grant execute on function public.complete_risk_refresh(text, uuid), public.fail_risk_refresh(text, uuid, text) to service_role;
+revoke all on function public.claim_queued_risk_refreshes(integer), public.claim_due_risk_source_refreshes(integer), public.complete_risk_refresh(text, uuid), public.fail_risk_refresh(text, uuid, text) from public, anon, authenticated;
+grant execute on function public.claim_queued_risk_refreshes(integer), public.claim_due_risk_source_refreshes(integer), public.complete_risk_refresh(text, uuid), public.fail_risk_refresh(text, uuid, text) to service_role;

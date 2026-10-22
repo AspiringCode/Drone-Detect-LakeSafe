@@ -11,8 +11,10 @@ from datetime import datetime, timedelta
 from typing import Protocol
 
 from fastapi import APIRouter, HTTPException
+from httpx import HTTPError
+from postgrest.exceptions import APIError
 from pydantic import BaseModel, ConfigDict, model_validator
-from supabase import create_client
+from supabase import SupabaseException, create_client
 
 from app.config import SUPABASE_KEY, SUPABASE_URL
 
@@ -102,23 +104,35 @@ def get_public_repository() -> PublicProjectionRepository:
 def _repository() -> PublicProjectionRepository:
     try:
         return get_public_repository()
-    except RuntimeError as exc:
+    except (RuntimeError, ValueError, HTTPError, APIError, SupabaseException) as exc:
         raise HTTPException(status_code=503, detail="Public data is temporarily unavailable") from exc
 
 
 @router.get("/lakes", response_model=list[PublicLake])
 def public_lakes() -> list[PublicLake]:
-    return [PublicLake.model_validate(row) for row in _repository().list_lakes()]
+    try:
+        rows = _repository().list_lakes()
+    except (HTTPError, APIError, SupabaseException) as exc:
+        raise HTTPException(status_code=503, detail="Public data is temporarily unavailable") from exc
+    return [PublicLake.model_validate(row) for row in rows]
 
 
 @router.get("/lakes/{lake_id}/alerts", response_model=list[PublicAlert])
 def public_alerts(lake_id: str) -> list[PublicAlert]:
-    return [PublicAlert.model_validate(row) for row in _repository().list_alerts(lake_id)]
+    try:
+        rows = _repository().list_alerts(lake_id)
+    except (HTTPError, APIError, SupabaseException) as exc:
+        raise HTTPException(status_code=503, detail="Public data is temporarily unavailable") from exc
+    return [PublicAlert.model_validate(row) for row in rows]
 
 
 @router.get("/lakes/{lake_id}/patrol-presence", response_model=list[PublicPatrolPresence])
 def public_patrol_presence(lake_id: str) -> list[PublicPatrolPresence]:
+    try:
+        rows = _repository().list_patrol_presence(lake_id)
+    except (HTTPError, APIError, SupabaseException) as exc:
+        raise HTTPException(status_code=503, detail="Public data is temporarily unavailable") from exc
     return [
         PublicPatrolPresence.model_validate(row)
-        for row in _repository().list_patrol_presence(lake_id)
+        for row in rows
     ]

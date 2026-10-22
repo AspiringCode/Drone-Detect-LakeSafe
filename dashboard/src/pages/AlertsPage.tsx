@@ -25,7 +25,6 @@ export function AlertsPage({ client = supabase, fetcher = fetch }: { client?: Su
       <AppHeader active="alerts" client={client} />
       <section className="data-shell">
         <header className="page-heading">
-          <p className="kicker">Response center</p>
           <h1>Active alerts</h1>
           <p>Lake-scoped detections from the currently connected operator runtimes.</p>
         </header>

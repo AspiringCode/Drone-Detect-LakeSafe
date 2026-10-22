@@ -56,7 +56,7 @@ function OperatorProviders() { return <PrincipalProvider><ActiveStationProvider>
 function LakeLanding() {
   const { principal, loading, error, refresh } = usePrincipal();
   if (loading) return <main className="auth-loading">Preparing your workspace…</main>;
-  if (error) return <main className="auth-page"><section className="auth-card"><p className="kicker">Operator workspace</p><h1>We couldn’t load your account</h1><p className="form-error" role="alert">{error}</p><button onClick={() => void refresh()}>Retry</button></section></main>;
+  if (error) return <main className="auth-page"><section className="auth-card"><h1>We couldn’t load your account</h1><p className="form-error" role="alert">{error}</p><button onClick={() => void refresh()}>Retry</button></section></main>;
   return principal?.account_class === "civilian" ? <CivilianHomePage /> : <LakeGridPage />;
 }
 

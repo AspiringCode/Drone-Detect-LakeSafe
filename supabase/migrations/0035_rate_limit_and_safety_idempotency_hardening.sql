@@ -17,7 +17,7 @@ begin
     raise exception 'invalid rate-limit claim' using errcode = '22023';
   end if;
 
-  perform pg_advisory_xact_lock(hashtextextended(p_scope || chr(0) || p_subject, 0));
+  perform pg_advisory_xact_lock(hashtextextended(jsonb_build_array(p_scope, p_subject)::text, 0));
   select * into bucket from public.privileged_rate_limit_buckets
     where scope = p_scope and subject = p_subject for update;
   if not found then

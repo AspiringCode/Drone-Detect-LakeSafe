@@ -2,8 +2,28 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { AppHeader } from "./AppHeader";
+import { PrincipalProvider } from "../auth/PrincipalProvider";
+import { ActiveStationProvider } from "../hooks/useActiveStation";
 
 describe("AppHeader", () => {
+  it.each([
+    { status: "active", capabilities: ["member.manage"], visible: true },
+    { status: "active", capabilities: ["station.read"], visible: false },
+    { status: "suspended", capabilities: ["member.manage"], visible: false },
+  ])("limits station administration navigation to an active capable membership: $status $capabilities", async ({ status, capabilities, visible }) => {
+    const fakeClient = { ...client(), auth: { ...client().auth,
+      getSession: vi.fn().mockResolvedValue({ data: { session: { access_token: "test" } } }),
+      onAuthStateChange: () => ({ data: { subscription: { unsubscribe: vi.fn() } } }),
+    } };
+    const request = vi.fn().mockResolvedValue({ memberships: [{ station_id: "station-1", station_name: "Station one", status, capabilities, roles: [] }] });
+    render(<MemoryRouter><PrincipalProvider client={fakeClient as never} request={request}><ActiveStationProvider><AppHeader active="lakes" client={fakeClient as never} /></ActiveStationProvider></PrincipalProvider></MemoryRouter>);
+    await waitFor(() => expect(request).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByRole("combobox", { name: /active station/i })).toHaveDisplayValue(status === "active" ? "Station one" : "No active station"));
+    fireEvent.click(screen.getByRole("button", { name: /open account menu/i }));
+    if (visible) expect(screen.getByRole("link", { name: "Station administration" })).toHaveAttribute("href", "/stations/station-1/admin");
+    else expect(screen.queryByRole("link", { name: "Station administration" })).not.toBeInTheDocument();
+  });
+
   function client() {
     return {
       auth: {

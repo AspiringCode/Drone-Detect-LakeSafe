@@ -3,7 +3,18 @@ from __future__ import annotations
 from functools import lru_cache
 from datetime import datetime, timezone
 
+from httpx import HTTPError
+from postgrest.exceptions import APIError
+from supabase import SupabaseException
+
 from app.config import SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL
+
+
+class AccessRepositoryError(RuntimeError):
+    """Account infrastructure is temporarily unavailable."""
+
+
+ACCESS_REPOSITORY_ERRORS = (RuntimeError, HTTPError, APIError, ValueError, SupabaseException)
 
 
 class SupabaseAccessRepository:
@@ -17,10 +28,12 @@ class SupabaseAccessRepository:
         self.client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
     def load_principal_state(self, user_id: str) -> dict | None:
-        profile = self.client.table("profiles").select("account_class, display_name").eq("user_id", user_id).maybe_single().execute().data
+        profile_response = self.client.table("profiles").select("account_class, display_name").eq("user_id", user_id).maybe_single().execute()
+        profile = profile_response.data if profile_response is not None else None
         if not profile:
             return None
-        verification = self.client.table("officer_verifications").select("status, expires_at, revoked_at").eq("user_id", user_id).maybe_single().execute().data or {}
+        verification_response = self.client.table("officer_verifications").select("status, expires_at, revoked_at").eq("user_id", user_id).maybe_single().execute()
+        verification = (verification_response.data if verification_response is not None else None) or {}
         verification_status = verification.get("status")
         expiry = verification.get("expires_at")
         if verification.get("revoked_at") or (isinstance(expiry, str) and datetime.fromisoformat(expiry.replace("Z", "+00:00")) <= datetime.now(timezone.utc)):
@@ -43,10 +56,14 @@ class SupabaseAccessRepository:
         }
 
     def lake_station_id(self, lake_id: str) -> str | None:
-        record = self.client.table("lakes").select("station_id").eq("lake_id", lake_id).maybe_single().execute().data
+        response = self.client.table("lakes").select("station_id").eq("lake_id", lake_id).maybe_single().execute()
+        record = response.data if response is not None else None
         return str(record["station_id"]) if record else None
 
 
 @lru_cache(maxsize=1)
 def get_access_repository() -> SupabaseAccessRepository:
-    return SupabaseAccessRepository()
+    try:
+        return SupabaseAccessRepository()
+    except ACCESS_REPOSITORY_ERRORS as exc:
+        raise AccessRepositoryError("Account data is temporarily unavailable") from exc
