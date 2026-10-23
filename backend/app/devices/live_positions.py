@@ -14,15 +14,15 @@ from app.models import Drone, DroneStatus, LatLon
 _latest: dict[str, dict[str, tuple[Drone, datetime]]] = {}
 
 
-def record(lake_id: str, drone: Drone, received_at: datetime) -> None:
-    _latest.setdefault(lake_id, {})[drone.drone_id] = (drone, received_at)
+def record(lake_id: str, drone: Drone, received_at: datetime, *, ttl_seconds: int = REAL_HEARTBEAT_TTL_SECONDS) -> None:
+    _latest.setdefault(lake_id, {})[drone.drone_id] = (drone, received_at + timedelta(seconds=ttl_seconds))
 
 
 def snapshot(lake_id: str, now: datetime | None = None) -> list[Drone]:
-    """Fresh real drones for one lake; a drone that stops beating drops off the map."""
-    cutoff = (now or datetime.now(timezone.utc)) - timedelta(seconds=REAL_HEARTBEAT_TTL_SECONDS)
+    """Fresh drones for one lake; a drone that stops beating drops off the map."""
+    now = now or datetime.now(timezone.utc)
     drones = _latest.get(lake_id, {})
-    for drone_id in [d for d, (_, at) in drones.items() if at < cutoff]:
+    for drone_id in [d for d, (_, expires_at) in drones.items() if expires_at < now]:
         del drones[drone_id]
     return [drone for drone, _ in drones.values()]
 

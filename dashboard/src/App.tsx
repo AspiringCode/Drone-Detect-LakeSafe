@@ -10,6 +10,7 @@ import { LakeLiveView } from "./pages/LakeLiveView";
 import { ProfileSettingsPage } from "./pages/ProfileSettingsPage";
 import { AlertsPage } from "./pages/AlertsPage";
 import { ReportsPage } from "./pages/ReportsPage";
+import { DronesPage } from "./pages/DronesPage";
 import { PrincipalProvider } from "./auth/PrincipalProvider";
 import { ActiveStationProvider } from "./hooks/useActiveStation";
 import { OfficerVerificationPage } from "./pages/OfficerVerificationPage";
@@ -37,6 +38,7 @@ export default function App() {
           <Route path="/lakes/:lakeId" element={<LakeLiveView />} />
           <Route path="/alerts" element={<AlertsPage />} />
           <Route path="/reports" element={<ReportsPage />} />
+          <Route path="/drones" element={<DronesPage />} />
         </Route>
         <Route path="/profile" element={<ProfileSettingsPage />} />
         <Route path="/verify-affiliation" element={<OfficerVerificationPage />} />

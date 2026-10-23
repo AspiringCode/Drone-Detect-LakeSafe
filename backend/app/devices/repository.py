@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.config import SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL
 from app.devices.auth import DeviceAuthRepository
@@ -42,6 +42,37 @@ class SupabaseDeviceRepository(DeviceAuthRepository):
 
     def retire_real(self, station_id: str, drone_id: str, actor_user_id: str) -> dict:
         return self._one("retire_real_drone", {"p_station_id": station_id, "p_drone_id": drone_id, "p_actor_user_id": actor_user_id})
+
+    def list_real(self, station_id: str) -> list[dict]:
+        try:
+            rows = self._client.table("drone_inventory").select(
+                "inventory_id,lake_id,lifecycle,battery_percent,health,connectivity,updated_at,drone_credentials(manufacturer,serial,credential_state)"
+            ).eq("station_id", station_id).eq("source", "real").neq("lifecycle", "retired").order("created_at").execute().data or []
+        except Exception as exc:
+            raise DeviceRepositoryError("Device inventory is unavailable") from exc
+        drones = []
+        for row in rows:
+            credential = row.pop("drone_credentials", None) or {}
+            if isinstance(credential, list):  # one-to-one, but PostgREST may still wrap it
+                credential = credential[0] if credential else {}
+            drones.append({**row, "manufacturer": credential.get("manufacturer"), "serial": credential.get("serial")})
+        return drones
+
+    def attach_real_to_lake(self, station_id: str, drone_id: str, lake_id: str | None) -> dict:
+        # The schema ties lake_id to the circulating lifecycle; detaching returns the drone to available.
+        try:
+            if lake_id is not None and self.lake_station_id(lake_id) != station_id:
+                raise DeviceRepositoryError("Lake is not part of this station")
+            rows = self._client.table("drone_inventory").update({
+                "lake_id": lake_id, "lifecycle": "circulating" if lake_id else "available", "updated_at": datetime.now(timezone.utc).isoformat(),
+            }).eq("inventory_id", drone_id).eq("station_id", station_id).eq("source", "real").neq("lifecycle", "retired").execute().data
+        except DeviceRepositoryError:
+            raise
+        except Exception as exc:
+            raise DeviceRepositoryError("Device inventory cannot be changed") from exc
+        if not rows:
+            raise DeviceRepositoryError("Real drone not found")
+        return {"inventory_id": drone_id, "lake_id": lake_id, "lifecycle": rows[0]["lifecycle"]}
 
     def record_heartbeat(self, principal, heartbeat, received_at: datetime) -> dict:
         return self._one("record_real_heartbeat", {
