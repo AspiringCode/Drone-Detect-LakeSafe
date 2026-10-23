@@ -2,8 +2,10 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { LakeGridPage } from "./LakeGridPage";
+import { PrincipalProvider } from "../auth/PrincipalProvider";
+import { ActiveStationProvider, useActiveStation } from "../hooks/useActiveStation";
 
-vi.mock("../components/LakePreviewMap", () => ({ LakePreviewMap: () => <div /> }));
+vi.mock("../components/LakePreviewMap", () => ({ LakePreviewMap: () => null }));
 
 describe("managed lake loading", () => {
   it("shows loading without claiming the station has no lakes", () => {
@@ -37,4 +39,25 @@ describe("managed lake loading", () => {
     await act(async () => { resolveOld({ data: [], error: null }); });
     expect(screen.getByRole("link", { name: /Current lake/ })).toBeInTheDocument();
   });
+});
+
+it("shows every authorized lake despite a selected station and follows the opened lake's station", async () => {
+  localStorage.setItem("lakesafe-active-station", "station-a");
+  const lakes = [
+    { lake_id: "a", station_id: "station-a", name: "Lake A" },
+    { lake_id: "b", station_id: "station-b", name: "Lake B" },
+    { lake_id: "c", station_id: "station-c", name: "Lake C" },
+  ];
+  const client = { auth: {
+    getSession: vi.fn().mockResolvedValue({ data: { session: { access_token: "test" } } }),
+    onAuthStateChange: () => ({ data: { subscription: { unsubscribe: vi.fn() } } }),
+  }, from: () => ({ select: () => ({ order: async () => ({ data: lakes, error: null }) }) }) };
+  const principal = { memberships: lakes.map(lake => ({ station_id: lake.station_id, station_name: lake.name, status: "active", capabilities: [], roles: [] })) };
+  function Selection() { return <output aria-label="Selected station">{useActiveStation().station?.station_id}</output>; }
+  render(<MemoryRouter><PrincipalProvider client={client as never} request={vi.fn().mockResolvedValue(principal)}><ActiveStationProvider><LakeGridPage client={client as never}/><Selection/></ActiveStationProvider></PrincipalProvider></MemoryRouter>);
+  for (const lake of lakes) expect(await screen.findByRole("link", { name: lake.name })).toHaveAttribute("href", `/lakes/${lake.lake_id}`);
+  expect(screen.queryByRole("combobox", { name: "Active station" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("link", { name: "Lake B" }));
+  expect(screen.getByLabelText("Selected station")).toHaveTextContent("station-b");
+  localStorage.removeItem("lakesafe-active-station");
 });

@@ -18,9 +18,8 @@ describe("AppHeader", () => {
     const request = vi.fn().mockResolvedValue({ memberships: [{ station_id: "station-1", station_name: "Station one", status, capabilities, roles: [] }] });
     render(<MemoryRouter><PrincipalProvider client={fakeClient as never} request={request}><ActiveStationProvider><AppHeader active="lakes" client={fakeClient as never} /></ActiveStationProvider></PrincipalProvider></MemoryRouter>);
     await waitFor(() => expect(request).toHaveBeenCalled());
-    await waitFor(() => expect(screen.getByRole("combobox", { name: /active station/i })).toHaveDisplayValue(status === "active" ? "Station one" : "No active station"));
     fireEvent.click(screen.getByRole("button", { name: /open account menu/i }));
-    if (visible) expect(screen.getByRole("link", { name: "Station administration" })).toHaveAttribute("href", "/stations/station-1/admin");
+    if (visible) expect(await screen.findByRole("link", { name: "Station administration" })).toHaveAttribute("href", "/stations/station-1/admin");
     else expect(screen.queryByRole("link", { name: "Station administration" })).not.toBeInTheDocument();
   });
 
@@ -36,24 +35,29 @@ describe("AppHeader", () => {
     };
   }
 
-  it("shows workspace navigation, a station selector, and an account menu", async () => {
+  it("shows lake navigation without a global station filter or Operations tab", async () => {
     const fakeClient = client();
     render(
       <MemoryRouter>
-        <AppHeader active="operations" client={fakeClient as never} />
+        <AppHeader active="lakes" client={fakeClient as never} />
       </MemoryRouter>,
     );
 
     expect(screen.getByText("LakeSafe")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Lakes" })).toHaveAttribute("href", "/lakes");
-    expect(screen.getByRole("link", { name: "Operations" })).toHaveAttribute("aria-current", "page");
+    expect(screen.queryByRole("link", { name: "Operations" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Alerts" })).toHaveAttribute("href", "/alerts");
     expect(screen.getByRole("link", { name: "Reports" })).toHaveAttribute("href", "/reports");
-    expect(await screen.findByRole("combobox", { name: /active station/i })).toHaveDisplayValue("No active station");
+    expect(screen.queryByRole("combobox", { name: /active station/i })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /open account menu/i }));
     expect(screen.getByRole("link", { name: /profile settings/i })).toHaveAttribute("href", "/profile");
     expect(screen.getByRole("button", { name: /sign out/i })).toBeInTheDocument();
+  });
+
+  it("allows station-scoped pages to opt into the station selector", () => {
+    render(<MemoryRouter><AppHeader active="profile" showStationPicker client={client() as never}/></MemoryRouter>);
+    expect(screen.getByRole("combobox", { name: "Active station" })).toBeInTheDocument();
   });
 
   it("signs the operator out and returns to login", async () => {

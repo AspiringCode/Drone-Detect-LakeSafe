@@ -14,8 +14,6 @@ export function LakeGridPage({ client = supabase }: { client?: SupabaseLike }) {
   const [error, setError] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const activeStation = useOptionalActiveStation();
-  const station = activeStation?.station ?? null;
-  const visibleLakes = station ? lakes.filter((lake) => (lake.station_id ?? lake.org_id) === station.station_id) : lakes;
   useEffect(() => {
     let current = true;
     setLoading(true);
@@ -46,14 +44,14 @@ export function LakeGridPage({ client = supabase }: { client?: SupabaseLike }) {
         {loading && <p className="empty-state" role="status">Loading lakes…</p>}
         {error && <section className="workflow-card"><p className="form-error" role="alert">Could not load lakes. Please try again.</p><button type="button" onClick={() => setAttempt((value) => value + 1)}>Retry</button></section>}
         {!loading && !error && <div className="lake-grid">
-          {visibleLakes.map((lake) => (
-            <Link className="lake-card" to={`/lakes/${lake.lake_id}`} key={lake.lake_id}>
+          {lakes.map((lake) => (
+            <Link className="lake-card" to={`/lakes/${lake.lake_id}`} key={lake.lake_id} onClick={() => { if (lake.station_id) activeStation?.select(lake.station_id); }}>
               <LakePreviewMap name={lake.name} lat={lake.centroid_lat} lon={lake.centroid_lon} />
               <span className="lake-card__footer"><strong>{lake.name}</strong><span aria-hidden="true">→</span></span>
             </Link>
           ))}
         </div>}
-        {!loading && !error && !visibleLakes.length && <p className="empty-state">No lakes are assigned to this station yet.</p>}
+        {!loading && !error && !lakes.length && <p className="empty-state">No lakes are assigned to your account yet.</p>}
       </section>
     </main>
   );

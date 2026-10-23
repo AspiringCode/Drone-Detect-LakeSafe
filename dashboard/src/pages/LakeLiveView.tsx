@@ -146,21 +146,19 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
   }
   async function demo() { if (!canManageAlerts) return; const token = accessToken ?? (await client.auth.getSession()).data.session?.access_token; const response = await fetcher(`${API}/api/lakes/${lakeId}/demo/trigger`, { method: "POST", headers: { Authorization: `Bearer ${token ?? ""}` } }); if (response.ok) setAlert(await response.json()); }
   async function escalate(id: string) { if (!canManageAlerts) return; const token = accessToken ?? (await client.auth.getSession()).data.session?.access_token; await fetcher(`${API}/api/lakes/${lakeId}/alerts/${id}/escalate`, { method: "POST", headers: { Authorization: `Bearer ${token ?? ""}` } }); }
-  if (metadataError) return <main className="app-page"><AppHeader active="operations" contextLabel={lakeName} client={client} /><section className="runtime-unavailable"><h1>Lake information is unavailable</h1><p role="alert" aria-label="Lake information error">Lake information could not be loaded. Return to lakes and reopen this workspace to retry.</p><Link className="button-link" to="/lakes">Return to lakes</Link></section></main>;
-  if (noLive) return <main className="app-page"><AppHeader active="operations" contextLabel={lakeName} client={client} /><section className="runtime-unavailable"><h1>No live data for this lake</h1><p>The operator runtime is unavailable. Return to your lakes to choose another workspace.</p><Link className="button-link" to="/lakes">Return to lakes</Link></section></main>;
+  if (metadataError) return <main className="app-page"><AppHeader active="lakes" contextLabel={lakeName} client={client} /><section className="runtime-unavailable"><h1>Lake information is unavailable</h1><p role="alert" aria-label="Lake information error">Lake information could not be loaded. Return to lakes and reopen this workspace to retry.</p><Link className="button-link" to="/lakes">Return to lakes</Link></section></main>;
+  if (noLive) return <main className="app-page"><AppHeader active="lakes" contextLabel={lakeName} client={client} /><section className="runtime-unavailable"><h1>No live data for this lake</h1><p>The operator runtime is unavailable. Return to your lakes to choose another workspace.</p><Link className="button-link" to="/lakes">Return to lakes</Link></section></main>;
   return (
     <main ref={ref} className="app-page live-shell">
-      <AppHeader active="operations" contextLabel={lakeName} operationsHref={`/lakes/${lakeId}`} client={client} />
+      <AppHeader active="lakes" contextLabel={lakeName} client={client} />
       <section className="live-summary">
         <div className="live-heading">
-          <div>
+          <div className="live-title-row">
             <nav className="live-context" aria-label="Breadcrumb">
               <Link to="/lakes">Lakes</Link>
               <span aria-hidden="true"> &gt; </span>
-              <span aria-current="page">Operations</span>
             </nav>
             <h1>{lakeName}</h1>
-            <p className="live-description">Patrol coverage, fleet telemetry and incident response.</p>
           </div>
           <SimulatedBadge source="simulated" />
         </div>
@@ -170,8 +168,7 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
           <header className="map-heading"><h2>Patrol lookout</h2><span>Lake coverage</span></header>
           {lakeCenter ? <LakeMap lakeName={lakeName} lakeCenter={lakeCenter} riskmap={riskmap} drones={drones} /> : <div className="map-placeholder" role="status"><h2>Map not available yet</h2><p>Waiting for this lake’s location data.</p></div>}
         </section>
-        <aside className="side-panel" aria-label="Operations details">
-          {operationsDataError && <p className="operations-data-error" role="alert" aria-label="Operational data error">{operationsDataError}</p>}
+        <aside className="side-panel" aria-label="Live status">
           {canReadOperations && <ZonePlanStatus plan={zonePlan} />}
           <section className="panel-card fleet-card">
             <div className="panel-heading">
@@ -183,6 +180,10 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
             </div>
             <DroneRoster drones={drones} />
           </section>
+        </aside>
+      </section>
+      <section className="operations-details" aria-label="Lake details and controls">
+          {operationsDataError && <p className="operations-data-error" role="alert" aria-label="Operational data error">{operationsDataError}</p>}
           {canReadOperations && <FleetInventoryPanel drones={fleet} />}
           {canReadOperations && realSafety && <RealFleetSafetyPanel capabilities={stationCapabilities} status={realSafety} busy={realSafetyBusy} error={realSafetyError} onSetAutonomy={changeRealAutonomy} onRequestSafeReturn={returnRealFleet} />}
           <section className="panel-card alert-card">
@@ -194,7 +195,6 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
             <button className="button-secondary" onClick={demo}>Fire demo trigger</button>
           </section>}
           {canManageAutonomy && <AutonomyControls capabilities={stationCapabilities} drones={fleet} pendingId={pendingCirculationId} reconciliationId={reconciliationId} error={circulationError} onRequest={changeCirculation} />}
-        </aside>
       </section>
     </main>
   );

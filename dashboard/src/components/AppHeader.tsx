@@ -4,16 +4,16 @@ import { supabase, type SupabaseLike } from "../lib/supabase";
 import { useOptionalPrincipal } from "../auth/PrincipalProvider";
 import { useOptionalActiveStation } from "../hooks/useActiveStation";
 
-type HeaderSection = "lakes" | "operations" | "alerts" | "reports" | "profile";
+type HeaderSection = "lakes" | "alerts" | "reports" | "drones" | "profile";
 
 type AppHeaderProps = {
   active: HeaderSection;
   contextLabel?: string;
-  operationsHref?: string;
+  showStationPicker?: boolean;
   client?: SupabaseLike;
 };
 
-export function AppHeader({ active, contextLabel, operationsHref = "/lakes", client = supabase }: AppHeaderProps) {
+export function AppHeader({ active, contextLabel, showStationPicker = false, client = supabase }: AppHeaderProps) {
   const navigate = useNavigate();
   const principalContext = useOptionalPrincipal();
   const activeContext = useOptionalActiveStation();
@@ -38,7 +38,6 @@ export function AppHeader({ active, contextLabel, operationsHref = "/lakes", cli
 
   function chooseStation(stationId: string) {
     activeContext?.select(stationId);
-    navigate("/lakes");
   }
 
   async function signOut() {
@@ -61,19 +60,19 @@ export function AppHeader({ active, contextLabel, operationsHref = "/lakes", cli
       </Link>
       <nav className="app-nav" aria-label="Primary navigation">
         <Link className={navClass("lakes")} to="/lakes" aria-current={active === "lakes" ? "page" : undefined}>Lakes</Link>
-        <Link className={navClass("operations")} to={operationsHref} aria-current={active === "operations" ? "page" : undefined}>Operations</Link>
         <Link className={navClass("alerts")} to="/alerts" aria-current={active === "alerts" ? "page" : undefined}>Alerts</Link>
         <Link className={navClass("reports")} to="/reports" aria-current={active === "reports" ? "page" : undefined}>Reports</Link>
+        {stations.some((station) => station.capabilities.includes("inventory.manage")) && <Link className={navClass("drones")} to="/drones" aria-current={active === "drones" ? "page" : undefined}>Drones</Link>}
       </nav>
       <div className="app-account">
         {principalContext?.principal?.judge_demo_access === true && <span className="status-label">Demo</span>}
-        <label className="station-picker">
+        {showStationPicker && <label className="station-picker">
           <span className="sr-only">Active station</span>
           <select aria-label="Active station" value={selectedStation} onChange={(event) => chooseStation(event.target.value)}>
             {!stations.length && <option value="">{contextLabel ?? "No active station"}</option>}
             {stations.map((station) => <option value={station.station_id} key={station.station_id}>{station.station_name}</option>)}
           </select>
-        </label>
+        </label>}
         <button className="account-trigger" type="button" aria-label="Open account menu" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>
           <span aria-hidden="true">{accountInitial}</span>
         </button>

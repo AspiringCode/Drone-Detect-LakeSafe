@@ -93,6 +93,11 @@ describe("operator workflow", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "Lake Sammamish" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: /fleet inventory/i })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: /autonomous circulation controls/i })).toBeInTheDocument();
+    const details = screen.getByRole("region", { name: "Lake details and controls" });
+    expect(details).toContainElement(screen.getByRole("region", { name: /fleet inventory/i }));
+    expect(details).toContainElement(screen.getByRole("region", { name: /autonomous circulation controls/i }));
+    expect(screen.getByRole("complementary", { name: "Live status" })).not.toContainElement(details);
+    expect(screen.queryByText("Patrol coverage, fleet telemetry and incident response.")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /deploy drone/i })).not.toBeInTheDocument();
     await waitFor(() => expect(operational).toHaveBeenCalledWith(expect.stringContaining("/ws/operations/lakes/lake-sammamish"), "token", expect.any(Function)));
   });
@@ -178,7 +183,8 @@ describe("operator workflow", () => {
     expect(await screen.findByTestId("lake-map")).toHaveTextContent("47.591,-122.098");
     expect(screen.getByRole("progressbar", { name: /fleet capacity/i })).toHaveAttribute("aria-valuemax", "1");
     const breadcrumb = screen.getByRole("navigation", { name: /breadcrumb/i });
-    expect(breadcrumb).toHaveTextContent("Lakes > Operations");
+    expect(breadcrumb).toHaveTextContent("Lakes >");
+    expect(breadcrumb.parentElement).toContainElement(screen.getByRole("heading", { level: 1, name: "Lake Sammamish" }));
     expect(within(breadcrumb).getByRole("link", { name: "Lakes" })).toHaveAttribute("href", "/lakes");
     expect(screen.queryByText("Live operations")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /deploy drone|inventory cap reached/i })).not.toBeInTheDocument();

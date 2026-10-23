@@ -278,16 +278,16 @@ legend { padding: 0 0.4rem; font-weight: 700; }
 .coverage-notice--fallback_coverage { background: var(--warning-surface); color: oklch(43% .09 80); }
 @media (max-width: 700px) { .workflow-grid, .form-grid--two { grid-template-columns: 1fr; } }
 
-.live-shell { display: grid; grid-template-rows: auto auto minmax(0, 1fr); height: 100dvh; min-height: 0; overflow: hidden; }
+.live-shell { min-height: 100vh; }
 .live-summary { min-height: 0; }
 .live-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; width: min(calc(100% - 4rem), 104rem); margin: 0 auto; padding: 1.5rem 0 1.25rem; }
-.live-context { display: flex; align-items: center; gap: .6rem; margin: 0 0 0.35rem; color: var(--primary); font-size: 0.68rem; font-weight: 750; letter-spacing: 0.13em; text-transform: uppercase; }
+.live-title-row { display: flex; align-items: center; gap: .8rem; min-width: 0; }
+.live-context { display: flex; flex-shrink: 0; align-items: center; gap: .6rem; margin: 0; color: var(--primary); font-size: 0.68rem; font-weight: 750; letter-spacing: 0.13em; text-transform: uppercase; }
 .live-context a { color: var(--text-muted); text-decoration: none; }
 .live-context a:hover { color: var(--primary-hover); }
 .live-heading h1 { font-size: clamp(1.8rem, 3vw, 2.5rem); }
-.live-description { margin: .6rem 0 0; color: var(--text-muted); font-size: .85rem; line-height: 1.5; }
-.operator-layout { display: grid; grid-template-columns: minmax(0, 2.65fr) minmax(19rem, 1fr); gap: 1.25rem; width: min(calc(100% - 4rem), 104rem); height: 100%; min-height: 0; margin: 0 auto; padding-bottom: 2rem; overflow: hidden; }
-.map-card { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; min-height: 0; height: 100%; overflow: hidden; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); box-shadow: var(--shadow-soft); }
+.operator-layout { display: grid; grid-template-columns: minmax(0, 1.9fr) minmax(22rem, 1fr); align-items: start; gap: 1.25rem; width: min(calc(100% - 4rem), 104rem); margin: 0 auto; padding-bottom: 1.25rem; }
+.map-card { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; min-height: 0; height: clamp(34rem, 68vh, 48rem); overflow: hidden; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); box-shadow: var(--shadow-soft); }
 .map-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); }
 .map-heading h2 { font-size: .9rem; }
 .map-heading > span { color: var(--text-muted); font-size: .75rem; }
@@ -296,9 +296,12 @@ legend { padding: 0 0.4rem; font-weight: 700; }
 .runtime-unavailable { max-width: 42rem; margin: 0 auto; padding: clamp(2rem, 8vw, 6rem) 1.25rem; }
 .runtime-unavailable > p:not(.kicker) { color: var(--text-muted); line-height: 1.7; }
 .lake-map { width: 100%; height: 100%; min-height: 0; }
-.side-panel { display: flex; flex-direction: column; gap: 0.85rem; min-width: 0; min-height: 0; overflow-y: auto; padding-right: 0.3rem; scrollbar-gutter: stable; overscroll-behavior: contain; }
+.side-panel { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
 .side-panel > * { flex: 0 0 auto; }
 .side-panel .fleet-card { overflow-x: auto; }
+.operations-details { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; gap: 1.25rem; width: min(calc(100% - 4rem), 104rem); margin: 0 auto; padding-bottom: 2rem; }
+.operations-details > * { min-width: 0; }
+.operations-details > .operations-data-error { grid-column: 1 / -1; }
 .panel-card { padding: 1.15rem; overflow: hidden; border: 1px solid var(--border); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow-soft); }
 .panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 0.9rem; }
 .panel-eyebrow { margin-bottom: 0.25rem; color: var(--text-muted); font-size: 0.62rem; }
@@ -408,9 +411,9 @@ legend { padding: 0 0.4rem; font-weight: 700; }
   .app-nav { order: 3; grid-column: 1 / -1; justify-content: safe center; min-width: 0; min-height: 3rem; overflow-x: auto; border-top: 1px solid var(--border); }
   .app-nav__item { flex-shrink: 0; }
   .app-account { grid-column: 2; }
-  .live-shell { display: block; height: auto; min-height: 100vh; overflow: visible; }
   .operator-layout { grid-template-columns: 1fr; width: calc(100% - 2rem); height: auto; min-height: auto; overflow: visible; }
-  .map-card, .lake-map { min-height: 55vh; }
+  .map-card { height: clamp(28rem, 65vh, 38rem); }
+  .operations-details { width: calc(100% - 2rem); grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .side-panel { display: flex; overflow: visible; }
   .drone-roster { font-size: 0.68rem; }
   .report-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -443,7 +446,10 @@ legend { padding: 0 0.4rem; font-weight: 700; }
   .auth-page, .workflow-page:not(.app-page), .no-live { padding: 0.75rem; }
   .auth-card, .workflow-card { border-radius: 20px; padding: 1.5rem; }
   .live-heading { flex-direction: column; align-items: flex-start; }
-  .map-card, .lake-map { min-height: 28rem; }
+  .live-title-row { gap: .5rem; }
+  .live-title-row h1 { font-size: 1.8rem; }
+  .map-card { height: 30rem; }
+  .operations-details { grid-template-columns: 1fr; }
   .panel-card { padding: 1rem; }
   .profile-card { padding: 1.25rem; border-radius: 18px; }
   .profile-actions button { width: 100%; }
