@@ -5,14 +5,36 @@ import { LakeLiveView } from "./LakeLiveView";
 import { PrincipalProvider } from "../auth/PrincipalProvider";
 
 vi.mock("../components/LakeMap", () => ({
-  LakeMap: ({ lakeName, lakeCenter }: { lakeName: string; lakeCenter: { lat: number; lon: number } }) => (
-    <div role="region" aria-label={`${lakeName} operator map`} data-center={`${lakeCenter.lat},${lakeCenter.lon}`} />
+  LakeMap: ({ lakeName, lakeCenter, stationLocation }: { lakeName: string; lakeCenter: { lat: number; lon: number }; stationLocation?: unknown }) => (
+    <div role="region" aria-label={`${lakeName} operator map`} data-center={`${lakeCenter.lat},${lakeCenter.lon}`} data-station={stationLocation ? "present" : "absent"} />
   ),
 }));
 
 const response = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 describe("LakeLiveView autonomous plan state", () => {
+  it.each([null, undefined])("loads canonical lake data and permissions without a legacy organization (%s)", async (organizations) => {
+    const connectOperational = vi.fn(() => () => {});
+    const fetcher = vi.fn(async (url: string) => response(url.includes("/alerts") ? [] : {}));
+    const metadata = { name: "Canonical Lake", centroid_lat: 47.5, centroid_lon: -122.1, station_id: "station", drone_inventory_cap: 7, organizations };
+    const client = { auth: { getSession: async () => ({ data: { session: { access_token: "token" } } }), onAuthStateChange: () => ({ data: { subscription: { unsubscribe: vi.fn() } } }) }, from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: metadata, error: null }) }) }) }) };
+    const request = vi.fn().mockResolvedValue({ aal: "aal2", memberships: [{ station_id: "station", status: "active", capabilities: ["station.read", "autonomy.manage"] }] });
+    render(<PrincipalProvider client={client as never} request={request}><MemoryRouter initialEntries={["/lakes/canonical"]}><Routes><Route path="/lakes/:lakeId" element={<LakeLiveView client={client as never} fetcher={fetcher as never} connectOperational={connectOperational} />} /></Routes></MemoryRouter></PrincipalProvider>);
+    expect(await screen.findByRole("heading", { level: 1, name: "Canonical Lake" })).toBeVisible();
+    expect(screen.getByRole("region", { name: "Canonical Lake operator map" })).toHaveAttribute("data-center", "47.5,-122.1");
+    expect(screen.getByRole("progressbar", { name: "Fleet capacity" })).toHaveAttribute("aria-valuemax", "7");
+    expect(await screen.findByRole("region", { name: "Autonomous circulation controls" })).toBeVisible();
+  });
+  it.each(["returned", "thrown"])("explains a %s metadata failure instead of waiting forever", async (kind) => {
+    const client = { from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => {
+      if (kind === "thrown") throw new TypeError("Failed to fetch");
+      return { data: null, error: { message: "permission denied" } };
+    } }) }) }) };
+    render(<MemoryRouter initialEntries={["/lakes/unavailable"]}><Routes><Route path="/lakes/:lakeId" element={<LakeLiveView client={client as never} />} /></Routes></MemoryRouter>);
+    expect(await screen.findByRole("alert", { name: "Lake information error" })).toHaveTextContent("Lake information could not be loaded");
+    expect(screen.queryByText("Waiting for this lake’s location data.")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Return to lakes" })).toHaveAttribute("href", "/lakes");
+  });
   it.each([
     ["lake-pine", "Pine Lake", 47.587, -122.052],
     ["lake-beaver", "Beaver Lake", 47.585, -121.997],
@@ -46,7 +68,8 @@ describe("LakeLiveView autonomous plan state", () => {
 
     expect(await screen.findByRole("heading", { name: lakeName })).toBeVisible();
     expect(await screen.findByRole("region", { name: `${lakeName} operator map` })).toHaveAttribute("data-center", `${centroidLat},${centroidLon}`);
-    expect(select).toHaveBeenCalledWith(expect.stringContaining("centroid_lat,centroid_lon"));
+    expect(select).toHaveBeenCalledWith("name,centroid_lat,centroid_lon,station_id,drone_inventory_cap");
+    expect(screen.getByRole("region", { name: `${lakeName} operator map` })).toHaveAttribute("data-station", "absent");
     expect(screen.queryByText("Live lake")).not.toBeInTheDocument();
   });
 

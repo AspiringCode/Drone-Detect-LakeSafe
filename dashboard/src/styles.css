@@ -23,8 +23,8 @@
 }
 
 * { box-sizing: border-box; }
-html { min-width: 320px; background: var(--canvas); }
-body { margin: 0; min-width: 320px; min-height: 100vh; }
+html { min-width: 0; background: var(--canvas); }
+body { margin: 0; min-width: 0; min-height: 100vh; }
 button, input, select { font: inherit; }
 button, input, select, .lake-card, .app-nav__item { min-height: 44px; }
 button {
@@ -405,7 +405,8 @@ legend { padding: 0 0.4rem; font-weight: 700; }
 
 @media (max-width: 960px) {
   .app-header { grid-template-columns: 1fr auto; }
-  .app-nav { order: 3; grid-column: 1 / -1; justify-content: center; min-height: 3rem; border-top: 1px solid var(--border); }
+  .app-nav { order: 3; grid-column: 1 / -1; justify-content: safe center; min-width: 0; min-height: 3rem; overflow-x: auto; border-top: 1px solid var(--border); }
+  .app-nav__item { flex-shrink: 0; }
   .app-account { grid-column: 2; }
   .live-shell { display: block; height: auto; min-height: 100vh; overflow: visible; }
   .operator-layout { grid-template-columns: 1fr; width: calc(100% - 2rem); height: auto; min-height: auto; overflow: visible; }
@@ -433,8 +434,12 @@ legend { padding: 0 0.4rem; font-weight: 700; }
 }
 
 @media (max-width: 430px) {
+  .app-header { grid-template-columns: max-content minmax(0, 1fr); }
   .app-brand__name { font-size: 1.05rem; }
-  .station-picker select { width: 7.5rem; max-width: 7.5rem; font-size: 0.68rem; }
+  .app-account { justify-self: stretch; justify-content: flex-end; }
+  .app-account > .status-label { flex-shrink: 0; margin: 0; padding: .25rem .45rem; font-size: .65rem; }
+  .app-account .station-picker { min-width: 0; flex: 1 1 auto; }
+  .station-picker select { width: 100%; min-width: 0; max-width: 7.5rem; font-size: 0.68rem; }
   .auth-page, .workflow-page:not(.app-page), .no-live { padding: 0.75rem; }
   .auth-card, .workflow-card { border-radius: 20px; padding: 1.5rem; }
   .live-heading { flex-direction: column; align-items: flex-start; }

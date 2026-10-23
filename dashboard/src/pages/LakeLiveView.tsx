@@ -20,7 +20,7 @@ import { ApiError } from "../lib/apiClient";
 const API = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 const wsFor = (lakeId: string) => `${API.replace(/^http/, "ws")}/ws/operations/lakes/${lakeId}`;
 type Organization = { station_lat: number; station_lon: number };
-type LakeMetadata = { name: string; centroid_lat: number; centroid_lon: number; drone_inventory_cap: number; station_id?: string; organizations: Organization | Organization[] | null };
+type LakeMetadata = { name: string; centroid_lat: number; centroid_lon: number; drone_inventory_cap: number; station_id?: string };
 
 export function hasLakeCapability(principal: Principal | null | undefined, lakeStationId: string | null, capability: Capability): boolean {
   return Boolean(lakeStationId && principal && (principal.aal === "aal2" || principal.judge_demo_access === true) && principal.memberships.some((item) => item.station_id === lakeStationId && item.status === "active" && item.capabilities.includes(capability)));
@@ -35,7 +35,7 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
   const [riskmap, setRiskmap] = useState<RiskGeoJSON | null>(null);
   const [alert, setAlert] = useState<Alert | null>(null);
   const [noLive, setNoLive] = useState(false);
-  const [station, setStation] = useState<{ lat: number; lon: number } | null>(null);
+  const [metadataError, setMetadataError] = useState(false);
   const [inventoryCap, setInventoryCap] = useState<number | null>(null);
   const [lakeName, setLakeName] = useState("Lake operations");
   const [lakeCenter, setLakeCenter] = useState<LatLon | null>(null);
@@ -85,18 +85,24 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
   }, [lakeId, fetcher, connectOperational, client, accessToken, canReadOperations]);
   useEffect(() => {
     let active = true;
-    void client.from("lakes").select("name,centroid_lat,centroid_lon,station_id,drone_inventory_cap,organizations(station_lat,station_lon)").eq("lake_id", lakeId).maybeSingle().then(({ data, error }: { data: LakeMetadata | null; error: unknown }) => {
-      if (error || !data || !active) return;
-      const org = Array.isArray(data.organizations) ? data.organizations[0] : data.organizations;
-      setLakeName(data.name);
-      if (Number.isFinite(data.centroid_lat) && Number.isFinite(data.centroid_lon)) {
-        setLakeCenter({ lat: data.centroid_lat, lon: data.centroid_lon });
+    setMetadataError(false);
+    setLakeName("Lake operations");
+    setLakeCenter(null);
+    setLakeStationId(null);
+    setInventoryCap(null);
+    void (async () => {
+      try {
+        const { data, error }: { data: LakeMetadata | null; error: unknown } = await client.from("lakes").select("name,centroid_lat,centroid_lon,station_id,drone_inventory_cap").eq("lake_id", lakeId).maybeSingle();
+        if (!active) return;
+        if (error || !data) throw error ?? new Error("Lake unavailable");
+        setLakeName(data.name);
+        if (Number.isFinite(data.centroid_lat) && Number.isFinite(data.centroid_lon)) setLakeCenter({ lat: data.centroid_lat, lon: data.centroid_lon });
+        setLakeStationId(data.station_id ?? null);
+        setInventoryCap(data.drone_inventory_cap);
+      } catch {
+        if (active) setMetadataError(true);
       }
-      setLakeStationId(data.station_id ?? null);
-      if (!org) return;
-      setStation({ lat: org.station_lat, lon: org.station_lon });
-      setInventoryCap(data.drone_inventory_cap);
-    });
+    })();
     return () => { active = false; };
   }, [client, lakeId]);
 
@@ -140,6 +146,7 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
   }
   async function demo() { if (!canManageAlerts) return; const token = accessToken ?? (await client.auth.getSession()).data.session?.access_token; const response = await fetcher(`${API}/api/lakes/${lakeId}/demo/trigger`, { method: "POST", headers: { Authorization: `Bearer ${token ?? ""}` } }); if (response.ok) setAlert(await response.json()); }
   async function escalate(id: string) { if (!canManageAlerts) return; const token = accessToken ?? (await client.auth.getSession()).data.session?.access_token; await fetcher(`${API}/api/lakes/${lakeId}/alerts/${id}/escalate`, { method: "POST", headers: { Authorization: `Bearer ${token ?? ""}` } }); }
+  if (metadataError) return <main className="app-page"><AppHeader active="operations" contextLabel={lakeName} client={client} /><section className="runtime-unavailable"><h1>Lake information is unavailable</h1><p role="alert" aria-label="Lake information error">Lake information could not be loaded. Return to lakes and reopen this workspace to retry.</p><Link className="button-link" to="/lakes">Return to lakes</Link></section></main>;
   if (noLive) return <main className="app-page"><AppHeader active="operations" contextLabel={lakeName} client={client} /><section className="runtime-unavailable"><h1>No live data for this lake</h1><p>The operator runtime is unavailable. Return to your lakes to choose another workspace.</p><Link className="button-link" to="/lakes">Return to lakes</Link></section></main>;
   return (
     <main ref={ref} className="app-page live-shell">
@@ -161,7 +168,7 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
       <section className="operator-layout" aria-label={`${lakeName} live operations`}>
         <section className="map-card" aria-label="Live lake map">
           <header className="map-heading"><h2>Patrol lookout</h2><span>Lake coverage</span></header>
-          {lakeCenter ? <LakeMap lakeName={lakeName} lakeCenter={lakeCenter} riskmap={riskmap} drones={drones} stationLocation={station ?? undefined} /> : <div className="map-placeholder" role="status"><h2>Map not available yet</h2><p>Waiting for this lake’s location data.</p></div>}
+          {lakeCenter ? <LakeMap lakeName={lakeName} lakeCenter={lakeCenter} riskmap={riskmap} drones={drones} /> : <div className="map-placeholder" role="status"><h2>Map not available yet</h2><p>Waiting for this lake’s location data.</p></div>}
         </section>
         <aside className="side-panel" aria-label="Operations details">
           {operationsDataError && <p className="operations-data-error" role="alert" aria-label="Operational data error">{operationsDataError}</p>}

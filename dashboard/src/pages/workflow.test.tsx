@@ -14,7 +14,7 @@ import type { Principal } from "../lib/types";
 import { OnboardingPage } from "./OnboardingPage";
 
 vi.mock("../components/LakeMap", () => ({
-  LakeMap: ({ stationLocation }: { stationLocation: { lat: number; lon: number } }) => <div data-testid="lake-map">{stationLocation.lat},{stationLocation.lon}</div>,
+  LakeMap: ({ lakeCenter }: { lakeCenter: { lat: number; lon: number } }) => <div data-testid="lake-map">{lakeCenter.lat},{lakeCenter.lon}</div>,
 }));
 
 const session = { access_token: "token" };
@@ -170,12 +170,12 @@ describe("operator workflow", () => {
     expect(screen.getByRole("link", { name: /first lake/i })).toBeInTheDocument();
   });
 
-  it("uses persisted lake identity and station coordinates without exposing manual deployment", async () => {
+  it("uses persisted lake identity and lake coordinates without exposing manual deployment", async () => {
     const metadataClient = { auth: { getSession: vi.fn().mockResolvedValue({ data: { session } }) }, from: vi.fn(() => ({ select: vi.fn(() => ({ eq: vi.fn(() => ({ maybeSingle: vi.fn().mockResolvedValue({ data: { name: "Lake Sammamish", centroid_lat: 47.591, centroid_lon: -122.098, station_id: "station-a", drone_inventory_cap: 1, organizations: { station_lat: 47.5301, station_lon: -122.0326 } }, error: null }) })) })) })) };
     const fetcher = vi.fn((url: string) => { if (url.includes("riskmap")) return Promise.resolve({ ok: true, status: 200, json: async () => ({ type: "FeatureCollection", features: [] }) }); if (url.includes("alerts")) return Promise.resolve({ ok: true, status: 200, json: async () => [] }); return Promise.resolve({ ok: true, status: 200, json: async () => ({}) }); });
     render(<MemoryRouter initialEntries={["/lakes/lake-sammamish"]}><Routes><Route path="/lakes/:lakeId" element={<LakeLiveView client={metadataClient as never} accessToken="token" fetcher={fetcher as never} />} /></Routes></MemoryRouter>);
     expect(await screen.findByRole("heading", { level: 1, name: "Lake Sammamish" })).toBeInTheDocument();
-    expect(await screen.findByTestId("lake-map")).toHaveTextContent("47.5301,-122.0326");
+    expect(await screen.findByTestId("lake-map")).toHaveTextContent("47.591,-122.098");
     expect(screen.getByRole("progressbar", { name: /fleet capacity/i })).toHaveAttribute("aria-valuemax", "1");
     const breadcrumb = screen.getByRole("navigation", { name: /breadcrumb/i });
     expect(breadcrumb).toHaveTextContent("Lakes > Operations");
