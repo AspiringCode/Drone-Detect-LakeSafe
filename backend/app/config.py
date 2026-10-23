@@ -31,6 +31,7 @@ IDME_PROFILE_FAILURE_URL = os.getenv("IDME_PROFILE_FAILURE_URL", "/profile?verif
 RISK_CONNECTOR_REFRESH_HOURS = int(os.getenv("RISK_CONNECTOR_REFRESH_HOURS", "24"))
 DEVICE_CLOCK_SKEW_SECONDS = int(os.getenv("DEVICE_CLOCK_SKEW_SECONDS", "30"))
 REAL_HEARTBEAT_TTL_SECONDS = int(os.getenv("REAL_HEARTBEAT_TTL_SECONDS", "15"))
+# "heartbeat" hands commands to drones in their heartbeat replies (devices/live_commands.py) instead of POSTing to a gateway.
 REAL_GATEWAY_URL = os.getenv("REAL_GATEWAY_URL")
 # Server-only secret-manager reference. Never use a VITE_ prefix.
 REAL_GATEWAY_SIGNING_KEY_REF = os.getenv("REAL_GATEWAY_SIGNING_KEY_REF")

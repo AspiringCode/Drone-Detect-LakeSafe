@@ -1,4 +1,4 @@
-"""Forward ArduPilot MAVLink telemetry to LakeSafe as signed heartbeats.
+"""Forward ArduPilot MAVLink telemetry to LakeSafe as signed heartbeats, and run the website commands they bring back.
 
 Runs off the drone or next to it; copy this file and drone_link.py side by side.
   pip install pymavlink cryptography
@@ -64,6 +64,78 @@ def payload(state: dict, now: float) -> dict:
     return body
 
 
+MAV_CMD_DO_SET_MODE = 176
+CUSTOM_MODE_ENABLED = 1  # MAV_MODE_FLAG_CUSTOM_MODE_ENABLED
+AUTO, LOITER, RTL = 3, 5, 6  # ArduCopter custom_mode numbers
+REPLY_TIMEOUT_S = 3.0
+
+
+def _reply(conn, sysid: int, kinds: list[str]):
+    """Next reply of these kinds from this vehicle; telemetry read meanwhile is dropped (a few seconds at most)."""
+    deadline = time.monotonic() + REPLY_TIMEOUT_S
+    while (left := deadline - time.monotonic()) > 0:
+        msg = conn.recv_match(type=kinds, blocking=True, timeout=left)
+        if msg is not None and msg.get_srcSystem() == sysid:
+            return msg
+    return None
+
+
+def set_mode(conn, sysid: int, mode: int) -> bool:
+    conn.mav.command_long_send(sysid, AUTOPILOT_COMPONENT, MAV_CMD_DO_SET_MODE, 0, CUSTOM_MODE_ENABLED, mode, 0, 0, 0, 0, 0)
+    while (ack := _reply(conn, sysid, ["COMMAND_ACK"])) is not None:
+        if ack.command == MAV_CMD_DO_SET_MODE:
+            return ack.result == 0  # MAV_RESULT_ACCEPTED
+    return False
+
+
+def upload_mission(conn, sysid: int, rows: list[list[float]]) -> bool:
+    """MAVLink mission upload: announce the count, answer each item request, wait for the ACK."""
+    conn.mav.mission_count_send(sysid, AUTOPILOT_COMPONENT, len(rows), 0)
+    while (msg := _reply(conn, sysid, ["MISSION_REQUEST_INT", "MISSION_REQUEST", "MISSION_ACK"])) is not None:
+        if msg.get_type() == "MISSION_ACK":
+            return msg.type == 0  # MAV_MISSION_ACCEPTED
+        if not 0 <= msg.seq < len(rows):
+            return False
+        frame, command, p1, p2, p3, p4, lat, lon, alt = rows[msg.seq]
+        conn.mav.mission_item_int_send(sysid, AUTOPILOT_COMPONENT, msg.seq, int(frame), int(command), 0, 1,
+                                       p1, p2, p3, p4, int(lat * 1e7), int(lon * 1e7), alt, 0)
+    return False
+
+
+def run_command(conn, sysid: int, state: dict, command: dict) -> tuple[str, str]:
+    """Carry out one website command; returns (accepted|rejected, detail). The RC transmitter always overrides."""
+    kind = command.get("command_type")
+    armed = state.get("armed", False)
+    if kind in ("return_to_reserve", "safety_hold"):
+        if not armed:
+            return "accepted", "on the ground; nothing to do"
+        mode, name = (RTL, "RTL") if kind == "return_to_reserve" else (LOITER, "LOITER")
+        return ("accepted", f"switched to {name}") if set_mode(conn, sysid, mode) else ("rejected", f"flight controller refused {name}")
+    if kind == "patrol":
+        if not upload_mission(conn, sysid, command.get("mission") or []):
+            return "rejected", "mission upload failed"
+        # Arming stays with the pilot: on the ground the mission just waits for them.
+        if not armed:
+            return "accepted", "mission uploaded; arm and switch to AUTO to fly it"
+        return ("accepted", "mission uploaded; flying it in AUTO") if set_mode(conn, sysid, AUTO) else ("rejected", "mission uploaded but AUTO was refused")
+    return "rejected", f"unsupported command {kind!r}"
+
+
+def handle_reply(conn, sysid: int, state: dict, text: str, done: set[str]) -> list[tuple[dict, str, str]]:
+    """Run commands from a heartbeat reply once each; outbox commands repeat until acknowledged."""
+    try:
+        commands = json.loads(text).get("commands") or []
+    except (ValueError, AttributeError):
+        return []
+    results = []
+    for command in commands:
+        if command.get("command_id") in done:
+            continue
+        done.add(command["command_id"])
+        results.append((command, *run_command(conn, sysid, state, command)))
+    return results
+
+
 def write_positions(path: str, positions: dict[str, dict], now: float) -> None:
     """Latest fix per drone for drone_detect.py; replaced atomically so a reader never sees half a file."""
     data = {drone_id: {**position, "at": now} for drone_id, position in positions.items() if position}
@@ -94,6 +166,7 @@ def main(argv: list[str] | None = None) -> int:
 
     drones = {sysid: (drone_id, drone_link._load_key(key_path)) for sysid, drone_id, key_path in args.drone}
     states: dict[int, dict] = {sysid: {} for sysid in drones}
+    done: dict[int, set[str]] = {sysid: set() for sysid in drones}
     conn = mavutil.mavlink_connection(args.mavlink, baud=args.baud)
     next_send = time.monotonic()
     while True:
@@ -118,6 +191,20 @@ def main(argv: list[str] | None = None) -> int:
             except OSError as exc:  # URLError and timeouts; never let a network blip stop the bridge
                 status, text = "error", str(exc)
             print(sysid, drone_id, body["health"], body["flight_status"], status, text, flush=True)
+            if status != 202:
+                continue
+            for command, outcome, detail in handle_reply(conn, sysid, states[sysid], text, done[sysid]):
+                print(sysid, drone_id, "command", command.get("command_type"), outcome, detail, flush=True)
+                if not command.get("ack"):
+                    continue
+                try:
+                    drone_link.post(args.api, f"/api/devices/{drone_id}/commands/{command['command_id']}/acknowledgements", key, drone_id, {
+                        "plan_id": command.get("plan_id"), "desired_state_version": command.get("desired_state_version"),
+                        "status": outcome, "detail": detail,
+                    })
+                except OSError as exc:
+                    # The command stays in the mailbox, but `done` stops a re-run; the server expires it.
+                    print(sysid, drone_id, "ack failed", exc, flush=True)
 
 
 if __name__ == "__main__":

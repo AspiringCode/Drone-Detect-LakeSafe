@@ -35,6 +35,8 @@ describe("DronesPage", () => {
     expect([...select.querySelectorAll("option")].map((option) => option.textContent)).toEqual(["Not assigned", "Drone Test Field"]);
     fireEvent.click(screen.getByRole("button", { name: "Place test marker" }));
     await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("/api/stations/st-1/inventory/d-1/test-position", expect.objectContaining({ body: JSON.stringify({ lat: 47.592, lon: -122.032 }) }), client));
+    fireEvent.click(screen.getByRole("button", { name: "Send patrol" }));
+    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("/api/stations/st-1/inventory/d-1/patrol", expect.objectContaining({ method: "POST" }), client));
   });
 
   it("registers a drone and shows its ID in the connect commands", async () => {

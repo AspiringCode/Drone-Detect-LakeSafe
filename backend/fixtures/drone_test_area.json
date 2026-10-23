@@ -3,6 +3,7 @@
   "name": "Drone Test Field (not a lake)",
   "center": {"lat": 47.592028, "lon": -122.032472},
   "square_half_side_m": 100,
+  "patrol_radius_m": 80,
   "polygon": [
     {"lat": 47.591130, "lon": -122.033804},
     {"lat": 47.591130, "lon": -122.031140},

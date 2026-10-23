@@ -157,6 +157,23 @@ def test_resolved_real_gateway_starts_real_only_publisher(monkeypatch):
     assert outbox.acknowledged_version("d1") == 0
 
 
+def test_heartbeat_gateway_puts_published_commands_in_the_drone_mailbox(monkeypatch):
+    from fastapi import FastAPI
+    from app.autonomy.repository import InMemoryAutonomyRepository
+    from app.devices import live_commands, reconciler
+
+    monkeypatch.setattr(reconciler, "REAL_GATEWAY_URL", "heartbeat")
+    monkeypatch.setattr(reconciler, "REAL_GATEWAY_SIGNING_KEY_REF", "gateway-key-ref")
+    monkeypatch.setattr(live_commands, "_mailbox", {})
+    app = FastAPI()
+    outbox = InMemoryAutonomyRepository(station_id="station-1")
+    outbox.enqueue(command_for())
+    assert reconciler.configure_real_autonomy_service(app, device_repository=Inventory(), secret_provider=Secrets(), autonomy_repository=outbox) is True
+    assert app.state.real_autonomy_service.reconcile_lake("lake-1", "heartbeat_recovery") == ("c5",)
+    [command] = live_commands.pending("d1")
+    assert (command["command_id"], command["ack"]) == ("c5", True)
+
+
 class AckRepository:
     def __init__(self) -> None:
         self.acks: list[tuple] = []

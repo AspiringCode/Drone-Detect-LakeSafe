@@ -79,6 +79,7 @@ PRIVILEGED_LIMITS: dict[str, tuple[int, int]] = {
     "inventory.real.register": (12, 3600),
     "inventory.real.retire": (20, 3600),
     "inventory.real.assign": (30, 3600),
+    "inventory.real.patrol": (30, 3600),
     "safety.autonomy": (5, 60),
     "safety.safe_return": (5, 60),
 }

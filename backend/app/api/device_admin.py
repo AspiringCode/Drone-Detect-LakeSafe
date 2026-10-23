@@ -1,22 +1,26 @@
-"""Station-admin real inventory registration, never flight control."""
+"""Station-admin real inventory and patrol hand-off; never stick-level flight control."""
 
 from __future__ import annotations
 
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.access.policy import Permission, require_recent_mfa, require_station_access
 from app.access.principal import Principal, get_principal
-from app.devices import live_positions
+from app.devices import live_commands, live_positions
 from app.devices.repository import DeviceRepositoryError, get_device_repository
 from app.devices.auth import DeviceAuthenticationError, decode_base64url
+from app.missions.export import DEFAULT_ALTITUDE_M
+from app.missions.qgc_plan import build_patrol_plan, mission_rows
 from app.rate_limits import require_rate_limit
 
 router = APIRouter(prefix="/api/stations/{station_id}/inventory", tags=["real-device-inventory"])
 TEST_POSITION_SECONDS = 300
+PATROL_COMMAND_SECONDS = 120
 
 class RealInventoryRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -102,6 +106,39 @@ def place_test_position(station_id: str, drone_id: str, value: TestPosition, pri
     marker = live_positions.real_drone(f"{drone_id} (test)", value.lat, value.lon, 100, "idle")
     live_positions.record(lake_id, replace(marker, source="simulated"), datetime.now(timezone.utc), ttl_seconds=TEST_POSITION_SECONDS)
     return {"lake_id": lake_id, "expires_in_seconds": TEST_POSITION_SECONDS}
+
+class PatrolRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    zone_id: str | None = Field(default=None, min_length=1, max_length=120)
+
+@router.post("/{drone_id}/patrol", status_code=status.HTTP_202_ACCEPTED)
+def send_patrol(station_id: str, drone_id: str, value: PatrolRequest, request: Request, principal: Principal = Depends(get_principal)) -> dict:
+    """Queue one patrol loop for the drone's Pi to upload; the pilot still arms it, and RC always overrides."""
+    from app.main import get_runtime  # lazy: app.main imports this router
+
+    _access(principal, station_id)
+    require_rate_limit("inventory.real.patrol", principal, request, station_id=station_id)
+    try:
+        drones = get_device_repository().list_real(station_id)
+    except DeviceRepositoryError as exc:
+        raise HTTPException(503, "Real inventory is unavailable") from exc
+    drone = next((d for d in drones if d.get("inventory_id") == drone_id), None)
+    if not drone or not drone.get("lake_id"):
+        raise HTTPException(409, "Assign the drone to a lake first")
+    if drone.get("credential_state") != "active":
+        raise HTTPException(409, "The drone's credential is not active")
+    zones = get_runtime(drone["lake_id"]).zones
+    zone = next((z for z in zones if value.zone_id in (None, z.zone_id) and z.radius_m), None)
+    if zone is None:
+        raise HTTPException(404, "Patrol zone not found")
+    plan = build_patrol_plan(zone.centroid, zone.radius_m, DEFAULT_ALTITUDE_M, home=zone.centroid)
+    command_id = str(uuid4())
+    live_commands.queue(drone_id, {
+        "command_id": command_id, "command_type": "patrol", "zone_id": zone.zone_id,
+        "expires_at": (datetime.now(timezone.utc) + timedelta(seconds=PATROL_COMMAND_SECONDS)).isoformat(),
+        "mission": mission_rows(plan), "ack": False,
+    })
+    return {"command_id": command_id, "zone_id": zone.zone_id, "waypoints": len(plan["mission"]["items"])}
 
 @router.post("/{drone_id}/retire")
 def retire_real_inventory(station_id: str, drone_id: str, request: Request, principal: Principal = Depends(get_principal)) -> dict:

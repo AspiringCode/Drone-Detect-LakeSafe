@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from app.access.principal import Principal, StationMembership, StationRole, get_principal
 from app.api import device_admin
-from app.devices import live_positions
+from app.devices import live_commands, live_positions
 from app.devices.repository import DeviceRepositoryError
 
 
@@ -71,3 +71,23 @@ def test_test_position_is_labeled_simulated_and_needs_an_assigned_lake(monkeypat
     # Outlives a heartbeat TTL but still expires.
     assert live_positions.snapshot("test-drone-field", datetime.now(timezone.utc) + timedelta(minutes=1))
     assert not live_positions.snapshot("test-drone-field", datetime.now(timezone.utc) + timedelta(minutes=6))
+
+
+def test_send_patrol_queues_one_loop_of_the_lake_zone_for_an_active_assigned_drone(monkeypatch):
+    monkeypatch.setattr(live_commands, "_mailbox", {})
+    client, repo = _client(monkeypatch, StationRole.STATION_ADMIN)
+    assert client.post("/api/stations/st-1/inventory/d-1/patrol", json={}).status_code == 409
+    repo.drones["d-1"].update(lake_id="test-drone-field", credential_state="revoked")
+    assert client.post("/api/stations/st-1/inventory/d-1/patrol", json={}).status_code == 409
+    repo.drones["d-1"]["credential_state"] = "active"
+    assert client.post("/api/stations/st-1/inventory/d-1/patrol", json={"zone_id": "nope"}).status_code == 404
+    response = client.post("/api/stations/st-1/inventory/d-1/patrol", json={})
+    assert response.status_code == 202, response.text
+    [command] = live_commands.pending("d-1")
+    assert command["command_type"] == "patrol" and command["ack"] is False
+    rows = command["mission"]
+    # home, takeoff, the loop, RTL
+    assert rows[1][1] == 22 and rows[-1][1] == 20 and len(rows) == response.json()["waypoints"] + 1
+    assert all(47.58 < row[6] < 47.60 for row in rows[2:-1])
+    viewer, _ = _client(monkeypatch, StationRole.VIEWER)
+    assert viewer.post("/api/stations/st-1/inventory/d-1/patrol", json={}).status_code == 403

@@ -70,6 +70,7 @@ export function DronesPage({ client = supabase }: { client?: SupabaseLike }) {
     if (!lake) return;
     void act(() => apiRequest(`/api/stations/${encodeURIComponent(stationId)}/inventory/${drone.inventory_id}/test-position`, json({ lat: lake.centroid_lat, lon: lake.centroid_lon }), client), `Test marker placed at the centre of ${lake.name} for 5 minutes.`, "Test marker could not be placed.");
   };
+  const patrol = (drone: RealDrone) => act(() => apiRequest(`/api/stations/${encodeURIComponent(stationId)}/inventory/${drone.inventory_id}/patrol`, json({}), client), "Patrol sent. The drone's Pi uploads it on its next heartbeat; on the ground it waits for the pilot to arm.", "Patrol could not be sent.");
   const retire = (drone: RealDrone) => act(() => apiRequest(`/api/stations/${encodeURIComponent(stationId)}/inventory/${drone.inventory_id}/retire`, { method: "POST" }, client), "Drone retired.", "Drone could not be retired.");
 
   if (!allowed) return <main className="app-page"><AppHeader active="drones" showStationPicker client={client}/><section className="workflow-shell"><h1>Drone registry is unavailable</h1><p>Choose a station where you are a station administrator.</p></section></main>;
@@ -84,11 +85,11 @@ export function DronesPage({ client = supabase }: { client?: SupabaseLike }) {
           <span><strong>{drone.manufacturer ?? "Drone"} {drone.serial}</strong><br/><small className="field-help">{drone.inventory_id} · {drone.connectivity} · {drone.health} · {drone.battery_percent}% · {lakeName(drone.lake_id)}</small></span>
           <span>
             <label><span className="sr-only">Lake for {drone.serial}</span><select aria-label={`Lake for ${drone.serial}`} value={drone.lake_id ?? ""} onChange={(event) => void assign(drone, event.target.value)}><option value="">Not assigned</option>{lakes.map((lake) => <option key={lake.lake_id} value={lake.lake_id}>{lake.name}</option>)}</select></label>
-            {drone.lake_id && <><button type="button" className="button-secondary" onClick={() => placeTest(drone)}>Place test marker</button><Link className="button-link" to={`/lakes/${drone.lake_id}`}>Open map</Link></>}
+            {drone.lake_id && <><button type="button" className="button-secondary" onClick={() => placeTest(drone)}>Place test marker</button><button type="button" className="button-secondary" onClick={() => void patrol(drone)}>Send patrol</button><Link className="button-link" to={`/lakes/${drone.lake_id}`}>Open map</Link></>}
             <button type="button" className="button-secondary" onClick={() => void retire(drone)}>Retire</button>
           </span>
         </li>)}</ul>}
-        <p className="field-help">Test markers show as SIMULATED for 5 minutes. Only real heartbeats show as REAL.</p>
+        <p className="field-help">Test markers show as SIMULATED for 5 minutes. Only real heartbeats show as REAL. Send patrol uploads one loop of the lake's patrol zone; your RC transmitter always overrides it.</p>
       </section>
       <section className="workflow-card" aria-label="Register a drone">
         <p className="panel-eyebrow">Step 1</p><h2>Register a drone</h2>

@@ -37,6 +37,7 @@ def test_client_signed_heartbeat_is_accepted_by_the_device_endpoint(monkeypatch)
                            headers=drone_link.signed_headers(key, "d-1", body, sequence=sequence, timestamp=timestamp))
 
     assert response.status_code == 202, response.text
+    assert response.json()["commands"] == []  # the drone collects website commands from this reply
     principal, heartbeat = repo.heartbeats[0]
     assert (principal.drone_id, principal.sequence, heartbeat.battery_percent) == ("d-1", sequence, 87)
 

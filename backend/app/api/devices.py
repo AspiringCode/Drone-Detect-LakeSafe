@@ -8,7 +8,7 @@ import logging
 from fastapi import APIRouter, Header, HTTPException, Request, status
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, ValidationError
 
-from app.devices import live_alerts
+from app.devices import live_alerts, live_commands
 from app.devices.auth import DeviceAuthenticationError, verify_device_request
 from app.devices.heartbeat import HeartbeatService, Position
 from app.devices.acknowledgements import AcknowledgementService, AcknowledgementError
@@ -53,7 +53,7 @@ async def heartbeat(
         HeartbeatService(repository).record(principal, payload)
     except (json.JSONDecodeError, ValidationError, DeviceRepositoryError, ValueError) as exc:
         raise HTTPException(status_code=422, detail="Heartbeat payload is invalid") from exc
-    return {"received_sequence": sequence}
+    return {"received_sequence": sequence, "commands": live_commands.pending(principal.drone_id)}
 
 
 @router.post("/{drone_id}/detections", status_code=status.HTTP_202_ACCEPTED)
@@ -123,4 +123,5 @@ async def acknowledge_command(
         AcknowledgementService(repository).record(principal, command_id, payload.get("plan_id"), payload["desired_state_version"], payload["status"], payload.get("detail"))
     except (json.JSONDecodeError, KeyError, TypeError, ValidationError, ValueError, AcknowledgementError, DeviceRepositoryError) as exc:
         raise HTTPException(status_code=422, detail="Acknowledgement payload is invalid") from exc
+    live_commands.discard(principal.drone_id, command_id)
     return {"received_sequence": sequence}

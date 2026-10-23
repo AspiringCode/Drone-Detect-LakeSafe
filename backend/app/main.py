@@ -243,7 +243,8 @@ def build_test_area_runtime() -> LakeRuntime:
     area = json.loads(TEST_AREA_PATH.read_text(encoding="utf-8"))
     center = LatLon(area["center"]["lat"], area["center"]["lon"])
     polygon = [LatLon(p["lat"], p["lon"]) for p in area["polygon"]]
-    zone = RiskZone(f"{area['lake_id']}-z0", center, polygon, 0.0, {}, is_proxy=False)
+    # The patrol circle stays inside the square so a test flight never leaves the field.
+    zone = RiskZone(f"{area['lake_id']}-z0", center, polygon, 0.0, {}, is_proxy=False, radius_m=area["patrol_radius_m"])
     backend = InMemoryBackend()
     return LakeRuntime(
         lake_id=area["lake_id"], name=area["name"], zones=[zone],

@@ -71,6 +71,9 @@ def configure_real_autonomy_service(application, *, device_repository, secret_pr
     try:
         from app.autonomy.adapters.real import RealAdapter
         from app.autonomy.repository import SupabaseAutonomyRepository
+        from app.devices.live_commands import MailboxGateway
+        if gateway is None and REAL_GATEWAY_URL == "heartbeat":
+            gateway = MailboxGateway()
         repository = autonomy_repository or SupabaseAutonomyRepository(device_repository._client)
         adapter = RealAdapter(
             device_repository, gateway or HttpRealGatewayClient(), gateway_url=REAL_GATEWAY_URL,
