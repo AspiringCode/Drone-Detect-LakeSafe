@@ -27,7 +27,10 @@ class RealInventoryRequest(BaseModel):
 def _access(principal: Principal, station_id: str) -> None:
     try:
         require_station_access(principal, station_id, Permission.MANAGE_INVENTORY)
-        require_recent_mfa(principal, timedelta(minutes=10))
+        # Pragyan's decision 2026-10-22: the fictional CAC demo admins are password-only; the flag comes from the
+        # server-owned allowlist and lapses at its Nov 1 expiry. Every other account still needs the step-up.
+        if not principal.judge_demo_access:
+            require_recent_mfa(principal, timedelta(minutes=10))
     except HTTPException as exc:
         if exc.status_code == 403 and not any(m.station_id == station_id for m in principal.memberships):
             raise HTTPException(404, "Station not found") from exc

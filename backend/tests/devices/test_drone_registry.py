@@ -23,9 +23,10 @@ class Repo:
         return {"inventory_id": drone_id, **self.drones[drone_id]}
 
 
-def _client(monkeypatch, role, *, mfa_age=timedelta(0)):
-    principal = Principal("user-1", "o@gov", "aal2", "officer", "verified", (StationMembership("st-1", "Station", "active", frozenset({role})),),
-                          ({"method": "totp", "timestamp": (datetime.now(timezone.utc) - mfa_age).timestamp()},))
+def _client(monkeypatch, role, *, mfa_age=timedelta(0), judge=False):
+    amr = () if judge else ({"method": "totp", "timestamp": (datetime.now(timezone.utc) - mfa_age).timestamp()},)
+    principal = Principal("user-1", "o@gov", "aal1" if judge else "aal2", "officer", "verified",
+                          (StationMembership("st-1", "Station", "active", frozenset({role})),), amr, judge_demo_access=judge)
     repo = Repo()
     app = FastAPI()
     app.include_router(device_admin.router)
@@ -50,6 +51,13 @@ def test_assigning_a_lake_needs_recent_mfa_and_a_station_lake(monkeypatch):
     assert client.post("/api/stations/st-1/inventory/d-1/lake", json={"lake_id": "other-station-lake"}).status_code == 409
     assert client.post("/api/stations/st-1/inventory/d-1/lake", json={"lake_id": "test-drone-field"}).json()["lifecycle"] == "circulating"
     assert client.post("/api/stations/st-1/inventory/d-1/lake", json={"lake_id": None}).json()["lifecycle"] == "available"
+
+
+def test_password_only_demo_admin_skips_only_the_mfa_step_up(monkeypatch):
+    judge, _ = _client(monkeypatch, StationRole.STATION_ADMIN, judge=True)
+    assert judge.post("/api/stations/st-1/inventory/d-1/lake", json={"lake_id": "test-drone-field"}).status_code == 200
+    viewer_judge, _ = _client(monkeypatch, StationRole.VIEWER, judge=True)
+    assert viewer_judge.post("/api/stations/st-1/inventory/d-1/lake", json={"lake_id": "test-drone-field"}).status_code == 403
 
 
 def test_test_position_is_labeled_simulated_and_needs_an_assigned_lake(monkeypatch):
