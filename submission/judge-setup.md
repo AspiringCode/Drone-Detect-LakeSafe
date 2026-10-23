@@ -60,9 +60,10 @@ IDME_PROFILE_FAILURE_URL=<dashboard-failure-route>
 RISK_CONNECTOR_REFRESH_HOURS=<integer-hours>
 DEVICE_CLOCK_SKEW_SECONDS=<integer-seconds>
 REAL_HEARTBEAT_TTL_SECONDS=<integer-seconds>
-REAL_GATEWAY_URL=<server-only-gateway-url>
+REAL_GATEWAY_URL=<heartbeat-or-server-only-gateway-url>
 REAL_GATEWAY_SIGNING_KEY_REF=<server-only-secret-reference>
 REAL_GATEWAY_SIGNING_KEY=<server-only-resolved-hmac-secret>
+CORS_ALLOWED_ORIGINS=<comma-separated-hosted-dashboard-origins>
 ```
 
 Dashboard variables found in `dashboard/src`:

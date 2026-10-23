@@ -19,7 +19,7 @@ from app.auth import verify_supabase_jwt
 from app.access.policy import Permission, require_station_access
 from app.access.principal import Principal, _bearer_token, principal_from_claims
 from app.access.repository import get_access_repository
-from app.config import SUPABASE_KEY, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL
+from app.config import CORS_ALLOWED_ORIGINS, SUPABASE_KEY, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL
 from app.coordination.engine import SimulationEngine
 from app.detection.detector import ThermalDetector
 from app.detection.temporal import TemporalPersistenceFilter
@@ -119,11 +119,12 @@ app.include_router(safety_router)
 app.include_router(public_router)
 app.include_router(evidence_router)
 
-# Local-dev dashboard runs on Vite's default port; CAC judges run this locally,
-# not behind a shared origin, so permissive localhost/127.0.0.1 dev ports are fine.
+# Local-dev dashboards on any localhost port, plus the exact hosted dashboard origins
+# listed in CORS_ALLOWED_ORIGINS (e.g. the Vercel production URL).
 app.add_middleware(
     CORSMiddleware,
     allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
+    allow_origins=CORS_ALLOWED_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -35,3 +35,5 @@ REAL_HEARTBEAT_TTL_SECONDS = int(os.getenv("REAL_HEARTBEAT_TTL_SECONDS", "15"))
 REAL_GATEWAY_URL = os.getenv("REAL_GATEWAY_URL")
 # Server-only secret-manager reference. Never use a VITE_ prefix.
 REAL_GATEWAY_SIGNING_KEY_REF = os.getenv("REAL_GATEWAY_SIGNING_KEY_REF")
+# Hosted dashboard origins allowed by CORS, comma-separated exact URLs (no trailing slash).
+CORS_ALLOWED_ORIGINS = [origin.strip() for origin in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",") if origin.strip()]

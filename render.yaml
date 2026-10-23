@@ -1,0 +1,34 @@
+# Render Blueprint for the LakeSafe API (the dashboard is hosted separately on Vercel).
+# Secrets marked sync: false are typed into Render's dashboard, never committed.
+services:
+  - type: web
+    name: lakesafe-api
+    runtime: python
+    rootDir: backend
+    plan: free
+    buildCommand: pip install uv && uv sync --frozen
+    # One worker on purpose: live drone positions, alerts and the command mailbox are in memory.
+    startCommand: uv run --no-sync uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1
+    healthCheckPath: /api/public/lakes
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.5
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_JWT_ISSUER
+        sync: false
+      - key: SUPABASE_JWT_AUDIENCE
+        value: authenticated
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      # Drones collect website commands in their heartbeat replies; the HMAC key is unused in this mode.
+      - key: REAL_GATEWAY_URL
+        value: heartbeat
+      - key: REAL_GATEWAY_SIGNING_KEY_REF
+        value: heartbeat-mailbox
+      - key: REAL_GATEWAY_SIGNING_KEY
+        generateValue: true
