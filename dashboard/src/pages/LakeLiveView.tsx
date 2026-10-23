@@ -160,7 +160,10 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
             </nav>
             <h1>{lakeName}</h1>
           </div>
-          <SimulatedBadge source="simulated" />
+          <span className="live-sources">
+            {drones.some((drone) => drone.source === "real") && <SimulatedBadge source="real" />}
+            {(!drones.length || drones.some((drone) => drone.source !== "real")) && <SimulatedBadge source="simulated" />}
+          </span>
         </div>
       </section>
       <section className="operator-layout" aria-label={`${lakeName} live operations`}>

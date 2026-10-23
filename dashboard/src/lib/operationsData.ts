@@ -8,9 +8,13 @@ export async function loadOperationsAlerts(client: SupabaseLike, fetcher: typeof
   const { data, error } = await client.from("lakes").select("lake_id,name").order("name");
   if (error) throw error;
   const lakes = (data ?? []) as LakeReference[];
+  const token = (await client.auth.getSession()).data.session?.access_token;
+  const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
   const groups = await Promise.all(lakes.map(async (lake) => {
-    const response = await fetcher(`${apiBaseUrl}/api/lakes/${lake.lake_id}/alerts`);
-    if (!response.ok) return [];
+    const response = await fetcher(`${apiBaseUrl}/api/lakes/${lake.lake_id}/alerts`, { headers });
+    // 404 = a lake with no live runtime; anything else is a real failure the page must show.
+    if (response.status === 404) return [];
+    if (!response.ok) throw new Error(`Alerts unavailable for ${lake.name}`);
     const alerts = await response.json() as Alert[];
     return alerts.map((alert) => ({ ...alert, lakeId: lake.lake_id, lakeName: lake.name }));
   }));

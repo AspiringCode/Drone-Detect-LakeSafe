@@ -20,6 +20,7 @@ function dependencies() {
   const client = {
     auth: {
       getUser: vi.fn().mockResolvedValue({ data: { user: { email: "operator@example.com" } }, error: null }),
+      getSession: vi.fn().mockResolvedValue({ data: { session: { access_token: "operator-token" } } }),
       signOut: vi.fn().mockResolvedValue({ error: null }),
     },
     from: vi.fn((table: string) => table === "organizations"
@@ -39,6 +40,14 @@ describe("operations data pages", () => {
     expect(await screen.findByText("Lake Sammamish")).toBeInTheDocument();
     expect(screen.getByText("drone-2")).toBeInTheDocument();
     expect(screen.getByText("Confirmed")).toBeInTheDocument();
+    expect(fetcher).toHaveBeenCalledWith(expect.stringContaining("/api/lakes/lake-sammamish/alerts"), { headers: { Authorization: "Bearer operator-token" } });
+  });
+
+  it("reports an alert service failure instead of showing an empty list", async () => {
+    const { client, fetcher } = dependencies();
+    fetcher.mockResolvedValue({ ok: false, status: 401, json: async () => ({}) });
+    render(<MemoryRouter><AlertsPage client={client as never} fetcher={fetcher as never} /></MemoryRouter>);
+    expect(await screen.findByText("Could not load operational alerts.")).toBeInTheDocument();
   });
 
   it("calculates Reports summaries from the same operational records", async () => {

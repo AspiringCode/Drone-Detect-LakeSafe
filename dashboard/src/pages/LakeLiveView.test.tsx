@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { LakeLiveView } from "./LakeLiveView";
@@ -24,6 +24,25 @@ describe("LakeLiveView autonomous plan state", () => {
     expect(screen.getByRole("region", { name: "Canonical Lake operator map" })).toHaveAttribute("data-center", "47.5,-122.1");
     expect(screen.getByRole("progressbar", { name: "Fleet capacity" })).toHaveAttribute("aria-valuemax", "7");
     expect(await screen.findByRole("region", { name: "Autonomous circulation controls" })).toBeVisible();
+  });
+  it("labels the view by the drones actually on the live socket and shows a pushed alert", async () => {
+    let push: (state: unknown) => void = () => {};
+    const connectOperational = vi.fn((_url: string, _token: string, onState: (state: unknown) => void) => { push = onState; return () => {}; });
+    const fetcher = vi.fn(async (url: string) => response(url.includes("/alerts") ? [] : {}));
+    const metadata = { name: "Drone Test Field", centroid_lat: 47.592, centroid_lon: -122.032, station_id: "station", drone_inventory_cap: 2 };
+    const client = { auth: { getSession: async () => ({ data: { session: { access_token: "token" } } }), onAuthStateChange: () => ({ data: { subscription: { unsubscribe: vi.fn() } } }) }, from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: metadata, error: null }) }) }) }) };
+    const request = vi.fn().mockResolvedValue({ aal: "aal2", memberships: [{ station_id: "station", status: "active", capabilities: ["station.read"] }] });
+    render(<PrincipalProvider client={client as never} request={request}><MemoryRouter initialEntries={["/lakes/test-drone-field"]}><Routes><Route path="/lakes/:lakeId" element={<LakeLiveView client={client as never} fetcher={fetcher as never} connectOperational={connectOperational as never} />} /></Routes></MemoryRouter></PrincipalProvider>);
+    await screen.findByRole("heading", { level: 1, name: "Drone Test Field" });
+    await waitFor(() => expect(connectOperational).toHaveBeenCalled());
+    expect(screen.getByText("SIMULATED")).toBeVisible();
+    const realDrone = { drone_id: "d-1", pos: { lat: 47.592, lon: -122.032 }, battery: 0.9, status: "patrolling", assigned_zone: null, source: "real" };
+    const alert = { alert_id: "alert-real", created_at: "2026-10-22T20:00:00Z", location: { lat: 47.592, lon: -122.032 }, detection_mode: "thermal", drone_id: "d-1", thermal_clip_ref: null, confirmed: true, source: "real", latency_ms: 0 };
+    act(() => push({ drones: [realDrone], conflicts: [], t: 1, latest_alert: alert }));
+    expect(screen.getAllByText("REAL")[0]).toBeVisible();
+    expect(screen.queryByText("SIMULATED")).not.toBeInTheDocument();
+    expect(screen.queryByText("No active alert.")).not.toBeInTheDocument();
+    expect(screen.getByText(/GPS: 47\.59200, -122\.03200/)).toBeVisible();
   });
   it.each(["returned", "thrown"])("explains a %s metadata failure instead of waiting forever", async (kind) => {
     const client = { from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => {
