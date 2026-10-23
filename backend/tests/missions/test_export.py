@@ -105,3 +105,8 @@ def test_all_waypoints_are_inside_the_fence_polygon(tmp_path):
     for item in waypoints:
         lat, lon = item["params"][4], item["params"][5]
         assert fence.contains(Point(lon, lat))
+
+
+def test_export_writes_mission_planner_waypoints_by_suffix(tmp_path):
+    output = export_zone_mission("lake-sammamish", 0, 5, 30.0, HOME, tmp_path / "zone0.waypoints")
+    assert output.read_text(encoding="utf-8").startswith("QGC WPL 110\n0\t1\t0\t16\t")

@@ -132,3 +132,21 @@ def build_patrol_plan(
         "rallyPoints": {"points": [], "version": 2},
         "version": 1,
     }
+
+
+def mission_rows(plan: dict) -> list[list[float]]:
+    """[frame, command, p1, p2, p3, p4, lat, lon, alt] per MAVLink mission item, home first as ArduPilot expects."""
+    home_lat, home_lon, home_alt = plan["mission"]["plannedHomePosition"]
+    rows = [[0, CMD_NAV_WAYPOINT, 0, 0, 0, 0, home_lat, home_lon, home_alt]]
+    for item in plan["mission"]["items"]:
+        rows.append([item["frame"], item["command"], *[0 if value is None else value for value in item["params"]]])
+    return rows
+
+
+def to_waypoints(plan: dict) -> str:
+    """Mission Planner's `.waypoints` text (QGC WPL 110); the geofence is not part of this format."""
+    lines = ["QGC WPL 110"]
+    for index, (frame, command, *values) in enumerate(mission_rows(plan)):
+        current = 1 if index == 0 else 0
+        lines.append("\t".join(str(v) for v in (index, current, frame, command, *values, 1)))
+    return "\n".join(lines) + "\n"

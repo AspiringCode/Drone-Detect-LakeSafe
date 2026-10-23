@@ -79,3 +79,18 @@ def test_no_fence_polygon_yields_empty_geofence():
 def test_rejects_non_positive_altitude():
     with pytest.raises(ValueError, match="altitude"):
         build_patrol_plan(CENTER, radius_m=150.0, altitude_m=0.0, home=HOME)
+
+
+def test_waypoints_text_is_mission_planner_format_with_home_first():
+    from app.missions.qgc_plan import build_patrol_plan, mission_rows, to_waypoints
+    from app.models import LatLon
+
+    plan = build_patrol_plan(LatLon(47.592, -122.032), 60.0, 30.0, home=LatLon(47.591, -122.033), n_points=4)
+    lines = to_waypoints(plan).splitlines()
+    assert lines[0] == "QGC WPL 110"
+    assert len(lines) == len(mission_rows(plan)) + 1 == len(plan["mission"]["items"]) + 2
+    home = lines[1].split("\t")
+    assert home[:4] == ["0", "1", "0", "16"] and home[8:10] == ["47.591", "-122.033"]
+    takeoff, last = lines[2].split("\t"), lines[-1].split("\t")
+    assert (takeoff[1], takeoff[3], takeoff[10], takeoff[11]) == ("0", "22", "30.0", "1")
+    assert last[3] == "20" and all(len(line.split("\t")) == 12 for line in lines[1:])

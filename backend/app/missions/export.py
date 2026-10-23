@@ -1,4 +1,4 @@
-"""Write a computed risk zone's patrol mission to a QGroundControl .plan file.
+"""Write a computed risk zone's patrol mission to a .plan (QGroundControl) or .waypoints (Mission Planner) file.
 
 This is the only module in `app.missions` that touches the filesystem, so the
 plan-building logic in `qgc_plan` stays purely testable.
@@ -10,7 +10,7 @@ import argparse
 import json
 from pathlib import Path
 
-from app.missions.qgc_plan import build_patrol_plan
+from app.missions.qgc_plan import build_patrol_plan, to_waypoints
 from app.models import LatLon
 from app.risk_zones.shoreline import load_lake_polygon
 from app.risk_zones.tessellation import compute_tessellated_zones
@@ -93,12 +93,14 @@ def export_zone_mission(
         fence_polygon=simplified_fence(lake_id, fence_simplify_tolerance),
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(plan, indent=4), encoding="utf-8")
+    # Mission Planner loads .waypoints; QGroundControl loads .plan (which also carries the geofence).
+    text = to_waypoints(plan) if output_path.suffix == ".waypoints" else json.dumps(plan, indent=4)
+    output_path.write_text(text, encoding="utf-8")
     return output_path
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Export a risk zone's patrol as a QGC .plan")
+    parser = argparse.ArgumentParser(description="Export a risk zone's patrol as a QGC .plan or Mission Planner .waypoints (by --out suffix)")
     parser.add_argument("--lake-id", default="lake-sammamish")
     parser.add_argument("--zone-index", type=int, default=0)
     parser.add_argument("--drone-count", type=int, default=5)
