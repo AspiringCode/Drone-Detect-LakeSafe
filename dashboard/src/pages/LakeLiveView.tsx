@@ -7,6 +7,7 @@ import { SimulatedBadge } from "../components/SimulatedBadge";
 import { supabase, type SupabaseLike } from "../lib/supabase";
 import { connectOperationalPositions, connectPositions } from "../lib/ws";
 import { useOrientation } from "../lib/useOrientation";
+import { useNewAlertCue } from "../lib/useNewAlertCue";
 import type { Alert, Capability, FleetDrone, LatLon, Principal, RealFleetSafetyStatus, SimulationState, ZonePlanSummary } from "../lib/types";
 import { AppHeader } from "../components/AppHeader";
 import { useOptionalPrincipal } from "../auth/PrincipalProvider";
@@ -34,6 +35,7 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
   const [drones, setDrones] = useState<SimulationState["drones"]>([]);
   const [riskmap, setRiskmap] = useState<RiskGeoJSON | null>(null);
   const [alert, setAlert] = useState<Alert | null>(null);
+  const alertCue = useNewAlertCue(alert);
   const [noLive, setNoLive] = useState(false);
   const [metadataError, setMetadataError] = useState(false);
   const [inventoryCap, setInventoryCap] = useState<number | null>(null);
@@ -160,6 +162,7 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
             </nav>
             <h1>{lakeName}</h1>
           </div>
+          <p className="sr-only" role="alert" aria-label="New alert announcement">{alertCue}</p>
           <span className="live-sources">
             {drones.some((drone) => drone.source === "real") && <SimulatedBadge source="real" />}
             {(!drones.length || drones.some((drone) => drone.source !== "real")) && <SimulatedBadge source="simulated" />}
