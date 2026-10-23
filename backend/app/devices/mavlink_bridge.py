@@ -12,6 +12,8 @@ Raspberry Pi on the flight controller's TELEM port:
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import sys
 import time
 
@@ -62,6 +64,15 @@ def payload(state: dict, now: float) -> dict:
     return body
 
 
+def write_positions(path: str, positions: dict[str, dict], now: float) -> None:
+    """Latest fix per drone for drone_detect.py; replaced atomically so a reader never sees half a file."""
+    data = {drone_id: {**position, "at": now} for drone_id, position in positions.items() if position}
+    tmp = f"{path}.tmp"
+    with open(tmp, "w", encoding="utf-8") as handle:
+        json.dump(data, handle)
+    os.replace(tmp, path)
+
+
 def parse_drone(text: str) -> tuple[int, str, str]:
     sysid, drone_id, key_path = text.split("=", 2)
     if not (1 <= int(sysid) <= 255) or not drone_id or not key_path:
@@ -76,6 +87,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--baud", type=int, default=57600, help="serial links only")
     parser.add_argument("--drone", type=parse_drone, action="append", required=True, metavar="SYSID=DRONE_ID=KEY_PATH")
     parser.add_argument("--interval", type=float, default=1.0)
+    parser.add_argument("--position-file", help="also write each drone's latest fix here for drone_detect.py")
     args = parser.parse_args(argv)
 
     from pymavlink import mavutil
@@ -96,6 +108,8 @@ def main(argv: list[str] | None = None) -> int:
         if now < next_send:
             continue
         next_send = now + args.interval
+        if args.position_file:
+            write_positions(args.position_file, {drone_id: states[sysid].get("position") for sysid, (drone_id, _) in drones.items()}, time.time())
         # shortcut: posts block the read loop (10 s timeout each); fine for a few drones, thread it for a fleet.
         for sysid, (drone_id, key) in drones.items():
             body = payload(states[sysid], now)

@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.devices.heartbeat import HeartbeatPayload
+from app.devices import mavlink_bridge
 from app.devices.mavlink_bridge import flight_status, parse_drone, payload, update
 
 
@@ -58,3 +59,14 @@ def test_parse_drone():
     for bad in ("drone-a=a.pem", "0=drone-a=a.pem", "1==a.pem", "x=drone-a=a.pem"):
         with pytest.raises(ValueError):
             parse_drone(bad)
+
+
+def test_bridge_position_file_feeds_the_detector_only_while_fresh(tmp_path):
+    from app.devices.drone_detect import fresh_position
+
+    path = str(tmp_path / "position.json")
+    assert fresh_position(path, "d-1") is None  # bridge not running yet
+    mavlink_bridge.write_positions(path, {"d-1": {"lat": 47.592, "lon": -122.032, "alt_m": 30.0}, "d-2": None}, now=1000.0)
+    assert fresh_position(path, "d-1", now=1003.0) == {"lat": 47.592, "lon": -122.032}
+    assert fresh_position(path, "d-1", now=1006.0) is None  # stale: never report an old spot
+    assert fresh_position(path, "d-2", now=1001.0) is None  # no GPS fix yet
