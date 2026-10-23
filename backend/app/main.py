@@ -76,6 +76,7 @@ async def _lifespan(application: FastAPI):
         application.state.real_autonomy_service = None
     try:
         device_repository = get_device_repository()
+        restore_real_alerts(device_repository)
         configure_real_autonomy_service(application, device_repository=device_repository)
         if has_real_autonomy_service(application):
             application.state.device_heartbeat_task = asyncio.create_task(
@@ -378,6 +379,16 @@ def authorize_operational_websocket(lake_id: str, token: str) -> Principal:
         return principal
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail="Authorization service is unavailable") from exc
+
+
+def restore_real_alerts(repository) -> None:
+    """Reload saved active real alerts into the in-memory lake runtimes after a restart."""
+    for lake_id, runtime in lake_runtimes.items():
+        try:
+            for alert in repository.active_real_alerts(lake_id):
+                runtime.alerts.save(alert)
+        except DeviceRepositoryError:
+            pass  # a lake without saved alerts or a DB blip must not stop the API starting
 
 
 def _drain_real_alerts(runtime: LakeRuntime) -> list:

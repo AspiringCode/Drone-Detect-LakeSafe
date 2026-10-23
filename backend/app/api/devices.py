@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from fastapi import APIRouter, Header, HTTPException, Request, status
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, ValidationError
@@ -16,6 +17,7 @@ from app.models import Detection, Drone, DroneStatus, LatLon
 from app.pipeline.alerts import assemble_alert
 
 router = APIRouter(prefix="/api/devices", tags=["real-devices"])
+logger = logging.getLogger(__name__)
 
 
 class DetectionPayload(BaseModel):
@@ -87,8 +89,15 @@ async def report_detection(
     drone = Drone(principal.drone_id, LatLon(payload.position.lat, payload.position.lon), 0.0, DroneStatus.INVESTIGATING, None, source="real")
     # The drone's persistence filter already confirmed it; operational alerts only, never the public feed.
     alert = assemble_alert(detection, drone, confirmed=True, clip_ref=None, detected_at=payload.detected_at)
+    persisted = True
+    try:
+        repository.save_real_alert(principal.station_id, lake_id, alert)
+    except DeviceRepositoryError:
+        # A person in the water outranks the audit trail: still show it live, but say it was not saved.
+        persisted = False
+        logger.warning("real alert %s for lake %s was shown live but not saved", alert.alert_id, lake_id)
     live_alerts.record(lake_id, alert)
-    return {"received_sequence": sequence, "alert_id": alert.alert_id}
+    return {"received_sequence": sequence, "alert_id": alert.alert_id, "persisted": persisted}
 
 
 @router.post("/{drone_id}/commands/{command_id}/acknowledgements", status_code=status.HTTP_202_ACCEPTED)

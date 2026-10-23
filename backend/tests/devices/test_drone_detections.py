@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from app import main
 from app.api import devices
+from app.devices.repository import DeviceRepositoryError
 from app.detection.detector import ThermalDetector
 from app.detection.temporal import TemporalPersistenceFilter
 from app.devices import drone_detect, drone_link, live_alerts
@@ -22,6 +23,13 @@ class Repo:
         self.public_key = public_key
         self.lake_id = lake_id
         self.claimed: set[int] = set()
+        self.saved: list = []
+        self.save_fails = False
+
+    def save_real_alert(self, station_id, lake_id, alert):
+        if self.save_fails:
+            raise DeviceRepositoryError("down")
+        self.saved.append((station_id, lake_id, alert.alert_id))
 
     def active_credential(self, drone_id):
         return {"credential_id": "cred-1", "drone_id": drone_id, "station_id": "station-1", "public_key": self.public_key, "credential_state": "active"}
@@ -36,12 +44,42 @@ class Repo:
         return {"inventory_id": drone_id, "station_id": "station-1", "lake_id": self.lake_id, "source": "real", "credential_state": "active"}
 
 
-def _setup(monkeypatch, lake_id):
+def _setup(monkeypatch, lake_id, repo_out=None):
     key = Ed25519PrivateKey.generate()
     repo = Repo(drone_link.public_key_b64url(key), lake_id)
     monkeypatch.setattr(devices, "get_device_repository", lambda: repo)
     monkeypatch.setattr(live_alerts, "_pending", {})
+    if repo_out is not None:
+        repo_out.append(repo)
     return key, TestClient(main.app)
+
+
+def test_real_alert_is_saved_and_still_shown_live_when_saving_fails(monkeypatch):
+    holder = []
+    key, client = _setup(monkeypatch, LAKE_ID, holder)
+    first = _post(client, key, BODY)
+    assert first.json()["persisted"] is True and holder[0].saved == [("station-1", LAKE_ID, first.json()["alert_id"])]
+    holder[0].save_fails = True
+    second = _post(client, key, BODY)
+    assert second.status_code == 202 and second.json()["persisted"] is False
+    assert [a.alert_id for a in live_alerts._pending[LAKE_ID]] == [first.json()["alert_id"], second.json()["alert_id"]]
+
+
+def test_saved_real_alerts_are_read_back_from_postgis_ewkb():
+    from shapely import wkb
+    from shapely.geometry import Point
+    from app.devices.repository import SupabaseDeviceRepository
+
+    ewkb = wkb.dumps(Point(-122.032, 47.592), hex=True, srid=4326)
+    row = {"alert_id": "alert-1", "occurred_at": "2026-10-22T18:00:00+00:00", "precise_location": ewkb, "category": "thermal-cv", "hardware_ref": "d-1", "thermal_clip_ref": None}
+
+    class Query:
+        def __getattr__(self, _name): return lambda *a, **k: self
+        def execute(self): return type("R", (), {"data": [row]})()
+
+    client = type("C", (), {"table": lambda self, _name: Query()})()
+    [alert] = SupabaseDeviceRepository(client).active_real_alerts("test-drone-field")
+    assert (alert.alert_id, alert.location.lat, alert.location.lon, alert.source, alert.drone_id) == ("alert-1", 47.592, -122.032, "real", "d-1")
 
 
 def _post(client, key, body: bytes, signed_body: bytes | None = None):

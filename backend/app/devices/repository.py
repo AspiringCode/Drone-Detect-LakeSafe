@@ -74,6 +74,35 @@ class SupabaseDeviceRepository(DeviceAuthRepository):
             raise DeviceRepositoryError("Real drone not found")
         return {"inventory_id": drone_id, "lake_id": lake_id, "lifecycle": rows[0]["lifecycle"]}
 
+    def save_real_alert(self, station_id: str, lake_id: str, alert) -> None:
+        try:
+            self._client.table("operational_alerts").insert({
+                "alert_id": alert.alert_id, "station_id": station_id, "lake_id": lake_id,
+                "occurred_at": alert.created_at.isoformat(),
+                "precise_location": f"SRID=4326;POINT({alert.location.lon} {alert.location.lat})",
+                "category": alert.detection_mode, "status": "active", "source": "real",
+                "hardware_ref": alert.drone_id, "thermal_clip_ref": alert.thermal_clip_ref,
+            }).execute()
+        except Exception as exc:
+            raise DeviceRepositoryError("Alert could not be saved") from exc
+
+    def active_real_alerts(self, lake_id: str, limit: int = 20) -> list:
+        """Saved real alerts for one lake, oldest first, so a restarted API shows them again."""
+        from shapely import wkb
+        from app.models import Alert, LatLon
+        try:
+            rows = self._client.table("operational_alerts").select(
+                "alert_id,occurred_at,precise_location,category,hardware_ref,thermal_clip_ref"
+            ).eq("lake_id", lake_id).eq("source", "real").eq("status", "active").order("occurred_at", desc=True).limit(limit).execute().data or []
+        except Exception as exc:
+            raise DeviceRepositoryError("Alerts are unavailable") from exc
+        alerts = []
+        for row in reversed(rows):
+            point = wkb.loads(bytes.fromhex(row["precise_location"]))  # PostgREST returns PostGIS geometry as EWKB hex
+            alerts.append(Alert(row["alert_id"], datetime.fromisoformat(row["occurred_at"]), LatLon(point.y, point.x), row["category"],
+                                row.get("hardware_ref") or "unknown", row.get("thermal_clip_ref"), True, "real", None))
+        return alerts
+
     def record_heartbeat(self, principal, heartbeat, received_at: datetime) -> dict:
         return self._one("record_real_heartbeat", {
             "p_drone_id": principal.drone_id, "p_station_id": principal.station_id,
