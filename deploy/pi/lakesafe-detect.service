@@ -1,0 +1,18 @@
+[Unit]
+Description=LakeSafe thermal detection (P2 Pro -> model -> signed alert at the bridge's position)
+Wants=lakesafe-bridge.service systemd-time-wait-sync.service
+After=lakesafe-bridge.service time-sync.target
+
+[Service]
+User=pi
+EnvironmentFile=/etc/lakesafe/drone.env
+WorkingDirectory=/home/pi/Drone-Detect-LakeSafe/backend
+# An empty LAKESAFE_MODEL passes --model "" and the detector falls back to its stock weights.
+ExecStart=/home/pi/Drone-Detect-LakeSafe/backend/.venv/bin/python -m app.devices.drone_detect \
+  --api ${LAKESAFE_API} --drone-id ${LAKESAFE_DRONE_ID} --key ${LAKESAFE_KEY} \
+  --position-file /run/lakesafe/position.json --model ${LAKESAFE_MODEL}
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
