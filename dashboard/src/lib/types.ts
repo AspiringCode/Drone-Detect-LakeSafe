@@ -90,6 +90,7 @@ export interface SimulationState {
   t: number;
   altitudes?: Record<string, number>;
   confirmed?: boolean;
+  latest_alert?: Alert | null;
 }
 
 export type FleetLifecycle = "available" | "circulating" | "charging" | "maintenance" | "reserved" | string;

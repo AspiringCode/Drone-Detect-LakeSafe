@@ -128,3 +128,22 @@ def test_undelivered_detection_is_retried_on_the_next_confirmed_frame():
     drone_detect.run(frames, ThermalDetector(model=_FakeYolo(), source="real"), TemporalPersistenceFilter(n_consecutive=3),
                      lambda d: attempts.append(d) and False, clock=lambda: 0.0)
     assert [d.frame_idx for d in attempts] == [2, 3, 4]
+
+
+def test_newest_real_alert_rides_the_operations_frame(monkeypatch):
+    from datetime import datetime, timezone
+    from app import main
+    from app.devices import live_alerts
+    from app.models import Detection, Drone, DroneStatus, LatLon
+    from app.pipeline.alerts import assemble_alert
+
+    runtime = main.build_test_area_runtime()
+    monkeypatch.setattr(live_alerts, "_pending", {})
+    assert main.current_state(runtime)["latest_alert"] is None
+    at = datetime.now(timezone.utc)
+    alert = assemble_alert(Detection(0, (1.0, 1.0, 2.0, 2.0), 0.9, at, source="real"),
+                           Drone("d-1", LatLon(47.592, -122.032), 0.0, DroneStatus.INVESTIGATING, None, source="real"),
+                           confirmed=True, clip_ref=None, detected_at=at)
+    live_alerts.record(runtime.lake_id, alert)
+    frame = main.current_state(runtime)
+    assert frame["latest_alert"]["alert_id"] == alert.alert_id and frame["latest_alert"]["source"] == "real"

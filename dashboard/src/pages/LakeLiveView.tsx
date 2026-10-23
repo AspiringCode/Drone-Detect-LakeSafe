@@ -65,7 +65,7 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
       const token = accessToken ?? (await client.auth.getSession()).data.session?.access_token;
       if (!active) return;
       if (!token) throw new Error("Missing operator session");
-      stop = connectOperational(wsFor(lakeId), token, (state) => { if (active) setDrones(state.drones); });
+      stop = connectOperational(wsFor(lakeId), token, (state) => { if (!active) return; setDrones(state.drones); if (state.latest_alert) setAlert(state.latest_alert); });
       const options = { headers: { Authorization: `Bearer ${token}` } };
       await Promise.all([
         fetcher(`${API}/api/lakes/${lakeId}/riskmap`, options).then(async (response) => {

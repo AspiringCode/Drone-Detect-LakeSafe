@@ -66,7 +66,7 @@ async def _lifespan(application: FastAPI):
     application.state.tick_tasks = {
         lake_id: asyncio.create_task(
             tick_loop(runtime.engine, runtime.hub, _jsonable, interval=TICK_INTERVAL_S,
-                      decorate=lambda state, lake_id=lake_id: live_positions.with_real_drones(lake_id, state))
+                      decorate=lambda state, runtime=runtime: live_state(runtime, state))
         )
         for lake_id, runtime in lake_runtimes.items()
     }
@@ -380,8 +380,20 @@ def authorize_operational_websocket(lake_id: str, token: str) -> Principal:
         raise HTTPException(status_code=503, detail="Authorization service is unavailable") from exc
 
 
+def _drain_real_alerts(runtime: LakeRuntime) -> list:
+    for alert in live_alerts.drain(runtime.lake_id):
+        runtime.alerts.save(alert)
+    return runtime.alert_backend.list()
+
+
+def live_state(runtime: LakeRuntime, state: dict) -> dict:
+    """Operations-only frame: simulation plus real drones, and the newest alert so a drone detection shows without a reload."""
+    alerts = _drain_real_alerts(runtime)
+    return {**live_positions.with_real_drones(runtime.lake_id, state), "latest_alert": alerts[-1] if alerts else None}
+
+
 def current_state(runtime: LakeRuntime) -> dict:
-    return _jsonable(live_positions.with_real_drones(runtime.lake_id, runtime.engine.step(0.1)))
+    return _jsonable(live_state(runtime, runtime.engine.step(0.1)))
 
 
 def public_patrol_payload(payload: object) -> dict[str, object]:
@@ -469,10 +481,7 @@ def get_drones(lake_id: str, authorization: str | None = Header(default=None)):
 @app.get("/api/lakes/{lake_id}/alerts")
 def get_alerts(lake_id: str, authorization: str | None = Header(default=None)):
     authorize_lake(lake_id, authorization, Permission.READ_OPERATIONS)
-    runtime = get_runtime(lake_id)
-    for alert in live_alerts.drain(lake_id):
-        runtime.alerts.save(alert)
-    return _jsonable(runtime.alert_backend.list())
+    return _jsonable(_drain_real_alerts(get_runtime(lake_id)))
 
 
 @app.post("/api/lakes/{lake_id}/demo/trigger")
