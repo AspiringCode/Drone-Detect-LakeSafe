@@ -51,6 +51,9 @@ npm run dev
 Environment variables and database setup are in
 [`submission/judge-setup.md`](submission/judge-setup.md).
 
+To let a drone's Raspberry Pi on the laptop's Wi-Fi hotspot reach the backend, start it
+with `--host 0.0.0.0`. The Pi side is in [`deploy/pi/`](deploy/pi/).
+
 ## More detail
 
 - [Architecture and algorithms](submission/architecture-and-algorithms.md)
