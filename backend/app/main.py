@@ -49,7 +49,7 @@ from app.api.devices import router as devices_router
 from app.api.safety import router as safety_router
 from app.public_api import PublicPatrolPresence, router as public_router
 from app.evidence import router as evidence_router
-from app.devices import live_positions
+from app.devices import live_alerts, live_positions
 from app.devices.monitor import HeartbeatMonitor, monitor_loop
 from app.devices.repository import DeviceRepositoryError, get_device_repository
 from app.devices.reconciler import RealCapacityReconciler, configure_real_autonomy_service, has_real_autonomy_service
@@ -469,7 +469,10 @@ def get_drones(lake_id: str, authorization: str | None = Header(default=None)):
 @app.get("/api/lakes/{lake_id}/alerts")
 def get_alerts(lake_id: str, authorization: str | None = Header(default=None)):
     authorize_lake(lake_id, authorization, Permission.READ_OPERATIONS)
-    return _jsonable(get_runtime(lake_id).alert_backend.list())
+    runtime = get_runtime(lake_id)
+    for alert in live_alerts.drain(lake_id):
+        runtime.alerts.save(alert)
+    return _jsonable(runtime.alert_backend.list())
 
 
 @app.post("/api/lakes/{lake_id}/demo/trigger")
