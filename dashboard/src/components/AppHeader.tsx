@@ -66,6 +66,7 @@ export function AppHeader({ active, contextLabel, operationsHref = "/lakes", cli
         <Link className={navClass("reports")} to="/reports" aria-current={active === "reports" ? "page" : undefined}>Reports</Link>
       </nav>
       <div className="app-account">
+        {principalContext?.principal?.judge_demo_access === true && <span className="status-label">Demo</span>}
         <label className="station-picker">
           <span className="sr-only">Active station</span>
           <select aria-label="Active station" value={selectedStation} onChange={(event) => chooseStation(event.target.value)}>

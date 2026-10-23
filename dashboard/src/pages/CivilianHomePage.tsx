@@ -42,7 +42,7 @@ export function CivilianHomePage({ fetcher = fetch }: { fetcher?: PublicFetcher 
   const lake = lakes.find((item) => item.lake_id === selectedLakeId) ?? lakes[0];
   return <main className="civilian-page">
     <header className="civilian-header"><Link className="app-brand" to={principal ? "/lakes" : "/"}><span className="app-brand__name">LakeSafe</span><span className="app-brand__mark" /></Link><nav>{principal ? <Link to="/profile">Profile settings</Link> : <><Link to="/login">Sign in</Link><Link className="button-link" to="/signup">Create account</Link></>}</nav></header>
-    <section className="civilian-hero"><h1>Know what’s happening around your lake.</h1><p>Community updates describe general patrol activity and safety notices without exposing operational information.</p></section>
+    <section className="civilian-hero"><h1>Know what’s happening around your lake.</h1><p>Choose a lake to see safety notices and recent patrol activity.</p></section>
     {lakes.length > 0 && <section className="civilian-content civilian-lake-selector"><label className="public-lake-picker">Lake<select value={lake?.lake_id ?? ""} onChange={(event) => { setLoading(true); setError(""); setSelectedLakeId(event.target.value); }}>{lakes.map((item) => <option key={item.lake_id} value={item.lake_id}>{item.name}</option>)}</select></label></section>}
     {(loading || error || !lake) && <section className="civilian-content" aria-label="Lake updates" aria-busy={loading}>
       {loading && <div className="lake-state" role="status"><h2>Loading lake updates…</h2><p>Checking the latest published lake information.</p></div>}

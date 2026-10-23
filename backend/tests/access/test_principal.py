@@ -99,3 +99,13 @@ def test_account_outage_response_retains_cors_headers(monkeypatch):
     assert response.status_code == 503
     assert response.json() == {"detail": "Account data is temporarily unavailable"}
     assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
+
+
+@pytest.mark.parametrize("trusted", [False, True])
+def test_judge_access_comes_only_from_server_state(trusted):
+    principal = principal_from_claims({
+        "sub": "user-1", "aal": "aal1", "judge_demo_access": True,
+        "user_metadata": {"judge_demo_access": True},
+        "app_metadata": {"judge_demo_access": True},
+    }, Repository({"account_class": "officer", "judge_demo_access": trusted}))
+    assert principal.judge_demo_access is trusted

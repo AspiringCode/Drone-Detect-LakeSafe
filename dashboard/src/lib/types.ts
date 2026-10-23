@@ -19,6 +19,7 @@ export interface Principal {
   account_class: "civilian" | "officer";
   verification_status: "not_started" | "pending" | "verified" | "rejected" | "expired" | "revoked" | string;
   reviewer: boolean;
+  judge_demo_access?: boolean;
   memberships: StationMembership[];
 }
 

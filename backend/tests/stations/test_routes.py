@@ -117,3 +117,13 @@ def test_me_capabilities_mirror_additive_policy_roles(monkeypatch, roles, expect
     response = _client(principal, Repository()).get("/api/me")
     assert response.status_code == 200
     assert set(response.json()["memberships"][0]["capabilities"]) == expected
+
+
+@pytest.mark.parametrize("allowed", [True, False])
+def test_me_reports_server_judge_session_exception(monkeypatch, allowed):
+    from dataclasses import replace
+    principal = replace(_principal(), judge_demo_access=allowed)
+    monkeypatch.setattr(review_routes, "is_reviewer", lambda _: False)
+    response = _client(principal, Repository()).get("/api/me")
+    assert response.status_code == 200
+    assert response.json()["judge_demo_access"] is allowed

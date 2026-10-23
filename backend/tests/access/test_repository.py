@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -23,7 +24,7 @@ class Query:
 
 def repository_with(responses):
     repository = SupabaseAccessRepository.__new__(SupabaseAccessRepository)
-    repository.client = SimpleNamespace(table=lambda table: Query(responses[table]))
+    repository.client = SimpleNamespace(table=lambda table: Query(responses.get(table)))
     return repository
 
 
@@ -65,3 +66,18 @@ def test_query_errors_are_not_treated_as_missing_profiles():
     with pytest.raises(APIError) as error:
         repository_with({"profiles": failure}).load_principal_state("user-1")
     assert error.value is failure
+
+
+@pytest.mark.parametrize("expiry, expected", [
+    ((datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat(), True),
+    ("2000-01-01T00:00:00Z", False),
+    (None, False),
+])
+def test_judge_access_requires_future_repository_expiry(expiry, expected):
+    repository = repository_with({
+        "profiles": SimpleNamespace(data={"account_class": "officer"}),
+        "officer_verifications": SimpleNamespace(data={"status": "verified"}),
+        "station_memberships": SimpleNamespace(data=[]),
+        "cac_judge_access": SimpleNamespace(data={"expires_at": expiry}) if expiry else None,
+    })
+    assert repository.load_principal_state("user-1")["judge_demo_access"] is expected

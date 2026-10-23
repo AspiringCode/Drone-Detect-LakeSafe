@@ -106,7 +106,7 @@ describe("operator workflow", () => {
   });
   it("branches a password sign-in according to the session AAL", async () => {
     const auth = { signInWithPassword: vi.fn().mockResolvedValue({ data: { session }, error: null }), mfa: { getAuthenticatorAssuranceLevel: vi.fn().mockResolvedValue({ data: { currentLevel: "aal2" } }) } };
-    render(<MemoryRouter><LoginPage client={{ auth } as never} /></MemoryRouter>);
+    render(<MemoryRouter><LoginPage client={{ auth } as never} request={vi.fn().mockResolvedValue({ judge_demo_access: false })} /></MemoryRouter>);
     fireEvent.change(screen.getByLabelText(/email/i), { target: { value: "operator@example.com" } }); fireEvent.change(screen.getByLabelText(/password/i), { target: { value: "secure-password" } }); fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
     await waitFor(() => expect(auth.mfa.getAuthenticatorAssuranceLevel).toHaveBeenCalledWith("token"));
   });
@@ -133,7 +133,7 @@ describe("operator workflow", () => {
 
   it("enrolls TOTP for a signed-in operator with no verified factor and verifies it", async () => {
     const auth = { mfa: { listFactors: vi.fn().mockResolvedValue({ data: { totp: [] }, error: null }), enroll: vi.fn().mockResolvedValue({ data: { id: "factor-2", totp: { qr_code: "data:image/svg+xml,test", secret: "EXISTING-SECRET" } }, error: null }), challenge: vi.fn().mockResolvedValue({ data: { id: "challenge-2" }, error: null }), verify: vi.fn().mockResolvedValue({ error: null }) } };
-    render(<MemoryRouter><VerifyOtpPage client={{ auth } as never} /></MemoryRouter>);
+    render(<MemoryRouter><VerifyOtpPage client={{ auth } as never} request={vi.fn().mockResolvedValue({ judge_demo_access: false })} /></MemoryRouter>);
 
     expect(await screen.findByAltText(/totp qr code/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/setup key/i)).toHaveValue("EXISTING-SECRET");

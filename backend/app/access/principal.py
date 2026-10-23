@@ -34,6 +34,7 @@ class Principal:
     verification_status: str | None
     memberships: tuple[StationMembership, ...]
     amr: tuple[dict[str, object], ...] = ()
+    judge_demo_access: bool = False
 
 
 def _bearer_token(authorization: str | None) -> str:
@@ -74,6 +75,7 @@ def principal_from_claims(claims: dict[str, object], repository) -> Principal:
         verification_status=profile.get("verification_status") if isinstance(profile.get("verification_status"), str) else None,
         memberships=memberships,
         amr=amr,
+        judge_demo_access=profile.get("judge_demo_access") is True,
     )
 
 

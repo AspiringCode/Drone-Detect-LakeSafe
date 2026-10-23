@@ -43,6 +43,7 @@ def get_me(principal: Principal = Depends(get_principal)) -> dict:
         "user_id": principal.user_id, "email": principal.email, "aal": principal.aal,
         "account_class": principal.account_class, "verification_status": principal.verification_status,
         "reviewer": is_reviewer(principal),
+        "judge_demo_access": principal.judge_demo_access,
         "memberships": [{"station_id": item.station_id, "station_name": item.station_name, "status": item.status, "roles": sorted(str(role) for role in item.roles), "capabilities": _capabilities(item)} for item in principal.memberships],
     }
 
