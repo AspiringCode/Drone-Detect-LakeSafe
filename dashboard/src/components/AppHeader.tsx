@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { supabase, type SupabaseLike } from "../lib/supabase";
 import { useOptionalPrincipal } from "../auth/PrincipalProvider";
 import { useOptionalActiveStation } from "../hooks/useActiveStation";
+import { WaveMark } from "./WaveMark";
 
 type HeaderSection = "lakes" | "alerts" | "reports" | "drones" | "profile";
 
@@ -56,7 +57,7 @@ export function AppHeader({ active, contextLabel, showStationPicker = false, cli
     <header className="app-header">
       <Link className="app-brand" to="/lakes" aria-label="LakeSafe managed lakes">
         <span className="app-brand__name">LakeSafe</span>
-        <span className="app-brand__wave" aria-hidden="true">🌊</span>
+        <WaveMark />
       </Link>
       <nav className="app-nav" aria-label="Primary navigation">
         <Link className={navClass("lakes")} to="/lakes" aria-current={active === "lakes" ? "page" : undefined}>Lakes</Link>

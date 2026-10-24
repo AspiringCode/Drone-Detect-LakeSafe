@@ -117,6 +117,11 @@ input {
 }
 input:hover { border-color: var(--primary); }
 input:focus { border-color: var(--primary); box-shadow: 0 0 0 4px oklch(85% 0.08 235 / 0.4); }
+/* Same frame as inputs; the native chevron stays because appearance is left alone. */
+select { border: 1px solid var(--border-strong); border-radius: 12px; background-color: var(--surface); color: var(--text); padding: 0.72rem 0.85rem; font-weight: 600; cursor: pointer; transition: border-color 180ms ease, box-shadow 180ms ease; }
+select:hover:not(:disabled) { border-color: var(--primary); }
+select:focus { border-color: var(--primary); box-shadow: 0 0 0 4px oklch(85% 0.08 235 / 0.4); }
+select:disabled { cursor: not-allowed; opacity: 0.6; }
 fieldset { border: 1px solid var(--border); border-radius: 14px; display: grid; gap: 0.65rem; padding: 1rem; }
 legend { padding: 0 0.4rem; font-weight: 700; }
 .choice { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem; border-radius: 10px; }
@@ -136,7 +141,7 @@ legend { padding: 0 0.4rem; font-weight: 700; }
 .civilian-content { width: min(calc(100% - 2.5rem), 70rem); margin: 0 auto; padding-bottom: clamp(3rem, 8vw, 6rem); }
 .civilian-lake-selector { padding-bottom: 1.5rem; }
 .public-lake-picker { max-width: 24rem; }
-.public-lake-picker select { width: 100%; min-height: 2.75rem; padding: .7rem .85rem; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--surface); color: var(--text); cursor: pointer; }
+.public-lake-picker select { width: 100%; }
 .lake-state { padding: clamp(1.25rem, 3vw, 2rem); border: 1px solid var(--border); border-radius: 16px; background: var(--surface); }
 .lake-state h2 { font-size: 1.15rem; }
 .lake-state p:last-child { max-width: 42rem; margin: .65rem 0 0; color: var(--text-muted); line-height: 1.65; font-size: .9rem; }
@@ -174,15 +179,17 @@ legend { padding: 0 0.4rem; font-weight: 700; }
 }
 .app-brand { display: inline-flex; align-items: center; gap: 0.5rem; width: fit-content; color: var(--text); text-decoration: none; }
 .app-brand__name { font-size: 1.2rem; font-weight: 750; letter-spacing: -0.04em; }
-.app-brand__wave { flex: none; font-size: 1.05rem; line-height: 1; }
+.app-brand__wave { flex: none; width: 1.65rem; height: 1.65rem; }
+.app-brand__wave .wave-fill { fill: oklch(91% 0.055 228); }
+.app-brand__wave .wave-line { fill: none; stroke: var(--primary-hover); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .app-nav { align-self: stretch; display: flex; align-items: stretch; gap: 0.35rem; }
 .app-nav__item { position: relative; display: grid; place-items: center; padding: 0 0.85rem; color: var(--text-muted); text-decoration: none; font-size: 0.88rem; font-weight: 650; }
 .app-nav__item.is-active { color: var(--primary-hover); }
 .app-nav__item.is-active::after { content: ""; position: absolute; right: 0.75rem; bottom: 0; left: 0.75rem; height: 2px; border-radius: 2px 2px 0 0; background: var(--primary); }
 .app-account { position: relative; justify-self: end; display: flex; align-items: center; gap: 0.7rem; min-width: 0; }
 .station-picker { display: block; }
-.station-picker select { max-width: 13rem; min-height: 2.4rem; padding: 0.4rem 2rem 0.4rem 0.7rem; border: 1px solid transparent; border-radius: 10px; background: var(--surface); color: var(--text-muted); font-size: 0.78rem; font-weight: 700; cursor: pointer; }
-.station-picker select:hover { border-color: var(--border); background: var(--surface-muted); }
+.station-picker select { max-width: 13rem; min-height: 2.4rem; padding: 0.4rem 2rem 0.4rem 0.7rem; border: 1px solid transparent; border-radius: 10px; color: var(--text-muted); font-size: 0.78rem; font-weight: 700; }
+.station-picker select:hover:not(:disabled) { border-color: var(--border); background-color: var(--surface-muted); }
 .account-trigger { display: grid; place-items: center; width: 2.55rem; min-width: 2.55rem; min-height: 2.55rem; padding: 0; border-color: var(--primary); border-radius: 50%; background: var(--surface); color: var(--primary); font-size: 0.82rem; }
 .account-trigger:hover:not(:disabled) { background: var(--surface-blue); color: var(--primary-hover); }
 .account-menu { position: absolute; top: calc(100% + 0.7rem); right: 0; z-index: 1000; display: grid; width: 13.5rem; padding: 0.55rem; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); box-shadow: var(--shadow); }

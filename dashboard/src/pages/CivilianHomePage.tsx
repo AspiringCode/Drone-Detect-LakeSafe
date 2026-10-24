@@ -4,6 +4,7 @@ import { useOptionalPrincipal } from "../auth/PrincipalProvider";
 import { PublicAlertCard } from "../components/PublicAlertCard";
 import { PublicLakeMap } from "../components/PublicLakeMap";
 import { PublicPatrolSummary } from "../components/PublicPatrolSummary";
+import { WaveMark } from "../components/WaveMark";
 import { loadPublicAlerts, loadPublicLakes, loadPublicPatrolPresence, type PublicAlert, type PublicFetcher, type PublicLake, type PublicPatrolPresence } from "../lib/publicData";
 import "./website-touchups.css";
 
@@ -42,7 +43,7 @@ export function CivilianHomePage({ fetcher = fetch }: { fetcher?: PublicFetcher 
   }, [fetcher, attempt, selectedLakeId]);
   const lake = lakes.find((item) => item.lake_id === selectedLakeId) ?? lakes[0];
   return <main className="civilian-page">
-    <header className="civilian-header"><Link className="app-brand" to={principal ? "/lakes" : "/"}><span className="app-brand__name">LakeSafe</span><span className="app-brand__wave" aria-hidden="true">🌊</span></Link><nav>{principal ? <>{principal.account_class === "officer" && <Link className="button-link" to="/lakes">Return to workspace</Link>}<Link to="/profile">Profile settings</Link></> :<><Link to="/login">Sign in</Link><Link className="button-link" to="/signup">Create account</Link></>}</nav></header>
+    <header className="civilian-header"><Link className="app-brand" to={principal ? "/lakes" : "/"}><span className="app-brand__name">LakeSafe</span><WaveMark /></Link><nav>{principal ? <>{principal.account_class === "officer" && <Link className="button-link" to="/lakes">Return to workspace</Link>}<Link to="/profile">Profile settings</Link></> :<><Link to="/login">Sign in</Link><Link className="button-link" to="/signup">Create account</Link></>}</nav></header>
     <section className="civilian-hero"><h1>Your lake, at a glance</h1><p>Safety notices and published patrol activity for your next visit.</p></section>
     {lakes.length > 0 && <section className="civilian-content civilian-lake-selector"><div className="public-lake-choices" role="group" aria-label="Choose a lake">{lakes.map((item) => <button type="button" className="button-secondary" aria-pressed={lake?.lake_id === item.lake_id} key={item.lake_id} onClick={() => { if (item.lake_id !== lake?.lake_id) { setLoading(true); setError(""); setSelectedLakeId(item.lake_id); } }}>{item.name}</button>)}</div></section>}
     {(loading || error || !lake) && <section className="civilian-content" aria-label="Lake updates" aria-busy={loading}>

@@ -112,11 +112,10 @@ export function DronesPage({ client = supabase, setup = false }: { client?: Supa
           </div>
           <span>
             <label><span className="sr-only">Lake for {drone.serial}</span><select aria-label={`Lake for ${drone.serial}`} value={drone.lake_id ?? ""} disabled={busy} onChange={(event) => void assign(drone, event.target.value)}><option value="">Not assigned</option>{lakes.map((lake) => <option key={lake.lake_id} value={lake.lake_id}>{lake.name}</option>)}</select></label>
-            {drone.lake_id && <><button type="button" className="button-secondary" disabled={busy} onClick={() => placeTest(drone)}>Place test marker</button><button type="button" className="button-secondary" disabled={busy} onClick={() => void patrol(drone)}>Send patrol</button><Link className="button-link" to={`/lakes/${drone.lake_id}`}>Open map</Link></>}
+            {drone.lake_id && <><button type="button" className="button-secondary" disabled={busy} title="Shows a SIMULATED marker at the lake centre for 5 minutes" onClick={() => placeTest(drone)}>Place test marker</button><button type="button" className="button-secondary" disabled={busy} onClick={() => void patrol(drone)}>Send patrol</button><Link className="button-link" to={`/lakes/${drone.lake_id}`}>Open map</Link></>}
             <button type="button" className="button-secondary" disabled={busy} onClick={() => retire(drone)}>Retire</button>
           </span>
         </li>)}</ul>}
-        <p className="field-help">Test markers are SIMULATED for 5 minutes. Only real heartbeats show as REAL.</p>
       </section>;
   return <main className="app-page"><AppHeader active="drones" showStationPicker client={client}/><section className="workflow-shell touch-shell">
     <header className="page-heading touch-heading"><div><h1>{setup ? "Drone setup" : "Drones"}</h1><p>{station?.station_name}</p></div>{setup ? <Link to="/drones">Back to registered drones</Link> : <Link className="button-link button-secondary" to="/drones/setup">Open setup guide</Link>}</header>
@@ -139,7 +138,7 @@ export function DronesPage({ client = supabase, setup = false }: { client?: Supa
           <button disabled={busy}>{busy ? "Registering…" : "Register drone"}</button>
         </form>
       </section>}
-      {step === "Assign lake" && <><p className="field-help">Choose a lake for each registered drone. Only this station’s lakes are available.</p>{inventory}</>}
+      {step === "Assign lake" && inventory}
       {step === "Connect" && <section className="touch-panel" aria-label="Connect a drone">
         <h2>Connect it to the map</h2>
         {connectIds.length > 0 && <label>Drone to connect<select value={connectId} onChange={(event) => setSelectedDrone(event.target.value)}>{connectIds.map((id) => { const drone = drones.find((item) => item.inventory_id === id); return <option key={id} value={id}>{drone?.serial || id}</option>; })}</select></label>}

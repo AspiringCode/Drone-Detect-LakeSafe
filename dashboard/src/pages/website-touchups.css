@@ -11,20 +11,26 @@
 .touch-error p { color: var(--danger); }
 .fleet-empty { padding: 2rem 0; max-width: 34rem; }
 .fleet-empty h3 { font-size: 1.25rem; }
-.fleet-registry li { align-items: start; gap: 1.5rem; }
-.fleet-registry li > div, .fleet-registry li > span { min-width: 0; }
-.fleet-registry li > span { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: flex-end; }
+.station-results { display: grid; gap: .75rem; margin: 1rem 0 0; padding: 0; list-style: none; }
+.station-results li { display: flex; align-items: center; justify-content: space-between; gap: 1rem 1.5rem; padding: 1rem 1.25rem; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.station-results li > span:last-child { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; justify-content: flex-end; }
+.station-results li > * { min-width: 0; }
+.fleet-registry li { align-items: flex-start; }
+.fleet-registry li.is-new { border-color: var(--primary); background: var(--surface-blue); }
+.fleet-registry li.is-new .status-label { background: var(--surface); }
+.fleet-registry li p { margin: .35rem 0 .5rem; }
 .fleet-registry details { margin: 0; font-size: .8rem; }
-.fleet-registry select { max-width: 100%; }
-.fleet-registry li.is-new { padding-inline: 1rem; border-radius: 12px; background: var(--surface-blue); box-shadow: inset 0 0 0 1px var(--primary); }
-.fleet-registry .status-label { margin: 0 0 0 .35rem; }
+.fleet-registry li > span label { display: block; }
+.fleet-registry li > span select { max-width: 100%; }
+.fleet-registry .status-label { min-height: 0; margin: 0 0 0 .5rem; padding: .15rem .55rem; vertical-align: .1em; }
 .mission-download form { display: grid; gap: .75rem; max-width: 26rem; margin-top: .5rem; }
 .mission-download form button { justify-self: start; }
 .helper-files { margin: 0 0 1rem; }
 .local-tabs { display: flex; flex-wrap: wrap; gap: .5rem; padding: .5rem 0; margin-bottom: 1.25rem; border-bottom: 1px solid var(--border); }
 .local-tabs a, .local-tabs button { display: inline-flex; align-items: center; gap: .5rem; min-height: 44px; padding: .6rem .85rem; background: transparent; border: 1px solid transparent; border-radius: 8px; color: var(--text-muted); font-weight: 700; text-decoration: none; }
 .local-tabs .is-active { background: var(--surface-blue); color: var(--primary-hover); border-color: var(--border); }
-.local-tabs button:hover, .local-tabs button:focus-visible { background: var(--surface-blue); color: var(--primary-hover); border-color: var(--primary); }
+/* :not(:disabled) matches the global button:hover specificity so tabs never get the solid primary fill. */
+.local-tabs a:hover, .local-tabs button:hover:not(:disabled), .local-tabs button:focus-visible { background: var(--surface-blue); color: var(--primary-hover); border-color: var(--primary); box-shadow: none; transform: none; }
 .setup-steps button span { font-size: .75rem; }
 .setup-form { max-width: 44rem; }
 .command-block { display: grid; gap: .5rem; margin: 1rem 0; }
@@ -50,7 +56,7 @@
 .reports-touchup .report-metric { min-height: 0; box-shadow: none; border-radius: 12px; }
 .reports-touchup .report-metric__value { margin-bottom: .8rem; font-size: 2rem; font-variant-numeric: tabular-nums; }
 .record-filters { display: flex; flex-wrap: wrap; gap: 1rem; margin: 1.25rem 0; }
-.record-filters select { padding: .65rem; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); border-radius: 8px; max-width: 100%; }
+.record-filters select { max-width: 100%; }
 .record-filters label { min-width: 0; max-width: 100%; }
 .coverage-lakes { list-style: none; padding: 0; margin: 1rem 0 0; }
 .coverage-lakes li { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 0; border-bottom: 1px solid var(--border); }
@@ -78,5 +84,5 @@
 @media(max-width: 750px) { .lake-create-form.has-preview { grid-template-columns: 1fr; } .shoreline-preview__map { height: 18rem; } }
 @media(max-width: 800px) { .account-layout { grid-template-columns: 1fr; } }
 @media(max-width: 750px) { .civilian-side { grid-row: 1; } .public-lake-map .lake-preview { height: 20rem; } }
-@media(max-width: 700px) { .fleet-registry li { display: block; } .fleet-registry li > span { justify-content: flex-start; margin-top: 1rem; } .touch-heading { align-items: start; } }
+@media(max-width: 700px) { .station-results li { flex-direction: column; align-items: stretch; } .station-results li > span:last-child { justify-content: flex-start; } .touch-heading { align-items: start; } }
 @media(max-width: 380px) { .civilian-page .civilian-header { gap: .5rem; } .civilian-page .civilian-header nav { gap: .5rem; font-size: .75rem; } .civilian-header nav a { white-space: nowrap; } .civilian-page .civilian-header .button-link { padding-inline: .5rem; } }
