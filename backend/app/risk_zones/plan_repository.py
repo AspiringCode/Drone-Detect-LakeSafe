@@ -134,21 +134,24 @@ class SupabaseRiskPlanRepository:
         return result.data is True
 
     def active_plan_id(self, lake_id: str) -> str | None:
-        row = self._client.table("zone_plans").select("zone_plan_id").eq(
+        response = self._client.table("zone_plans").select("zone_plan_id").eq(
             "lake_id", lake_id
-        ).eq("status", "active").maybe_single().execute().data
+        ).eq("status", "active").maybe_single().execute()
+        row = response.data if response is not None else None
         return str(row["zone_plan_id"]) if row else None
 
     def lake_station_id(self, lake_id: str) -> str | None:
-        row = self._client.table("lakes").select("station_id").eq("lake_id", lake_id).maybe_single().execute().data
+        response = self._client.table("lakes").select("station_id").eq("lake_id", lake_id).maybe_single().execute()
+        row = response.data if response is not None else None
         return str(row["station_id"]) if row else None
 
     def active_plan(self, lake_id: str) -> dict | None:
-        row = self._client.table("zone_plans").select(
+        response = self._client.table("zone_plans").select(
             "zone_plan_id,snapshot_id,algorithm_version,validation_payload,"
             "risk_snapshots(source_fresh_through,source_metadata),"
             "zone_plan_cells(kind,risk_score,seed,metadata)"
-        ).eq("lake_id", lake_id).eq("status", "active").maybe_single().execute().data
+        ).eq("lake_id", lake_id).eq("status", "active").maybe_single().execute()
+        row = response.data if response is not None else None
         if not row:
             return None
         snapshot = row.get("risk_snapshots") or {}

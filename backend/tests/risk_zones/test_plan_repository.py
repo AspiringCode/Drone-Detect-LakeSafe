@@ -47,6 +47,19 @@ class _PlanClient:
     def select(self, selection): return _PlanQuery(self, selection)
 
 
+def test_missing_optional_plan_responses_are_not_service_failures() -> None:
+    class MissingQuery:
+        def table(self, *_): return self
+        def select(self, *_): return self
+        def eq(self, *_): return self
+        def maybe_single(self): return self
+        def execute(self): return None
+    repository = SupabaseRiskPlanRepository(MissingQuery())
+    assert repository.active_plan("lake-1") is None
+    assert repository.active_plan_id("lake-1") is None
+    assert repository.lake_station_id("lake-1") is None
+
+
 def test_candidate_and_cells_are_persisted_by_one_station_bound_rpc() -> None:
     client = _Client()
     SupabaseRiskPlanRepository(client).persist_candidate(_candidate())
