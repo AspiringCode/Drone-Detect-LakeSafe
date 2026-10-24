@@ -55,13 +55,14 @@ describe("Phase 2 invited-member journey", () => {
 describe("Phase 2 persona controls", () => {
   it("keeps the civilian station page limited to the verification route", async () => {
     workspace(civilian, <StationAccessPage />);
-    expect(await screen.findByRole("heading", { name: /verify before joining/i })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: /before joining another station/i })).toBeVisible();
+    expect(screen.getByRole("link", { name: /review access requirements/i })).toHaveAttribute("href", "/verify-affiliation");
     expect(screen.queryByRole("button", { name: /send for review/i })).not.toBeInTheDocument();
   });
 
   it("gives a verified unassigned officer only station discovery and request controls", async () => {
     workspace(verifiedUnassigned, <StationAccessPage />);
-    expect(await screen.findByRole("heading", { name: /find your station/i })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: /find an existing station/i })).toBeVisible();
     expect(screen.getByRole("button", { name: /search stations/i })).toBeVisible();
     expect(screen.getByRole("button", { name: /send for review/i })).toBeVisible();
   });

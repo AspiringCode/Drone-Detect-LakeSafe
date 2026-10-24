@@ -39,6 +39,7 @@ export default function App() {
           <Route path="/alerts" element={<AlertsPage />} />
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="/drones" element={<DronesPage />} />
+          <Route path="/drones/setup" element={<DronesPage setup />} />
         </Route>
         <Route path="/profile" element={<ProfileSettingsPage />} />
         <Route path="/verify-affiliation" element={<OfficerVerificationPage />} />

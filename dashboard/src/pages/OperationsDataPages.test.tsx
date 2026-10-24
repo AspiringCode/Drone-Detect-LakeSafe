@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { AlertsPage } from "./AlertsPage";
@@ -37,7 +37,7 @@ describe("operations data pages", () => {
     render(<MemoryRouter><AlertsPage client={client as never} fetcher={fetcher as never} /></MemoryRouter>);
 
     expect(await screen.findByRole("heading", { name: "Active alerts" })).toBeInTheDocument();
-    expect(await screen.findByText("Lake Sammamish")).toBeInTheDocument();
+    expect(await screen.findByText("Lake Sammamish", { selector: ".alert-record p" })).toBeInTheDocument();
     expect(screen.getByText("drone-2")).toBeInTheDocument();
     expect(screen.getByText("Confirmed")).toBeInTheDocument();
     expect(fetcher).toHaveBeenCalledWith(expect.stringContaining("/api/lakes/lake-sammamish/alerts"), { headers: { Authorization: "Bearer operator-token" } });
@@ -50,6 +50,15 @@ describe("operations data pages", () => {
     expect(await screen.findByText("Could not load operational alerts.")).toBeInTheDocument();
   });
 
+  it("marks a lake without a runtime as unavailable rather than claiming healthy coverage", async () => {
+    const { client, fetcher } = dependencies();
+    fetcher.mockResolvedValue({ ok: false, status: 404, json: async () => ({}) });
+    render(<MemoryRouter><ReportsPage client={client as never} fetcher={fetcher as never}/></MemoryRouter>);
+    expect(await screen.findByText("Current records unavailable")).toBeInTheDocument();
+    expect(screen.queryByText("Current records available")).not.toBeInTheDocument();
+    expect(screen.getByText(/does not confirm patrol coverage/i)).toBeInTheDocument();
+  });
+
   it("calculates Reports summaries from the same operational records", async () => {
     const { client, fetcher } = dependencies();
     render(<MemoryRouter><ReportsPage client={client as never} fetcher={fetcher as never} /></MemoryRouter>);
@@ -59,5 +68,28 @@ describe("operations data pages", () => {
     expect(screen.getByText("Total alerts")).toBeInTheDocument();
     expect(screen.getByText("Confirmed responses")).toBeInTheDocument();
     expect(screen.getByText("820 ms")).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "Incident records" })).toHaveTextContent("Lake Sammamish");
+    expect(screen.getByText(/current available records, not a historical reporting period/i)).toBeInTheDocument();
+  });
+
+  it("retries reporting failures without replacing them with zero totals", async () => {
+    const { client, fetcher } = dependencies();
+    fetcher.mockRejectedValueOnce(new TypeError("offline"));
+    render(<MemoryRouter><ReportsPage client={client as never} fetcher={fetcher as never} /></MemoryRouter>);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not calculate operational reports.");
+    expect(screen.queryByText("Total alerts")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("820 ms")).toBeInTheDocument();
+  });
+
+  it("filters incident records by source without changing the underlying record count", async () => {
+    const { client, fetcher } = dependencies();
+    render(<MemoryRouter><ReportsPage client={client as never} fetcher={fetcher as never} /></MemoryRouter>);
+    await screen.findByText("820 ms");
+    fireEvent.change(screen.getByLabelText("Source"), { target: { value: "real" } });
+    expect(screen.queryByRole("table", { name: "Incident records" })).not.toBeInTheDocument();
+    expect(screen.getByText("No records match these filters.")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Source"), { target: { value: "simulated" } });
+    expect(screen.getByRole("table", { name: "Incident records" })).toHaveTextContent("thermal");
   });
 });

@@ -46,15 +46,15 @@ describe("CivilianHomePage", () => {
     } });
     render(<MemoryRouter><CivilianHomePage fetcher={catalogFetcher} /></MemoryRouter>);
     expect(await screen.findByText("First lake notice")).toBeVisible();
-    fireEvent.change(screen.getByRole("combobox", { name: "Lake" }), { target: { value: "two" } });
+    fireEvent.click(screen.getByRole("button", { name: "Lake two" }));
     expect(await screen.findByRole("status")).toHaveTextContent("Loading lake updates");
     expect(screen.queryByText("First lake notice")).not.toBeInTheDocument();
     await act(async () => { await Promise.resolve(); });
-    fireEvent.change(screen.getByRole("combobox", { name: "Lake" }), { target: { value: "three" } });
+    fireEvent.click(screen.getByRole("button", { name: "Lake three" }));
     expect(await screen.findByText("Third lake notice")).toBeVisible();
     await act(async () => { resolveSlow([]); });
     expect(screen.getByText("Third lake notice")).toBeVisible();
-    expect(screen.getByRole("combobox", { name: "Lake" })).toHaveValue("three");
+    expect(screen.getByRole("button", { name: "Lake three" })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("keeps secondary data failures unavailable until Retry succeeds", async () => {
@@ -98,5 +98,7 @@ describe("CivilianHomePage", () => {
     expect(await screen.findByText("Patrol presence")).toBeVisible();
     expect(screen.getAllByText("North lake area")).toHaveLength(2);
     expect(screen.queryByText(/battery|serial number|exact coordinates/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Lake Sammamish map preview" })).toBeInTheDocument();
+    expect(screen.queryByText(/privacy|generalized for/)).not.toBeInTheDocument();
   });
 });

@@ -1,24 +1,17 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { AppHeader } from "../components/AppHeader";
-import { loadOperationsAlerts, type LakeAlert } from "../lib/operationsData";
+import { useOperationsRecords } from "../hooks/useOperationsRecords";
+import { LakeDataCoverage, RecordFilters } from "../components/OperationsRecords";
 import { supabase, type SupabaseLike } from "../lib/supabase";
 
-const API = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+import "./website-touchups.css";
 
 export function AlertsPage({ client = supabase, fetcher = fetch }: { client?: SupabaseLike; fetcher?: typeof fetch }) {
-  const [alerts, setAlerts] = useState<LakeAlert[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    let current = true;
-    void loadOperationsAlerts(client, fetcher, API)
-      .then((nextAlerts) => { if (current) setAlerts(nextAlerts); })
-      .catch(() => { if (current) setError("Could not load operational alerts."); })
-      .finally(() => { if (current) setLoading(false); });
-    return () => { current = false; };
-  }, [client, fetcher]);
+  const { alerts, lakes, loading, failed, checkedAt, retry } = useOperationsRecords(client, fetcher);
+  const [lake, setLake] = useState("");
+  const [source, setSource] = useState("");
+  const filtered = alerts.filter((alert) => (!lake || alert.lakeId === lake) && (!source || alert.source === source));
 
   return (
     <main className="app-page data-page">
@@ -26,23 +19,24 @@ export function AlertsPage({ client = supabase, fetcher = fetch }: { client?: Su
       <section className="data-shell">
         <header className="page-heading">
           <h1>Active alerts</h1>
-          <p>Lake-scoped detections from the currently connected operator runtimes.</p>
+          <p>Review available detections from your assigned lakes.</p>
         </header>
         {loading && <p className="panel-empty" aria-live="polite">Loading alerts…</p>}
-        {error && <p className="form-error" role="alert">{error}</p>}
-        {!loading && !error && !alerts.length && <section className="data-empty"><span className="status-dot" aria-hidden="true" /><div><h2>No active alerts</h2><p>The connected lake runtimes have not reported an alert.</p></div></section>}
-        {!!alerts.length && (
+        {failed && !loading && <div className="touch-error" role="alert"><p>Could not load operational alerts.</p><button className="button-secondary" onClick={retry}>Retry</button></div>}
+        {!loading && !failed && <><p className="field-help">Checked {checkedAt}. This page shows a snapshot; refresh to check for new detections.</p><button className="button-secondary" onClick={retry}>Refresh alerts</button><RecordFilters lakes={lakes} lake={lake} source={source} setLake={setLake} setSource={setSource}/>
+        {!filtered.length && <section className="data-empty"><div><h2>{alerts.length ? "No records match these filters." : "No alerts in the available records"}</h2><p>Check lake data coverage below before relying on an empty list.</p></div></section>}
+        {!!filtered.length && (
           <div className="alert-list">
-            {alerts.map((alert) => (
+            {filtered.map((alert) => (
               <article className="alert-record" key={`${alert.lakeId}-${alert.alert_id}`}>
                 <div className="alert-record__status"><span className={alert.confirmed ? "record-badge record-badge--confirmed" : "record-badge"}>{alert.confirmed ? "Confirmed" : "Needs review"}</span><span>{alert.source}</span></div>
                 <div><p className="panel-eyebrow">{alert.lakeName}</p><h2>{alert.detection_mode} detection</h2></div>
                 <dl><div><dt>Drone</dt><dd>{alert.drone_id}</dd></div><div><dt>Latency</dt><dd>{alert.latency_ms === null ? "—" : `${alert.latency_ms} ms`}</dd></div><div><dt>Recorded</dt><dd>{new Date(alert.created_at).toLocaleString()}</dd></div></dl>
-                <Link to={`/lakes/${alert.lakeId}`}>Open operations <span aria-hidden="true">→</span></Link>
+                <Link to={`/lakes/${alert.lakeId}`}>Open lake <span aria-hidden="true">→</span></Link>
               </article>
             ))}
           </div>
-        )}
+        )}<LakeDataCoverage lakes={lakes}/></>}
       </section>
     </main>
   );

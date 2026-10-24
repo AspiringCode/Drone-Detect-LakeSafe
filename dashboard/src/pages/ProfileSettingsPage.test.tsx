@@ -27,6 +27,11 @@ describe("ProfileSettingsPage", () => {
 
     expect(await screen.findByDisplayValue("Lake Operator")).toBeInTheDocument();
     expect(screen.getByDisplayValue("operator@example.com")).toHaveAttribute("readonly");
+    expect(screen.getByRole("navigation", { name: "Account settings" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Access" })).toHaveAttribute("href", "/verify-affiliation");
+    expect(screen.getByRole("link", { name: "Stations" })).toHaveAttribute("href", "/station-access");
+    expect(screen.getByRole("group")).toHaveTextContent("Account details");
+    expect(screen.queryByText(/Supabase/)).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText(/display name/i), { target: { value: "Sammamish Operator" } });
     fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
 

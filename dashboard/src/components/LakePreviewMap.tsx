@@ -23,7 +23,9 @@ export function LakePreviewMap({ name, lat, lon }: LakePreviewMapProps) {
       zoomControl: false,
     }).setView([lat, lon], 12);
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
-    return () => { map.remove(); };
+    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => map.invalidateSize()) : null;
+    observer?.observe(containerRef.current);
+    return () => { observer?.disconnect(); map.remove(); };
   }, [lat, lon]);
 
   return (

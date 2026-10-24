@@ -3,6 +3,7 @@ import { AppHeader } from "../components/AppHeader";
 import { supabase, type SupabaseLike } from "../lib/supabase";
 import { Link } from "react-router-dom";
 import { useOptionalPrincipal } from "../auth/PrincipalProvider";
+import { AccountNavigation, AccountStations } from "../components/AccountNavigation";
 
 type ProfileState = {
   id: string;
@@ -53,21 +54,14 @@ export function ProfileSettingsPage({ client = supabase }: { client?: SupabaseLi
       <AppHeader active="profile" contextLabel="Account settings" client={client} />
       <section className="profile-shell">
         <header className="page-heading">
-          <h1>Profile settings</h1>
-          <p>Manage the identity shown across your LakeSafe workspace.</p>
+          <h1>Account</h1>
+          <p>Your profile, access and station memberships.</p>
         </header>
-
-        <section className="profile-card verification-card" aria-labelledby="verification-title">
-          <p className="panel-eyebrow">Affiliation</p>
-          <h2 id="verification-title">Verification: {(principal?.verification_status ?? "not started").replace(/_/g, " ")}</h2>
-          <p className="field-help">Verification is separate from station membership and never grants access on its own.</p>
-          <Link className="button-link" to="/verify-affiliation">{principal?.verification_status === "verified" ? "View verification" : "Verify affiliation"}</Link>
-        </section>
-
+        <AccountNavigation active="profile"/>
+        <div className="account-layout">
         <section className="profile-card" aria-labelledby="profile-details-title">
           <div className="profile-card__heading">
             <div>
-              <p className="panel-eyebrow">Personal details</p>
               <h2 id="profile-details-title">Your profile</h2>
             </div>
             <span className="profile-avatar" aria-hidden="true">{(profile?.displayName || profile?.email || "O").charAt(0).toUpperCase()}</span>
@@ -84,12 +78,12 @@ export function ProfileSettingsPage({ client = supabase }: { client?: SupabaseLi
               <label>
                 Email address
                 <input value={profile.email} readOnly aria-describedby="email-help" />
-                <span id="email-help" className="field-help">Email changes are managed through your Supabase account.</span>
+                <span id="email-help" className="field-help">Your sign-in email is read-only here.</span>
               </label>
-              <label>
+              <details className="account-details"><summary>Account details</summary><label>
                 User ID
                 <input className="profile-id" value={profile.id} readOnly />
-              </label>
+              </label></details>
               {saveError && <p className="form-error" role="alert">{saveError}</p>}
               {saved && <p className="form-success" role="status"><span className="status-dot" aria-hidden="true" />Profile saved.</p>}
               <div className="profile-actions">
@@ -100,6 +94,13 @@ export function ProfileSettingsPage({ client = supabase }: { client?: SupabaseLi
             </form>
           )}
         </section>
+        <aside><section className="touch-panel verification-card" aria-labelledby="verification-title">
+          <h2 id="verification-title">{principal?.judge_demo_access ? "Demo access" : "Affiliation"}</h2>
+          <p>{principal?.judge_demo_access ? "Fictional demonstration account" : `Verification: ${(principal?.verification_status ?? "not started").replace(/_/g, " ")}`}</p>
+          <p className="field-help">Station membership determines which lakes and actions you can access.</p>
+          <Link to="/verify-affiliation">{principal?.verification_status === "verified" ? "View verification" : "Verify affiliation"}</Link>
+        </section><AccountStations/></aside>
+        </div>
       </section>
     </main>
   );

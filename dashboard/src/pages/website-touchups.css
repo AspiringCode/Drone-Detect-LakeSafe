@@ -1,0 +1,77 @@
+.touch-shell { max-width: 78rem; }
+.touch-shell, .touch-panel, .command-block { min-width: 0; }
+.page-heading.touch-heading { display: flex; max-width: none; justify-content: space-between; align-items: center; gap: 1.25rem; flex-wrap: wrap; margin-bottom: 2rem; }
+.touch-heading p { margin: .75rem 0 0; color: var(--text-muted); }
+.touch-panel { padding: clamp(1.25rem, 3vw, 2rem); border: 1px solid var(--border); border-radius: 18px; background: var(--surface); margin-top: 1.25rem; }
+.touch-panel p { line-height: 1.65; }
+.touch-panel h3 { font-size: 1rem; }
+.touch-panel details { margin-top: 1rem; }
+.touch-panel summary { cursor: pointer; color: var(--primary-hover); font-weight: 700; padding: .5rem 0; }
+.touch-error { padding: 1rem 1.25rem; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.touch-error p { color: var(--danger); }
+.fleet-empty { padding: 2rem 0; max-width: 34rem; }
+.fleet-empty h3 { font-size: 1.25rem; }
+.fleet-registry li { align-items: start; gap: 1.5rem; }
+.fleet-registry li > div, .fleet-registry li > span { min-width: 0; }
+.fleet-registry li > span { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: flex-end; }
+.fleet-registry details { margin: 0; font-size: .8rem; }
+.fleet-registry select { max-width: 100%; }
+.local-tabs { display: flex; flex-wrap: wrap; gap: .5rem; padding: .5rem 0; margin-bottom: 1.25rem; border-bottom: 1px solid var(--border); }
+.local-tabs a, .local-tabs button { display: inline-flex; align-items: center; gap: .5rem; min-height: 44px; padding: .6rem .85rem; background: transparent; border: 1px solid transparent; border-radius: 8px; color: var(--text-muted); font-weight: 700; text-decoration: none; }
+.local-tabs .is-active { background: var(--surface-blue); color: var(--primary-hover); border-color: var(--border); }
+.local-tabs button:hover, .local-tabs button:focus-visible { background: var(--surface-blue); color: var(--primary-hover); border-color: var(--primary); }
+.setup-steps button span { font-size: .75rem; }
+.setup-form { max-width: 44rem; }
+.command-block { display: grid; gap: .5rem; margin: 1rem 0; }
+.command-block pre { max-width: 100%; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 1rem; margin: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-muted); font-size: .8rem; line-height: 1.65; }
+.command-block button { justify-self: start; font-size: .8rem; }
+.civilian-page .civilian-hero { padding-top: clamp(2.5rem, 5vw, 4rem); padding-bottom: 2rem; }
+.civilian-page .civilian-hero h1 { max-width: 28ch; font-size: clamp(2.25rem, 4vw, 3.5rem); }
+.civilian-page .civilian-hero > p:last-child { margin-top: 1rem; }
+.public-lake-choices { display: flex; gap: .65rem; flex-wrap: wrap; }
+.public-lake-choices button[aria-pressed="true"] { background: var(--surface-blue); border-color: var(--primary); color: var(--primary-hover); }
+.civilian-page .public-lake-map { display: block; padding: 0; min-height: 0; border-radius: 18px; align-self: start; }
+.public-map-heading { padding: 1.25rem; }
+.public-lake-map .public-map-heading h2 { font-size: 1.25rem; }
+.public-map-heading p, .public-map-caption { margin: .4rem 0 0; font-size: .8rem; color: var(--text-muted); }
+.public-lake-map .lake-preview { height: 29rem; border-radius: 0; }
+.civilian-page .public-lake-map > .public-map-caption { margin: 0; padding: 1rem 1.25rem; font-size: .8rem; }
+.public-lake-map > .public-map-unavailable:not(.panel-eyebrow) { max-width: none; margin: 0; padding: 1.5rem 1.25rem; border-top: 1px solid var(--border); background: var(--surface-muted); font-size: .9rem; }
+.public-how { padding: .5rem 0; line-height: 1.65; }
+.public-how summary { cursor: pointer; font-weight: 700; color: var(--primary-hover); }
+.civilian-page .public-patrol-summary li { display: block; }
+.public-patrol-summary li p { margin: .3rem 0 0; }
+.civilian-page .public-alert-card__dot { background: var(--primary); box-shadow: none; }
+.reports-touchup .report-metric { min-height: 0; box-shadow: none; border-radius: 12px; }
+.reports-touchup .report-metric__value { margin-bottom: .8rem; font-size: 2rem; font-variant-numeric: tabular-nums; }
+.record-filters { display: flex; flex-wrap: wrap; gap: 1rem; margin: 1.25rem 0; }
+.record-filters select { padding: .65rem; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); border-radius: 8px; max-width: 100%; }
+.record-filters label { min-width: 0; max-width: 100%; }
+.coverage-lakes { list-style: none; padding: 0; margin: 1rem 0 0; }
+.coverage-lakes li { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 0; border-bottom: 1px solid var(--border); }
+.coverage-lakes p { color: var(--text-muted); font-size: .85rem; margin: .3rem 0 0; }
+.coverage-lakes a { flex-shrink: 0; }
+.incident-table-wrap { max-width: 100%; overflow: auto; margin-top: 1.25rem; }
+.incident-table { width: 100%; border-collapse: collapse; text-align: left; font-size: .85rem; }
+.incident-table th, .incident-table td { padding: .85rem; border-bottom: 1px solid var(--border); }
+.incident-table th { color: var(--text-muted); background: var(--surface-muted); }
+.records-empty { padding: 1.5rem 0; color: var(--text-muted); }
+.account-layout { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 1.5rem; margin-top: 1.5rem; }
+.account-layout > *, .account-layout aside { min-width: 0; }
+.account-layout .profile-card { margin: 0; padding: 1.5rem; }
+.account-layout .touch-panel { margin-top: 0; margin-bottom: 1.25rem; padding: 1.25rem; }
+.account-details { font-size: .8rem; color: var(--text-muted); }
+.account-details summary { cursor: pointer; padding: .6rem 0; }
+.account-details label { margin-top: .5rem; }
+.lake-review-steps { display: flex; gap: 1.5rem; flex-wrap: wrap; padding: 0; list-style: none; color: var(--text-muted); font-size: .85rem; }
+.lake-review-steps [aria-current="step"] { color: var(--primary-hover); font-weight: 700; }
+.lake-create-form { max-width: 44rem; }
+.lake-create-form.has-preview { display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); gap: 2rem; max-width: none; }
+.lake-create-form label { margin-top: 1rem; }
+.shoreline-preview__map { height: 24rem; margin-top: 1rem; border-radius: 12px; }
+.coverage-preview-note { padding: .8rem; background: var(--surface-blue); color: var(--text); border-radius: 8px; }
+@media(max-width: 750px) { .lake-create-form.has-preview { grid-template-columns: 1fr; } .shoreline-preview__map { height: 18rem; } }
+@media(max-width: 800px) { .account-layout { grid-template-columns: 1fr; } }
+@media(max-width: 750px) { .civilian-side { grid-row: 1; } .public-lake-map .lake-preview { height: 20rem; } }
+@media(max-width: 700px) { .fleet-registry li { display: block; } .fleet-registry li > span { justify-content: flex-start; margin-top: 1rem; } .touch-heading { align-items: start; } }
+@media(max-width: 380px) { .civilian-page .civilian-header { gap: .5rem; } .civilian-page .civilian-header nav { gap: .5rem; font-size: .75rem; } .civilian-header nav a { white-space: nowrap; } .civilian-page .civilian-header .button-link { padding-inline: .5rem; } }
