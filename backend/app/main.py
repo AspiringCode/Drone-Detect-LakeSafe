@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from time import monotonic
 from uuid import uuid4
-from dataclasses import asdict, dataclass, field, is_dataclass
+from dataclasses import asdict, dataclass, field, is_dataclass, replace
 from datetime import datetime, timezone
 from typing import Callable, Literal
 
@@ -651,6 +651,9 @@ def regenerate_zones(lake_id: str, authorization: str | None = Header(default=No
     if simulated + len(real) == 0:
         raise HTTPException(status_code=409, detail="Start a simulation or assign a drone to this lake first")
     zones = _divide(runtime, simulated + len(real))
+    if runtime.real_zones is not None:
+        # A simulation-only layout reuses the builder's names; prefix them so they never read as a real drone's zone.
+        zones = [replace(zone, zone_id=f"sim-{zone.zone_id}") for zone in zones]
     runtime.zones = zones
     # A new layout restarts the session: simulated drones take the first zones, real drones the rest.
     runtime.engine.set_fleet(simulated_fleet(runtime, zones[:simulated]), zones[:simulated])

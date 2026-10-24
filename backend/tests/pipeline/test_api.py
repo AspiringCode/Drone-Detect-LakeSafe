@@ -329,6 +329,8 @@ def test_starting_can_leave_real_drones_on_their_current_zones(lake):
     assert runtime.engine.drones[0].assigned_zone not in before[1].values()
     _post(client, headers, "simulation/drones")
     assert _post(client, headers, "zones/regenerate").json()["zones"] == 2  # simulated drones only
+    # the simulation's own layout is named apart from the zones real drones keep flying
+    assert {drone.assigned_zone for drone in runtime.engine.drones} == {"sim-cell-0", "sim-cell-1"}
     # real drones keep flying the layout they had before the session
     assert (runtime.real_zones, runtime.real_assignments) == before
     _post(client, headers, "simulation/stop")

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link, useParams } from "react-router-dom";
 import { AlertPanel } from "../components/AlertPanel";
 import { DroneRoster } from "../components/DroneRoster";
@@ -195,7 +196,8 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
         {operationsDataError && <p className="operations-data-error" role="alert" aria-label="Operational data error">{operationsDataError}</p>}
         {registered.length > 0 && realSafety && <RealFleetSafetyPanel capabilities={stationCapabilities} status={realSafety} busy={realSafetyBusy} error={realSafetyError} onSetAutonomy={changeRealAutonomy} onRequestSafeReturn={returnRealFleet} />}
       </section>}
-      {askAboutRealDrones && <div className="modal-backdrop" onKeyDown={(event) => { if (event.key === "Escape") setAskAboutRealDrones(false); }}>
+      {/* Portalled to <body>: the page's entrance transform would otherwise anchor position: fixed to <main>, not the screen. */}
+      {askAboutRealDrones && createPortal(<div className="modal-backdrop" onKeyDown={(event) => { if (event.key === "Escape") setAskAboutRealDrones(false); }}>
         <div className="modal-card" role="dialog" aria-modal="true" aria-labelledby="real-drones-title">
           <h2 id="real-drones-title">Change real drones’ flight paths?</h2>
           <p>{registered.length === 1 ? "A real drone is" : `${registered.length} real drones are`} on this lake. Changing re-divides the lake for every drone, so {registered.length === 1 ? "its" : "their"} next patrol uses a new zone.</p>
@@ -205,7 +207,7 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
             <button className="button-secondary" onClick={() => setAskAboutRealDrones(false)}>Cancel</button>
           </div>
         </div>
-      </div>}
+      </div>, document.body)}
     </main>
   );
 }
