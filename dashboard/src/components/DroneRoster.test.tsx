@@ -38,6 +38,14 @@ describe("DroneRoster", () => {
     expect(screen.getAllByText("-").length).toBeGreaterThan(0);
   });
 
+  it("labels each row's source and shortens real device UUIDs", () => {
+    const id = "13adf59c-ef47-43b8-9024-4fefef66b7b5";
+    render(<DroneRoster drones={[{ ...drones[0], drone_id: id, source: "real" }, drones[1]]} />);
+    expect(screen.getByText("13adf59c…")).toHaveAttribute("title", id);
+    expect(screen.getByText("real")).toBeTruthy();
+    expect(screen.getByText("simulated")).toBeTruthy();
+  });
+
   it("exposes battery charge as an accessible visual meter", () => {
     render(<DroneRoster drones={drones} />);
     const meters = screen.getAllByRole("progressbar", { name: /battery/i });

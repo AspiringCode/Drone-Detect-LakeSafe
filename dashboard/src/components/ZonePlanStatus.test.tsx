@@ -13,6 +13,7 @@ const plan = {
   priorityCells: 2,
   proxyPriorityCells: 2,
   coverageCells: 4,
+  fallbackCells: 0,
   sourceAttribution: [
     "King County Open Data — Freshwater Swim Beach Data and Water Quality Monitoring Sites",
   ],
@@ -29,6 +30,13 @@ describe("ZonePlanStatus", () => {
     expect(screen.getByText("Proxy data")).toBeVisible();
     expect(screen.getByText("King County Open Data — Freshwater Swim Beach Data and Water Quality Monitoring Sites")).toBeVisible();
     expect(screen.getByText(/data (current|stale)/i)).toBeVisible();
+  });
+
+  it("counts fallback cells as baseline coverage and explains them", () => {
+    render(<ZonePlanStatus plan={{ ...plan, priorityCells: 0, proxyPriorityCells: 0, coverageCells: 0, fallbackCells: 1 }} />);
+
+    expect(screen.getByText("Baseline coverage areas").nextElementSibling).toHaveTextContent("1");
+    expect(screen.getByText(/Fallback coverage: one whole-lake area/)).toBeVisible();
   });
 
   it("describes unavailable reviewed priority data without implying an incident feed", () => {

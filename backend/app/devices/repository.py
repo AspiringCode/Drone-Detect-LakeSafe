@@ -46,8 +46,10 @@ class SupabaseDeviceRepository(DeviceAuthRepository):
     def list_real(self, station_id: str) -> list[dict]:
         try:
             rows = self._client.table("drone_inventory").select(
-                "inventory_id,lake_id,lifecycle,battery_percent,health,connectivity,updated_at,drone_credentials(manufacturer,serial,credential_state)"
-            ).eq("station_id", station_id).eq("source", "real").neq("lifecycle", "retired").order("created_at").execute().data or []
+                "inventory_id,lake_id,lifecycle,battery_percent,health,connectivity,updated_at,drone_credentials(manufacturer,serial,credential_state),drone_heartbeats(received_at)"
+            ).eq("station_id", station_id).eq("source", "real").neq("lifecycle", "retired").order("created_at").order(
+                "received_at", desc=True, foreign_table="drone_heartbeats"
+            ).limit(1, foreign_table="drone_heartbeats").execute().data or []
         except Exception as exc:
             raise DeviceRepositoryError("Device inventory is unavailable") from exc
         drones = []
@@ -55,7 +57,10 @@ class SupabaseDeviceRepository(DeviceAuthRepository):
             credential = row.pop("drone_credentials", None) or {}
             if isinstance(credential, list):  # one-to-one, but PostgREST may still wrap it
                 credential = credential[0] if credential else {}
-            drones.append({**row, "manufacturer": credential.get("manufacturer"), "serial": credential.get("serial"), "credential_state": credential.get("credential_state")})
+            # Inventory battery/health columns hold schema defaults until a heartbeat lands, so the UI needs this to tell them apart.
+            heartbeats = row.pop("drone_heartbeats", None) or []
+            drones.append({**row, "manufacturer": credential.get("manufacturer"), "serial": credential.get("serial"), "credential_state": credential.get("credential_state"),
+                           "last_heartbeat_at": heartbeats[0].get("received_at") if heartbeats else None})
         return drones
 
     def attach_real_to_lake(self, station_id: str, drone_id: str, lake_id: str | None) -> dict:

@@ -28,6 +28,17 @@ describe("CivilianHomePage", () => {
     expect(screen.queryByRole("link", { name: "Operations" })).not.toBeInTheDocument();
   });
 
+  it("offers a signed-in operator the way back to their workspace", async () => {
+    const client = { auth: {
+      getSession: async () => ({ data: { session: { access_token: "officer-session" } } }),
+      onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => undefined } } }),
+    } };
+    const request = async <T,>() => ({ user_id: "officer", account_class: "officer", memberships: [] } as T);
+    render(<MemoryRouter><PrincipalProvider client={client as never} request={request}><CivilianHomePage fetcher={fetcher} /></PrincipalProvider></MemoryRouter>);
+    expect(await screen.findByRole("link", { name: "Return to workspace" })).toHaveAttribute("href", "/lakes");
+    expect(screen.queryByRole("link", { name: "Sign in" })).not.toBeInTheDocument();
+  });
+
   it("keeps account entry links available to anonymous visitors", () => {
     render(<MemoryRouter><CivilianHomePage fetcher={fetcher} /></MemoryRouter>);
     expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/login");

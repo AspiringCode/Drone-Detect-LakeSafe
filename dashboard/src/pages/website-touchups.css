@@ -16,6 +16,11 @@
 .fleet-registry li > span { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: flex-end; }
 .fleet-registry details { margin: 0; font-size: .8rem; }
 .fleet-registry select { max-width: 100%; }
+.fleet-registry li.is-new { padding-inline: 1rem; border-radius: 12px; background: var(--surface-blue); box-shadow: inset 0 0 0 1px var(--primary); }
+.fleet-registry .status-label { margin: 0 0 0 .35rem; }
+.mission-download form { display: grid; gap: .75rem; max-width: 26rem; margin-top: .5rem; }
+.mission-download form button { justify-self: start; }
+.helper-files { margin: 0 0 1rem; }
 .local-tabs { display: flex; flex-wrap: wrap; gap: .5rem; padding: .5rem 0; margin-bottom: 1.25rem; border-bottom: 1px solid var(--border); }
 .local-tabs a, .local-tabs button { display: inline-flex; align-items: center; gap: .5rem; min-height: 44px; padding: .6rem .85rem; background: transparent; border: 1px solid transparent; border-radius: 8px; color: var(--text-muted); font-weight: 700; text-decoration: none; }
 .local-tabs .is-active { background: var(--surface-blue); color: var(--primary-hover); border-color: var(--border); }

@@ -19,10 +19,17 @@ export interface RealDrone {
   updated_at: string;
   manufacturer: string | null;
   serial: string | null;
+  last_heartbeat_at?: string | null;
 }
+
+type PatrolZone = { zone_id: string; radius_m: number; is_proxy: boolean };
 
 const json = (body: unknown): RequestInit => ({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 const message = (value: unknown, fallback: string) => value instanceof Error ? value.message : fallback;
+const seen = (iso: string) => {
+  const minutes = Math.round((Date.now() - Date.parse(iso)) / 60000);
+  return minutes < 1 ? "just now" : minutes < 60 ? `${minutes} min ago` : new Date(iso).toLocaleString();
+};
 
 export function DronesPage({ client = supabase, setup = false }: { client?: SupabaseLike; setup?: boolean }) {
   const station = useOptionalActiveStation()?.station ?? null;
@@ -34,17 +41,22 @@ export function DronesPage({ client = supabase, setup = false }: { client?: Supa
   const [registered, setRegistered] = useState<string | null>(null);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [busy, setBusy] = useState(false);
   const [step, setStep] = useState("Register");
   const [selectedDrone, setSelectedDrone] = useState("");
   const requestGeneration = useRef(0);
   const currentStation = useRef(stationId);
+  const feedback = useRef<HTMLDivElement>(null);
   currentStation.current = stationId;
+  // Feedback sits above the forms, so bring it into view after an action.
+  useEffect(() => { if (status || error) feedback.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" }); }, [status, error]);
 
   async function refresh() {
     if (!allowed) return;
     const generation = ++requestGeneration.current;
     setLoading(true);
-    setError("");
+    setLoadError("");
     try {
       const [inventory, lakeRows] = await Promise.all([
         apiRequest<{ drones: RealDrone[] }>(`/api/stations/${encodeURIComponent(stationId)}/inventory/real`, {}, client),
@@ -54,13 +66,13 @@ export function DronesPage({ client = supabase, setup = false }: { client?: Supa
       if (lakeRows.error) throw lakeRows.error;
       setDrones(inventory.drones);
       setLakes(((lakeRows.data ?? []) as Lake[]).filter((lake) => lake.station_id === stationId));
-    } catch (value) { if (generation === requestGeneration.current && currentStation.current === stationId) setError(message(value, "Drones could not be loaded.")); } finally { if (generation === requestGeneration.current && currentStation.current === stationId) setLoading(false); }
+    } catch (value) { if (generation === requestGeneration.current && currentStation.current === stationId) setLoadError(message(value, "Drones could not be loaded.")); } finally { if (generation === requestGeneration.current && currentStation.current === stationId) setLoading(false); }
   }
-  useEffect(() => { setRegistered(null); setSelectedDrone(""); setStep("Register"); setDrones([]); setLakes([]); setStatus(""); setError(""); void refresh(); return () => { requestGeneration.current++; }; }, [stationId, allowed]);
+  useEffect(() => { setRegistered(null); setSelectedDrone(""); setStep("Register"); setDrones([]); setLakes([]); setStatus(""); setError(""); setLoadError(""); void refresh(); return () => { requestGeneration.current++; }; }, [stationId, allowed]);
 
   async function act(work: () => Promise<unknown>, done: string, fallback: string) {
-    setError(""); setStatus("");
-    try { await work(); if (currentStation.current !== stationId) return; setStatus(done); await refresh(); } catch (value) { if (currentStation.current === stationId) setError(message(value, fallback)); }
+    setError(""); setStatus(""); setBusy(true);
+    try { await work(); if (currentStation.current !== stationId) return; setStatus(done); await refresh(); } catch (value) { if (currentStation.current === stationId) setError(message(value, fallback)); } finally { setBusy(false); }
   }
   async function register(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -70,8 +82,8 @@ export function DronesPage({ client = supabase, setup = false }: { client?: Supa
       const result = await apiRequest<{ drone_id: string }>(`/api/stations/${encodeURIComponent(stationId)}/inventory/real`, json({
         manufacturer: String(form.get("manufacturer")).trim(), serial: String(form.get("serial")).trim(), public_key: String(form.get("public_key")).trim(),
       }), client);
-      if (currentStation.current === stationId) { setRegistered(result.drone_id); setSelectedDrone(result.drone_id); target.reset(); }
-    }, "Drone registered. Assign it to a lake, then connect it.", "Drone could not be registered.");
+      if (currentStation.current === stationId) { setRegistered(result.drone_id); setSelectedDrone(result.drone_id); setStep("Assign lake"); target.reset(); }
+    }, "Drone registered. Choose its lake below, then connect it.", "Drone could not be registered.");
   }
   const assign = (drone: RealDrone, lakeId: string) => act(() => apiRequest(`/api/stations/${encodeURIComponent(stationId)}/inventory/${drone.inventory_id}/lake`, json({ lake_id: lakeId || null }), client), lakeId ? "Drone assigned to the lake." : "Drone removed from its lake.", "Lake assignment failed.");
   const placeTest = (drone: RealDrone) => {
@@ -80,7 +92,11 @@ export function DronesPage({ client = supabase, setup = false }: { client?: Supa
     void act(() => apiRequest(`/api/stations/${encodeURIComponent(stationId)}/inventory/${drone.inventory_id}/test-position`, json({ lat: lake.centroid_lat, lon: lake.centroid_lon }), client), `Test marker placed at the centre of ${lake.name} for 5 minutes.`, "Test marker could not be placed.");
   };
   const patrol = (drone: RealDrone) => act(() => apiRequest(`/api/stations/${encodeURIComponent(stationId)}/inventory/${drone.inventory_id}/patrol`, json({}), client), "Patrol sent. The drone's Pi uploads it on its next heartbeat; on the ground it waits for the pilot to arm.", "Patrol could not be sent.");
-  const retire = (drone: RealDrone) => act(() => apiRequest(`/api/stations/${encodeURIComponent(stationId)}/inventory/${drone.inventory_id}/retire`, { method: "POST" }, client), "Drone retired.", "Drone could not be retired.");
+  const retire = (drone: RealDrone) => {
+    // Retiring revokes the device key, which cannot be undone from here.
+    if (!window.confirm(`Retire ${drone.serial ?? "this drone"}? Its device key is revoked and it can no longer send heartbeats.`)) return;
+    void act(() => apiRequest(`/api/stations/${encodeURIComponent(stationId)}/inventory/${drone.inventory_id}/retire`, { method: "POST" }, client), "Drone retired.", "Drone could not be retired.");
+  };
 
   if (!allowed) return <main className="app-page"><AppHeader active="drones" showStationPicker client={client}/><section className="workflow-shell"><h1>Drone registry is unavailable</h1><p>Choose a station where you are a station administrator.</p></section></main>;
   const lakeName = (id: string | null) => lakes.find((lake) => lake.lake_id === id)?.name ?? "Not assigned";
@@ -88,31 +104,39 @@ export function DronesPage({ client = supabase, setup = false }: { client?: Supa
   const connectId = connectIds.includes(selectedDrone) ? selectedDrone : connectIds[0] ?? "<drone-id>";
   const inventory = <section className="touch-panel" aria-label="Registered drones">
         <h2>Registered drones</h2>
-        {loading ? <p className="field-help">Loading drones…</p> : error ? <p>Fleet information could not be refreshed.</p> : !drones.length ? <div className="fleet-empty"><h3>No real drones are registered to this station yet.</h3><p>Register a drone, assign a lake, then connect its heartbeat.</p>{!setup && <Link className="button-link" to="/drones/setup">Register a drone</Link>}</div> : <ul className="station-results fleet-registry">{drones.map((drone) => <li key={drone.inventory_id}>
-          <div><strong>{drone.manufacturer ?? "Drone"} {drone.serial}</strong><p className="field-help">{drone.connectivity} · {drone.health} · {drone.battery_percent}% · {lakeName(drone.lake_id)}</p><details><summary>Device details</summary><p className="field-help">{drone.inventory_id}</p><p className="field-help">Inventory updated: {drone.updated_at && Number.isFinite(Date.parse(drone.updated_at)) ? new Date(drone.updated_at).toLocaleString() : "Not available"}</p></details></div>
+        {loading && !drones.length ? <p className="field-help">Loading drones…</p> : loadError && !drones.length ? <p>Fleet information could not be loaded.</p> : !drones.length ? <div className="fleet-empty"><h3>No real drones are registered to this station yet.</h3><p>Register a drone, assign a lake, then connect its heartbeat.</p>{!setup && <Link className="button-link" to="/drones/setup">Register a drone</Link>}</div> : <ul className="station-results fleet-registry">{drones.map((drone) => <li key={drone.inventory_id} className={drone.inventory_id === registered ? "is-new" : undefined}>
+          <div><strong>{drone.manufacturer ?? "Drone"} {drone.serial}</strong>{drone.inventory_id === registered && <> <span className="status-label">New</span></>}
+            <p className="field-help">{drone.last_heartbeat_at ? `${drone.connectivity} · ${drone.health} · ${drone.battery_percent}% · last heartbeat ${seen(drone.last_heartbeat_at)}` : "Awaiting first heartbeat"} · {lakeName(drone.lake_id)}</p>
+            <details><summary>Device details</summary><p className="field-help">Device ID: {drone.inventory_id}</p><p className="field-help">Inventory updated: {drone.updated_at && Number.isFinite(Date.parse(drone.updated_at)) ? new Date(drone.updated_at).toLocaleString() : "Not available"}</p></details>
+            {drone.lake_id && <MissionDownload drone={drone} stationId={stationId} client={client} />}
+          </div>
           <span>
-            <label><span className="sr-only">Lake for {drone.serial}</span><select aria-label={`Lake for ${drone.serial}`} value={drone.lake_id ?? ""} onChange={(event) => void assign(drone, event.target.value)}><option value="">Not assigned</option>{lakes.map((lake) => <option key={lake.lake_id} value={lake.lake_id}>{lake.name}</option>)}</select></label>
-            {drone.lake_id && <><button type="button" className="button-secondary" onClick={() => placeTest(drone)}>Place test marker</button><button type="button" className="button-secondary" onClick={() => void patrol(drone)}>Send patrol</button><Link className="button-link" to={`/lakes/${drone.lake_id}`}>Open map</Link></>}
-            <button type="button" className="button-secondary" onClick={() => void retire(drone)}>Retire</button>
+            <label><span className="sr-only">Lake for {drone.serial}</span><select aria-label={`Lake for ${drone.serial}`} value={drone.lake_id ?? ""} disabled={busy} onChange={(event) => void assign(drone, event.target.value)}><option value="">Not assigned</option>{lakes.map((lake) => <option key={lake.lake_id} value={lake.lake_id}>{lake.name}</option>)}</select></label>
+            {drone.lake_id && <><button type="button" className="button-secondary" disabled={busy} onClick={() => placeTest(drone)}>Place test marker</button><button type="button" className="button-secondary" disabled={busy} onClick={() => void patrol(drone)}>Send patrol</button><Link className="button-link" to={`/lakes/${drone.lake_id}`}>Open map</Link></>}
+            <button type="button" className="button-secondary" disabled={busy} onClick={() => retire(drone)}>Retire</button>
           </span>
         </li>)}</ul>}
         <p className="field-help">Test markers are SIMULATED for 5 minutes. Only real heartbeats show as REAL.</p>
       </section>;
   return <main className="app-page"><AppHeader active="drones" showStationPicker client={client}/><section className="workflow-shell touch-shell">
     <header className="page-heading touch-heading"><div><h1>{setup ? "Drone setup" : "Drones"}</h1><p>{station?.station_name}</p></div>{setup ? <Link to="/drones">Back to registered drones</Link> : <Link className="button-link button-secondary" to="/drones/setup">Open setup guide</Link>}</header>
-    {status && <p className="form-success" role="status">{status}</p>}
-    {error && <div className="touch-error" role="alert"><p>{error}</p><button className="button-secondary" onClick={() => void refresh()}>Retry fleet information</button></div>}
+    <div ref={feedback}>
+      {status && <p className="form-success" role="status">{status}</p>}
+      {error && <div className="touch-error" role="alert"><p>{error}</p></div>}
+      {loadError && <div className="touch-error" role="alert"><p>Fleet information could not be refreshed. {loadError}</p><button className="button-secondary" onClick={() => void refresh()}>Retry fleet information</button></div>}
+    </div>
     {!setup ? inventory : <>
       <nav className="local-tabs setup-steps" aria-label="Drone setup steps">{["Register", "Assign lake", "Connect"].map((item, index) => <button type="button" key={item} aria-current={step === item ? "step" : undefined} className={step === item ? "is-active" : ""} onClick={() => setStep(item)}><span aria-hidden="true">{index + 1}</span>{item}</button>)}</nav>
       {step === "Register" && <section className="touch-panel setup-form" aria-label="Register a drone">
         <h2>Register a drone</h2>
+        <details className="helper-files"><summary>Get the device helper files</summary><p className="field-help">The commands on these steps run two scripts from the LakeSafe repository’s <code>backend/app/devices</code> folder: <code>drone_link.py</code> and <code>mavlink_bridge.py</code>. Copy both, side by side, to the drone’s Raspberry Pi or the ground laptop, then install their two packages:</p><CommandBlock command="pip install cryptography pymavlink" /></details>
         <p>On the drone or ground laptop, create its key. Only the public key is pasted here; the private key never leaves the device.</p>
         <CommandBlock command="python drone_link.py keygen --key drone.pem" />
-        <form onSubmit={register}>
+        <form onSubmit={register} aria-busy={busy}>
           <label>Manufacturer<input name="manufacturer" required maxLength={120}/></label>
           <label>Serial number<input name="serial" required maxLength={160}/></label>
           <label>Public key<input name="public_key" required minLength={40} maxLength={200} autoComplete="off" spellCheck={false}/></label>
-          <button>Register drone</button>
+          <button disabled={busy}>{busy ? "Registering…" : "Register drone"}</button>
         </form>
       </section>}
       {step === "Assign lake" && <><p className="field-help">Choose a lake for each registered drone. Only this station’s lakes are available.</p>{inventory}</>}
@@ -129,6 +153,47 @@ export function DronesPage({ client = supabase, setup = false }: { client?: Supa
       </section>}
     </>}
   </section></main>;
+}
+
+function MissionDownload({ drone, stationId, client }: { drone: RealDrone; stationId: string; client: SupabaseLike }) {
+  const [zones, setZones] = useState<PatrolZone[] | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const base = `/api/stations/${encodeURIComponent(stationId)}/inventory/${drone.inventory_id}`;
+  async function loadZones(open: boolean) {
+    if (!open || zones) return;
+    setError("");
+    try { setZones((await apiRequest<{ zones: PatrolZone[] }>(`${base}/patrol-zones`, {}, client)).zones); }
+    catch (value) { setError(message(value, "Patrol zones could not be loaded.")); }
+  }
+  async function download(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const zoneId = String(form.get("zone_id"));
+    setBusy(true); setError("");
+    try {
+      const text = await apiRequest<string>(`${base}/mission`, json({ zone_id: zoneId, home_lat: Number(form.get("home_lat")), home_lon: Number(form.get("home_lon")), altitude_m: Number(form.get("altitude_m")) }), client);
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+      link.download = `${zoneId}.waypoints`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    } catch (value) { setError(message(value, "Mission file could not be prepared.")); }
+    finally { setBusy(false); }
+  }
+  return <details className="mission-download" onToggle={(event) => void loadZones(event.currentTarget.open)}>
+    <summary>Download mission</summary>
+    <p className="field-help">One loop of a patrol zone, then return to launch, as a Mission Planner <code>.waypoints</code> file. Zones are this lake’s runtime patrol zones, the same ones Send patrol uses, not the stored coverage plan. Nothing is sent to the drone: review the file in Mission Planner before any flight.</p>
+    {error && <p className="form-error" role="alert">{error}</p>}
+    {!zones ? !error && <p className="field-help">Loading patrol zones…</p> : !zones.length ? <p>No patrol zones are available for this lake.</p> : <form onSubmit={download} aria-busy={busy}>
+      <label>Patrol zone<select name="zone_id" required>{zones.map((zone) => <option key={zone.zone_id} value={zone.zone_id}>{zone.zone_id} · {zone.radius_m} m radius{zone.is_proxy ? " · proxy data" : ""}</option>)}</select></label>
+      <label>Home latitude<input name="home_lat" type="number" step="any" min={-90} max={90} required /></label>
+      <label>Home longitude<input name="home_lon" type="number" step="any" min={-180} max={180} required /></label>
+      <p className="field-help">Home is where the drone takes off and returns: the launch point on shore, within 5 km of the zone.</p>
+      <label>Altitude (m)<input name="altitude_m" type="number" step="any" min={5} max={120} defaultValue={30} required /></label>
+      <button disabled={busy}>{busy ? "Preparing file…" : "Download .waypoints"}</button>
+    </form>}
+  </details>;
 }
 
 function CommandBlock({ command }: { command: string }) {

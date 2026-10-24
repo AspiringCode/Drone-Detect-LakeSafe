@@ -43,6 +43,7 @@ describe("zone plan API client", () => {
       priorityCells: 2,
       proxyPriorityCells: 1,
       coverageCells: 1,
+      fallbackCells: 1,
       sourceAttribution: ["King County Open Data — Freshwater Swim Beach Data and Water Quality Monitoring Sites"],
     });
   });

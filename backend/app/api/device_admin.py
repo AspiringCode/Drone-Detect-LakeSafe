@@ -7,15 +7,18 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.access.policy import Permission, require_recent_mfa, require_station_access
 from app.access.principal import Principal, get_principal
+from app.coordination.assignment import haversine_m
 from app.devices import live_commands, live_positions
 from app.devices.repository import DeviceRepositoryError, get_device_repository
 from app.devices.auth import DeviceAuthenticationError, decode_base64url
 from app.missions.export import DEFAULT_ALTITUDE_M
-from app.missions.qgc_plan import build_patrol_plan, mission_rows
+from app.missions.qgc_plan import build_patrol_plan, mission_rows, to_waypoints
+from app.models import LatLon
 from app.rate_limits import require_rate_limit
 
 router = APIRouter(prefix="/api/stations/{station_id}/inventory", tags=["real-device-inventory"])
@@ -92,16 +95,20 @@ def assign_real_inventory_lake(station_id: str, drone_id: str, value: LakeAssign
     except DeviceRepositoryError as exc:
         raise HTTPException(409, "Drone cannot be assigned to that lake") from exc
 
-@router.post("/{drone_id}/test-position", status_code=status.HTTP_202_ACCEPTED)
-def place_test_position(station_id: str, drone_id: str, value: TestPosition, principal: Principal = Depends(get_principal)) -> dict:
-    _admin(principal, station_id)
+def _assigned_drone(station_id: str, drone_id: str) -> dict:
     try:
         drones = get_device_repository().list_real(station_id)
     except DeviceRepositoryError as exc:
         raise HTTPException(503, "Real inventory is unavailable") from exc
-    lake_id = next((d.get("lake_id") for d in drones if d.get("inventory_id") == drone_id), None)
-    if not lake_id:
+    drone = next((d for d in drones if d.get("inventory_id") == drone_id), None)
+    if not drone or not drone.get("lake_id"):
         raise HTTPException(409, "Assign the drone to a lake first")
+    return drone
+
+@router.post("/{drone_id}/test-position", status_code=status.HTTP_202_ACCEPTED)
+def place_test_position(station_id: str, drone_id: str, value: TestPosition, principal: Principal = Depends(get_principal)) -> dict:
+    _admin(principal, station_id)
+    lake_id = _assigned_drone(station_id, drone_id)["lake_id"]
     # A hand-placed marker is not hardware telemetry, so it is labeled simulated.
     marker = live_positions.real_drone(f"{drone_id} (test)", value.lat, value.lon, 100, "idle")
     live_positions.record(lake_id, replace(marker, source="simulated"), datetime.now(timezone.utc), ttl_seconds=TEST_POSITION_SECONDS)
@@ -118,13 +125,7 @@ def send_patrol(station_id: str, drone_id: str, value: PatrolRequest, request: R
 
     _access(principal, station_id)
     require_rate_limit("inventory.real.patrol", principal, request, station_id=station_id)
-    try:
-        drones = get_device_repository().list_real(station_id)
-    except DeviceRepositoryError as exc:
-        raise HTTPException(503, "Real inventory is unavailable") from exc
-    drone = next((d for d in drones if d.get("inventory_id") == drone_id), None)
-    if not drone or not drone.get("lake_id"):
-        raise HTTPException(409, "Assign the drone to a lake first")
+    drone = _assigned_drone(station_id, drone_id)
     if drone.get("credential_state") != "active":
         raise HTTPException(409, "The drone's credential is not active")
     zones = get_runtime(drone["lake_id"]).zones
@@ -139,6 +140,42 @@ def send_patrol(station_id: str, drone_id: str, value: PatrolRequest, request: R
         "mission": mission_rows(plan), "ack": False,
     })
     return {"command_id": command_id, "zone_id": zone.zone_id, "waypoints": len(plan["mission"]["items"])}
+
+@router.get("/{drone_id}/patrol-zones")
+def list_patrol_zones(station_id: str, drone_id: str, principal: Principal = Depends(get_principal)) -> dict:
+    """The runtime zones Send patrol flies, so a downloaded mission matches the hand-off."""
+    from app.main import get_runtime  # lazy: app.main imports this router
+
+    _admin(principal, station_id)
+    lake_id = _assigned_drone(station_id, drone_id)["lake_id"]
+    zones = [z for z in get_runtime(lake_id).zones if z.radius_m]
+    return {"lake_id": lake_id, "zones": [{"zone_id": z.zone_id, "radius_m": round(z.radius_m), "is_proxy": z.is_proxy} for z in zones]}
+
+class MissionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    zone_id: str = Field(min_length=1, max_length=120)
+    home_lat: float = Field(ge=-90, le=90)
+    home_lon: float = Field(ge=-180, le=180)
+    altitude_m: float = Field(ge=5, le=120)  # 120 m stays under the FAA's 400 ft ceiling
+
+MAX_HOME_DISTANCE_M = 5000
+
+@router.post("/{drone_id}/mission")
+def download_mission(station_id: str, drone_id: str, value: MissionRequest, principal: Principal = Depends(get_principal)) -> PlainTextResponse:
+    """A Mission Planner file for the operator to review and load; nothing is sent to the drone."""
+    from app.main import get_runtime  # lazy: app.main imports this router
+
+    _admin(principal, station_id)
+    lake_id = _assigned_drone(station_id, drone_id)["lake_id"]
+    zone = next((z for z in get_runtime(lake_id).zones if z.zone_id == value.zone_id and z.radius_m), None)
+    if zone is None:
+        raise HTTPException(404, "Patrol zone not found")
+    home = LatLon(value.home_lat, value.home_lon)
+    # A swapped sign or typo in home would send takeoff and RTL somewhere else entirely.
+    if haversine_m(home, zone.centroid) > MAX_HOME_DISTANCE_M:
+        raise HTTPException(422, "Home must be within 5 km of the patrol zone")
+    plan = build_patrol_plan(zone.centroid, zone.radius_m, value.altitude_m, home=home)
+    return PlainTextResponse(to_waypoints(plan), headers={"Content-Disposition": f'attachment; filename="{zone.zone_id}.waypoints"'})
 
 @router.post("/{drone_id}/retire")
 def retire_real_inventory(station_id: str, drone_id: str, request: Request, principal: Principal = Depends(get_principal)) -> dict:

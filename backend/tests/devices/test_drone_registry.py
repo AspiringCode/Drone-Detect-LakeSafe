@@ -91,3 +91,25 @@ def test_send_patrol_queues_one_loop_of_the_lake_zone_for_an_active_assigned_dro
     assert all(47.58 < row[6] < 47.60 for row in rows[2:-1])
     viewer, _ = _client(monkeypatch, StationRole.VIEWER)
     assert viewer.post("/api/stations/st-1/inventory/d-1/patrol", json={}).status_code == 403
+
+
+def test_mission_download_is_a_reviewed_waypoints_file_from_the_patrol_zone(monkeypatch):
+    client, repo = _client(monkeypatch, StationRole.STATION_ADMIN)
+    assert client.get("/api/stations/st-1/inventory/d-1/patrol-zones").status_code == 409
+    repo.drones["d-1"]["lake_id"] = "test-drone-field"
+    [zone] = client.get("/api/stations/st-1/inventory/d-1/patrol-zones").json()["zones"]
+    body = {"zone_id": zone["zone_id"], "home_lat": 47.5915, "home_lon": -122.033, "altitude_m": 20}
+    assert client.post("/api/stations/st-1/inventory/d-1/mission", json={**body, "zone_id": "nope"}).status_code == 404
+    assert client.post("/api/stations/st-1/inventory/d-1/mission", json={**body, "home_lon": 122.033}).status_code == 422
+    assert client.post("/api/stations/st-1/inventory/d-1/mission", json={**body, "altitude_m": 200}).status_code == 422
+    response = client.post("/api/stations/st-1/inventory/d-1/mission", json=body)
+    assert response.status_code == 200 and f'{zone["zone_id"]}.waypoints' in response.headers["content-disposition"]
+    lines = response.text.splitlines()
+    assert lines[0] == "QGC WPL 110"
+    rows = [line.split("\t") for line in lines[1:]]
+    assert all(len(row) == 12 for row in rows) and [int(row[0]) for row in rows] == list(range(len(rows)))
+    # home at the operator's point, takeoff to the requested altitude, RTL last
+    assert float(rows[0][8]) == 47.5915 and rows[1][3] == "22" and float(rows[1][10]) == 20 and rows[-1][3] == "20"
+    assert not live_commands.pending("d-1")
+    viewer, _ = _client(monkeypatch, StationRole.VIEWER)
+    assert viewer.post("/api/stations/st-1/inventory/d-1/mission", json=body).status_code == 403

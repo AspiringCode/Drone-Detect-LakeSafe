@@ -181,7 +181,7 @@ describe("operator workflow", () => {
     render(<MemoryRouter initialEntries={["/lakes/lake-sammamish"]}><Routes><Route path="/lakes/:lakeId" element={<LakeLiveView client={metadataClient as never} accessToken="token" fetcher={fetcher as never} />} /></Routes></MemoryRouter>);
     expect(await screen.findByRole("heading", { level: 1, name: "Lake Sammamish" })).toBeInTheDocument();
     expect(await screen.findByTestId("lake-map")).toHaveTextContent("47.591,-122.098");
-    expect(screen.getByRole("progressbar", { name: /fleet capacity/i })).toHaveAttribute("aria-valuemax", "1");
+    expect(screen.getByText("Lake capacity 1")).toBeInTheDocument();
     const breadcrumb = screen.getByRole("navigation", { name: /breadcrumb/i });
     expect(breadcrumb).toHaveTextContent("Lakes >");
     expect(breadcrumb.parentElement).toContainElement(screen.getByRole("heading", { level: 1, name: "Lake Sammamish" }));

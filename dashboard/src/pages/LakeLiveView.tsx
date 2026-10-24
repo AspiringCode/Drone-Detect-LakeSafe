@@ -148,6 +148,7 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
   }
   async function demo() { if (!canManageAlerts) return; const token = accessToken ?? (await client.auth.getSession()).data.session?.access_token; const response = await fetcher(`${API}/api/lakes/${lakeId}/demo/trigger`, { method: "POST", headers: { Authorization: `Bearer ${token ?? ""}` } }); if (response.ok) setAlert(await response.json()); }
   async function escalate(id: string) { if (!canManageAlerts) return; const token = accessToken ?? (await client.auth.getSession()).data.session?.access_token; await fetcher(`${API}/api/lakes/${lakeId}/alerts/${id}/escalate`, { method: "POST", headers: { Authorization: `Bearer ${token ?? ""}` } }); }
+  const realOnMap = drones.filter((drone) => drone.source === "real").length;
   if (metadataError) return <main className="app-page"><AppHeader active="lakes" contextLabel={lakeName} client={client} /><section className="runtime-unavailable"><h1>Lake information is unavailable</h1><p role="alert" aria-label="Lake information error">Lake information could not be loaded. Return to lakes and reopen this workspace to retry.</p><Link className="button-link" to="/lakes">Return to lakes</Link></section></main>;
   if (noLive) return <main className="app-page"><AppHeader active="lakes" contextLabel={lakeName} client={client} /><section className="runtime-unavailable"><h1>No live data for this lake</h1><p>The operator runtime is unavailable. Return to your lakes to choose another workspace.</p><Link className="button-link" to="/lakes">Return to lakes</Link></section></main>;
   return (
@@ -179,9 +180,11 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
           <section className="panel-card fleet-card">
             <div className="panel-heading">
               <div><p className="panel-eyebrow">Fleet</p><h2>Drone status</h2></div>
-              <div className="fleet-capacity" aria-label={`${drones.length} of ${inventoryCap ?? "unknown"} drones deployed`}>
-                <span><strong>{drones.length}</strong><small> / {inventoryCap ?? "—"}</small></span>
-                {inventoryCap !== null && inventoryCap > 0 && <span className="fleet-capacity__meter" role="progressbar" aria-label="Fleet capacity" aria-valuemin={0} aria-valuemax={inventoryCap} aria-valuenow={Math.min(drones.length, inventoryCap)}><span style={{ width: `${Math.min(100, (drones.length / inventoryCap) * 100)}%` }} /></span>}
+              {/* Map markers mix simulated, test and real telemetry, so they are counted by source and never against inventory capacity. */}
+              <div className="fleet-capacity">
+                <span><strong>{drones.length}</strong><small> on map</small></span>
+                <small>{realOnMap} real · {drones.length - realOnMap} simulated</small>
+                <small>Lake capacity {inventoryCap ?? "—"}</small>
               </div>
             </div>
             <DroneRoster drones={drones} />

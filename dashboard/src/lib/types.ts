@@ -120,6 +120,7 @@ export interface ZonePlanSummary {
   priorityCells: number;
   proxyPriorityCells: number;
   coverageCells: number;
+  fallbackCells: number;
   sourceAttribution: string[];
 }
 

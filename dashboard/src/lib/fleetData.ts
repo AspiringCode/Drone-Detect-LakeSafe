@@ -27,6 +27,7 @@ export async function loadZonePlan(stationId: string, lakeId: string, client?: S
     priorityCells: plan.cells.filter((cell) => cell.kind === "hotspot").length,
     proxyPriorityCells: plan.cells.filter((cell) => cell.kind === "hotspot" && cell.metadata?.is_proxy === true).length,
     coverageCells: plan.cells.filter((cell) => cell.kind === "coverage").length,
+    fallbackCells: plan.cells.filter((cell) => cell.kind === "fallback").length,
     sourceAttribution: plan.source_attribution ?? [],
   };
 }

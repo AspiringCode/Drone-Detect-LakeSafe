@@ -22,7 +22,8 @@ describe("LakeLiveView autonomous plan state", () => {
     render(<PrincipalProvider client={client as never} request={request}><MemoryRouter initialEntries={["/lakes/canonical"]}><Routes><Route path="/lakes/:lakeId" element={<LakeLiveView client={client as never} fetcher={fetcher as never} connectOperational={connectOperational} />} /></Routes></MemoryRouter></PrincipalProvider>);
     expect(await screen.findByRole("heading", { level: 1, name: "Canonical Lake" })).toBeVisible();
     expect(screen.getByRole("region", { name: "Canonical Lake operator map" })).toHaveAttribute("data-center", "47.5,-122.1");
-    expect(screen.getByRole("progressbar", { name: "Fleet capacity" })).toHaveAttribute("aria-valuemax", "7");
+    expect(screen.getByText("Lake capacity 7")).toBeVisible();
+    expect(screen.getByText("0 real · 0 simulated")).toBeVisible();
     expect(await screen.findByRole("region", { name: "Autonomous circulation controls" })).toBeVisible();
   });
   it("labels the view by the drones actually on the live socket and shows a pushed alert", async () => {

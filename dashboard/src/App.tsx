@@ -28,9 +28,10 @@ export default function App() {
     <Route path="/login" element={<LoginPage />} />
     <Route path="/signup" element={<SignupPage />} />
     <Route path="/verify-2fa" element={<VerifyOtpPage />} />
-    <Route path="/" element={<CivilianHomePage />} />
-    <Route path="/public" element={<CivilianHomePage />} />
     <Route element={<OperatorProviders />}>
+      {/* Inside the providers so a signed-in visitor sees their way back instead of Sign in. */}
+      <Route path="/" element={<CivilianHomePage />} />
+      <Route path="/public" element={<CivilianHomePage />} />
       <Route element={<OnboardingGate />}><Route path="/onboarding" element={<OnboardingPage />} /></Route>
       <Route element={<AuthGate />}>
         <Route path="/lakes" element={<LakeLanding />} />
