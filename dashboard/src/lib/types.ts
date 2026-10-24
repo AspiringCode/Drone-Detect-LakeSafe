@@ -91,43 +91,15 @@ export interface SimulationState {
   altitudes?: Record<string, number>;
   confirmed?: boolean;
   latest_alert?: Alert | null;
+  simulation_running?: boolean;
 }
 
-export type FleetLifecycle = "available" | "circulating" | "charging" | "maintenance" | "reserved" | string;
-
-export interface FleetDrone {
-  inventoryId: string;
-  source: Source;
-  lifecycle: FleetLifecycle;
-  batteryPercent: number | null;
-  health: string;
-  connectivity: string;
-  maintenanceDue?: string | null;
-  /** Server-observed age of a signed real-device heartbeat. */
-  heartbeatAgeSeconds?: number | null;
-  /** Eligibility is a server-side safety decision, never a browser override. */
-  eligible?: boolean | null;
-  desiredStateVersion: number;
-  acknowledgedStateVersion: number;
-}
-
-export interface ZonePlanSummary {
-  planId: string;
-  snapshotId: string;
-  algorithmVersion: string;
-  sourceFreshThrough: string | null;
-  activityDataUnavailable: boolean;
-  priorityCells: number;
-  proxyPriorityCells: number;
-  coverageCells: number;
-  fallbackCells: number;
-  sourceAttribution: string[];
-}
-
-export interface ReconcileStatus {
-  reconciliationId: string;
-  desiredStateVersion: number;
-  acknowledgedStateVersion: number;
+/** A real drone assigned to a lake, listed whether or not it is heartbeating. */
+export interface RegisteredDrone {
+  inventory_id: string;
+  manufacturer: string | null;
+  serial: string | null;
+  last_heartbeat_at: string | null;
 }
 
 export type RealAutonomyState = "paused" | "pending_ack" | "active" | "degraded" | "safe_return_requested" | "gateway_unavailable";

@@ -44,10 +44,16 @@ class SupabaseDeviceRepository(DeviceAuthRepository):
         return self._one("retire_real_drone", {"p_station_id": station_id, "p_drone_id": drone_id, "p_actor_user_id": actor_user_id})
 
     def list_real(self, station_id: str) -> list[dict]:
+        return self._real_inventory("station_id", station_id)
+
+    def real_on_lake(self, lake_id: str) -> list[dict]:
+        return self._real_inventory("lake_id", lake_id)
+
+    def _real_inventory(self, column: str, value: str) -> list[dict]:
         try:
             rows = self._client.table("drone_inventory").select(
                 "inventory_id,lake_id,lifecycle,battery_percent,health,connectivity,updated_at,drone_credentials(manufacturer,serial,credential_state),drone_heartbeats(received_at)"
-            ).eq("station_id", station_id).eq("source", "real").neq("lifecycle", "retired").order("created_at").order(
+            ).eq(column, value).eq("source", "real").neq("lifecycle", "retired").order("created_at").order(
                 "received_at", desc=True, foreign_table="drone_heartbeats"
             ).limit(1, foreign_table="drone_heartbeats").execute().data or []
         except Exception as exc:

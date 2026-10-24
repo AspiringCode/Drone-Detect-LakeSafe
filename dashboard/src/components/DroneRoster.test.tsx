@@ -46,6 +46,22 @@ describe("DroneRoster", () => {
     expect(screen.getByText("simulated")).toBeTruthy();
   });
 
+  it("lists registered real drones by serial, including ones not yet heartbeating", () => {
+    const id = "13adf59c-ef47-43b8-9024-4fefef66b7b5";
+    render(<DroneRoster drones={[{ ...drones[0], drone_id: id, source: "real" }]} registered={[
+      { inventory_id: id, manufacturer: "Holybro", serial: "SN-LIVE", last_heartbeat_at: "2026-10-24T18:00:00Z" },
+      { inventory_id: "waiting-id", manufacturer: "Holybro", serial: "SN-NEW", last_heartbeat_at: null },
+    ]} />);
+    expect(screen.getByText("SN-LIVE")).toHaveAttribute("title", id);
+    expect(screen.getByText("SN-NEW")).toBeTruthy();
+    expect(screen.getByText("awaiting heartbeat")).toBeTruthy();
+  });
+
+  it("explains how to get drones when the lake has none", () => {
+    render(<DroneRoster drones={[]} />);
+    expect(screen.getByText(/Start a simulation, or assign a registered drone/)).toBeTruthy();
+  });
+
   it("exposes battery charge as an accessible visual meter", () => {
     render(<DroneRoster drones={drones} />);
     const meters = screen.getAllByRole("progressbar", { name: /battery/i });

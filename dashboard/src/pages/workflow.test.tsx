@@ -91,12 +91,9 @@ describe("operator workflow", () => {
     const fetcher = vi.fn((url: string) => Promise.resolve({ ok: true, status: 200, json: async () => url.includes("alerts") ? [] : { type: "FeatureCollection", features: [] } }));
     render(<PrincipalProvider client={client as never} request={(async () => principal) as never}><ActiveStationProvider><MemoryRouter initialEntries={["/lakes/lake-sammamish"]}><Routes><Route path="/lakes/:lakeId" element={<LakeLiveView client={client as never} fetcher={fetcher as never} connectOperational={operational as never} />} /></Routes></MemoryRouter></ActiveStationProvider></PrincipalProvider>);
     expect(await screen.findByRole("heading", { level: 1, name: "Lake Sammamish" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: /fleet inventory/i })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: /autonomous circulation controls/i })).toBeInTheDocument();
-    const details = screen.getByRole("region", { name: "Lake details and controls" });
-    expect(details).toContainElement(screen.getByRole("region", { name: /fleet inventory/i }));
-    expect(details).toContainElement(screen.getByRole("region", { name: /autonomous circulation controls/i }));
-    expect(screen.getByRole("complementary", { name: "Live status" })).not.toContainElement(details);
+    const rail = screen.getByRole("complementary", { name: "Live status" });
+    expect(rail).toContainElement(screen.getByRole("region", { name: "Fleet" }));
+    expect(rail).toContainElement(await screen.findByRole("button", { name: "Start simulation" }));
     expect(screen.queryByText("Patrol coverage, fleet telemetry and incident response.")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /deploy drone/i })).not.toBeInTheDocument();
     await waitFor(() => expect(operational).toHaveBeenCalledWith(expect.stringContaining("/ws/operations/lakes/lake-sammamish"), "token", expect.any(Function)));
@@ -181,7 +178,6 @@ describe("operator workflow", () => {
     render(<MemoryRouter initialEntries={["/lakes/lake-sammamish"]}><Routes><Route path="/lakes/:lakeId" element={<LakeLiveView client={metadataClient as never} accessToken="token" fetcher={fetcher as never} />} /></Routes></MemoryRouter>);
     expect(await screen.findByRole("heading", { level: 1, name: "Lake Sammamish" })).toBeInTheDocument();
     expect(await screen.findByTestId("lake-map")).toHaveTextContent("47.591,-122.098");
-    expect(screen.getByText("Lake capacity 1")).toBeInTheDocument();
     const breadcrumb = screen.getByRole("navigation", { name: /breadcrumb/i });
     expect(breadcrumb).toHaveTextContent("Lakes >");
     expect(breadcrumb.parentElement).toContainElement(screen.getByRole("heading", { level: 1, name: "Lake Sammamish" }));
@@ -195,7 +191,7 @@ describe("operator workflow", () => {
     const metadataClient = { auth: { getSession: vi.fn().mockResolvedValue({ data: { session } }) }, from: vi.fn(() => ({ select: vi.fn(() => ({ eq: vi.fn(() => ({ maybeSingle: vi.fn().mockResolvedValue({ data: { name: "Lake Sammamish", centroid_lat: 47.591, centroid_lon: -122.098, station_id: "station-a", drone_inventory_cap: 5, organizations: { station_lat: 47.5301, station_lon: -122.0326 } }, error: null }) })) })) })) };
     const fetcher = vi.fn((url: string) => { if (url.includes("riskmap")) return Promise.resolve({ ok: true, status: 200, json: async () => ({ type: "FeatureCollection", features: [] }) }); if (url.includes("alerts")) return Promise.resolve({ ok: true, status: 200, json: async () => [] }); return Promise.resolve({ ok: true, status: 200, json: async () => ({}) }); });
     render(<MemoryRouter initialEntries={["/lakes/lake-sammamish"]}><Routes><Route path="/lakes/:lakeId" element={<LakeLiveView client={metadataClient as never} accessToken="token" fetcher={fetcher as never} />} /></Routes></MemoryRouter>);
-    await screen.findByRole("heading", { name: /drone status/i });
+    await screen.findByRole("heading", { name: "Fleet" });
     expect(screen.queryByRole("button", { name: /deploy drone/i })).not.toBeInTheDocument();
     expect(fetcher).not.toHaveBeenCalledWith(expect.stringContaining("/drones/deploy"), expect.anything());
   });

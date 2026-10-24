@@ -3,25 +3,21 @@ import { Link, useParams } from "react-router-dom";
 import { AlertPanel } from "../components/AlertPanel";
 import { DroneRoster } from "../components/DroneRoster";
 import { LakeMap, type RiskGeoJSON } from "../components/LakeMap";
-import { SimulatedBadge } from "../components/SimulatedBadge";
 import { supabase, type SupabaseLike } from "../lib/supabase";
 import { connectOperationalPositions, connectPositions } from "../lib/ws";
 import { useOrientation } from "../lib/useOrientation";
 import { useNewAlertCue } from "../lib/useNewAlertCue";
-import type { Alert, Capability, FleetDrone, LatLon, Principal, RealFleetSafetyStatus, SimulationState, ZonePlanSummary } from "../lib/types";
+import type { Alert, Capability, LatLon, Principal, RealFleetSafetyStatus, RegisteredDrone, SimulationState } from "../lib/types";
 import { AppHeader } from "../components/AppHeader";
 import { useOptionalPrincipal } from "../auth/PrincipalProvider";
-import { applyReconcileStatus, loadFleet, loadRealFleetSafetyStatus, loadZonePlan, requestCirculation, requestSafeReturn, setRealAutonomy } from "../lib/fleetData";
-import { AutonomyControls } from "../components/AutonomyControls";
-import { FleetInventoryPanel } from "../components/FleetInventoryPanel";
-import { ZonePlanStatus } from "../components/ZonePlanStatus";
+import { changeSimulation, loadRealFleetSafetyStatus, loadRegisteredDrones, requestSafeReturn, setRealAutonomy } from "../lib/fleetData";
 import { RealFleetSafetyPanel } from "../components/RealFleetSafetyPanel";
 import { ApiError } from "../lib/apiClient";
 
 const API = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 const wsFor = (lakeId: string) => `${API.replace(/^http/, "ws")}/ws/operations/lakes/${lakeId}`;
-type Organization = { station_lat: number; station_lon: number };
-type LakeMetadata = { name: string; centroid_lat: number; centroid_lon: number; drone_inventory_cap: number; station_id?: string };
+type LakeMetadata = { name: string; centroid_lat: number; centroid_lon: number; station_id?: string };
+type SimulationAction = "simulation/start" | "simulation/stop" | "zones/regenerate";
 
 export function hasLakeCapability(principal: Principal | null | undefined, lakeStationId: string | null, capability: Capability): boolean {
   return Boolean(lakeStationId && principal && (principal.aal === "aal2" || principal.judge_demo_access === true) && principal.memberships.some((item) => item.station_id === lakeStationId && item.status === "active" && item.capabilities.includes(capability)));
@@ -33,20 +29,18 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
   const principal = principalContext?.principal;
   const ref = useOrientation();
   const [drones, setDrones] = useState<SimulationState["drones"]>([]);
+  const [simulationRunning, setSimulationRunning] = useState(false);
   const [riskmap, setRiskmap] = useState<RiskGeoJSON | null>(null);
   const [alert, setAlert] = useState<Alert | null>(null);
   const alertCue = useNewAlertCue(alert);
   const [noLive, setNoLive] = useState(false);
   const [metadataError, setMetadataError] = useState(false);
-  const [inventoryCap, setInventoryCap] = useState<number | null>(null);
   const [lakeName, setLakeName] = useState("Lake operations");
   const [lakeCenter, setLakeCenter] = useState<LatLon | null>(null);
   const [lakeStationId, setLakeStationId] = useState<string | null>(null);
-  const [fleet, setFleet] = useState<FleetDrone[]>([]);
-  const [zonePlan, setZonePlan] = useState<ZonePlanSummary | null>(null);
-  const [pendingCirculationId, setPendingCirculationId] = useState<string | null>(null);
-  const [reconciliationId, setReconciliationId] = useState<string | null>(null);
-  const [circulationError, setCirculationError] = useState<string | null>(null);
+  const [registered, setRegistered] = useState<RegisteredDrone[]>([]);
+  const [simulationBusy, setSimulationBusy] = useState(false);
+  const [simulationError, setSimulationError] = useState<string | null>(null);
   const [operationsDataError, setOperationsDataError] = useState<string | null>(null);
   const [realSafety, setRealSafety] = useState<RealFleetSafetyStatus | null>(null);
   const [realSafetyBusy, setRealSafetyBusy] = useState(false);
@@ -67,7 +61,7 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
       const token = accessToken ?? (await client.auth.getSession()).data.session?.access_token;
       if (!active) return;
       if (!token) throw new Error("Missing operator session");
-      stop = connectOperational(wsFor(lakeId), token, (state) => { if (!active) return; setDrones(state.drones); if (state.latest_alert) setAlert(state.latest_alert); });
+      stop = connectOperational(wsFor(lakeId), token, (state) => { if (!active) return; setDrones(state.drones); setSimulationRunning(state.simulation_running ?? false); if (state.latest_alert) setAlert(state.latest_alert); });
       const options = { headers: { Authorization: `Bearer ${token}` } };
       await Promise.all([
         fetcher(`${API}/api/lakes/${lakeId}/riskmap`, options).then(async (response) => {
@@ -91,16 +85,14 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
     setLakeName("Lake operations");
     setLakeCenter(null);
     setLakeStationId(null);
-    setInventoryCap(null);
     void (async () => {
       try {
-        const { data, error }: { data: LakeMetadata | null; error: unknown } = await client.from("lakes").select("name,centroid_lat,centroid_lon,station_id,drone_inventory_cap").eq("lake_id", lakeId).maybeSingle();
+        const { data, error }: { data: LakeMetadata | null; error: unknown } = await client.from("lakes").select("name,centroid_lat,centroid_lon,station_id").eq("lake_id", lakeId).maybeSingle();
         if (!active) return;
         if (error || !data) throw error ?? new Error("Lake unavailable");
         setLakeName(data.name);
         if (Number.isFinite(data.centroid_lat) && Number.isFinite(data.centroid_lon)) setLakeCenter({ lat: data.centroid_lat, lon: data.centroid_lon });
         setLakeStationId(data.station_id ?? null);
-        setInventoryCap(data.drone_inventory_cap);
       } catch {
         if (active) setMetadataError(true);
       }
@@ -109,28 +101,26 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
   }, [client, lakeId]);
 
   useEffect(() => {
-    if (!canReadOperations || !lakeStationId) { setFleet([]); setZonePlan(null); setRealSafety(null); setOperationsDataError(null); return; }
+    if (!canReadOperations || !lakeStationId) { setRegistered([]); setRealSafety(null); setOperationsDataError(null); return; }
     let active = true;
-    void Promise.allSettled([loadFleet(lakeStationId, lakeId, client, fetcher), loadZonePlan(lakeStationId, lakeId, client, fetcher), loadRealFleetSafetyStatus(lakeStationId, lakeId, client, fetcher)]).then(([fleetResult, planResult, realSafetyResult]) => {
+    void Promise.allSettled([loadRegisteredDrones(lakeId, client, fetcher), loadRealFleetSafetyStatus(lakeStationId, lakeId, client, fetcher)]).then(([registeredResult, realSafetyResult]) => {
       if (!active) return;
-      if (fleetResult.status === "fulfilled") setFleet(fleetResult.value);
-      if (planResult.status === "fulfilled") setZonePlan(planResult.value);
+      if (registeredResult.status === "fulfilled") setRegistered(registeredResult.value);
+      else setOperationsDataError("Registered drones could not be loaded. Live telemetry may still be available.");
       if (realSafetyResult.status === "fulfilled") setRealSafety(realSafetyResult.value);
-      if (fleetResult.status === "rejected" || planResult.status === "rejected") setOperationsDataError("Operational data could not be loaded. Existing live telemetry may still be available.");
     });
     return () => { active = false; };
   }, [canReadOperations, lakeStationId, lakeId, client, fetcher]);
 
-  async function changeCirculation(droneId: string, request: { eligible: boolean; reason: string }) {
-    if (!canManageAutonomy || !lakeStationId) return;
-    setPendingCirculationId(droneId);
-    setCirculationError(null);
+  async function simulate(action: SimulationAction) {
+    if (!canManageAutonomy) return;
+    setSimulationBusy(true); setSimulationError(null);
     try {
-      const result = await requestCirculation(lakeStationId, lakeId, droneId, request, client, fetcher);
-      setReconciliationId(result.reconciliationId);
-      setFleet((current) => applyReconcileStatus(current, droneId, result));
-    } catch { setCirculationError("The circulation change could not be queued. Try again."); }
-    finally { setPendingCirculationId(null); }
+      const result = await changeSimulation(lakeId, action, client, fetcher);
+      setRiskmap(result.riskmap as RiskGeoJSON);
+      setSimulationRunning(result.simulated_drones > 0);
+    } catch (error) { setSimulationError(error instanceof Error ? error.message : "The simulation could not be changed."); }
+    finally { setSimulationBusy(false); }
   }
   async function changeRealAutonomy(enabled: boolean, reason: string) {
     if (!canManageAutonomy || !lakeStationId) return;
@@ -148,7 +138,6 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
   }
   async function demo() { if (!canManageAlerts) return; const token = accessToken ?? (await client.auth.getSession()).data.session?.access_token; const response = await fetcher(`${API}/api/lakes/${lakeId}/demo/trigger`, { method: "POST", headers: { Authorization: `Bearer ${token ?? ""}` } }); if (response.ok) setAlert(await response.json()); }
   async function escalate(id: string) { if (!canManageAlerts) return; const token = accessToken ?? (await client.auth.getSession()).data.session?.access_token; await fetcher(`${API}/api/lakes/${lakeId}/alerts/${id}/escalate`, { method: "POST", headers: { Authorization: `Bearer ${token ?? ""}` } }); }
-  const realOnMap = drones.filter((drone) => drone.source === "real").length;
   if (metadataError) return <main className="app-page"><AppHeader active="lakes" contextLabel={lakeName} client={client} /><section className="runtime-unavailable"><h1>Lake information is unavailable</h1><p role="alert" aria-label="Lake information error">Lake information could not be loaded. Return to lakes and reopen this workspace to retry.</p><Link className="button-link" to="/lakes">Return to lakes</Link></section></main>;
   if (noLive) return <main className="app-page"><AppHeader active="lakes" contextLabel={lakeName} client={client} /><section className="runtime-unavailable"><h1>No live data for this lake</h1><p>The operator runtime is unavailable. Return to your lakes to choose another workspace.</p><Link className="button-link" to="/lakes">Return to lakes</Link></section></main>;
   return (
@@ -164,47 +153,34 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
             <h1>{lakeName}</h1>
           </div>
           <p className="sr-only" role="alert" aria-label="New alert announcement">{alertCue}</p>
-          <span className="live-sources">
-            {drones.some((drone) => drone.source === "real") && <SimulatedBadge source="real" />}
-            {(!drones.length || drones.some((drone) => drone.source !== "real")) && <SimulatedBadge source="simulated" />}
-          </span>
         </div>
       </section>
       <section className="operator-layout" aria-label={`${lakeName} live operations`}>
         <section className="map-card" aria-label="Live lake map">
-          <header className="map-heading"><h2>Patrol lookout</h2><span>Lake coverage</span></header>
+          <header className="map-heading"><h2>Patrol lookout</h2></header>
           {lakeCenter ? <LakeMap lakeName={lakeName} lakeCenter={lakeCenter} riskmap={riskmap} drones={drones} /> : <div className="map-placeholder" role="status"><h2>Map not available yet</h2><p>Waiting for this lake’s location data.</p></div>}
         </section>
         <aside className="side-panel" aria-label="Live status">
-          {canReadOperations && <ZonePlanStatus plan={zonePlan} />}
-          <section className="panel-card fleet-card">
-            <div className="panel-heading">
-              <div><p className="panel-eyebrow">Fleet</p><h2>Drone status</h2></div>
-              {/* Map markers mix simulated, test and real telemetry, so they are counted by source and never against inventory capacity. */}
-              <div className="fleet-capacity">
-                <span><strong>{drones.length}</strong><small> on map</small></span>
-                <small>{realOnMap} real · {drones.length - realOnMap} simulated</small>
-                <small>Lake capacity {inventoryCap ?? "—"}</small>
-              </div>
-            </div>
-            <DroneRoster drones={drones} />
+          <section className="panel-card fleet-card" aria-label="Fleet">
+            <div className="panel-heading"><h2>Fleet</h2></div>
+            {canManageAutonomy && <div className="fleet-actions">
+              <button className="button-secondary" disabled={simulationBusy} onClick={() => void simulate(simulationRunning ? "simulation/stop" : "simulation/start")}>{simulationRunning ? "Stop simulation" : "Start simulation"}</button>
+              <button className="button-secondary" disabled={simulationBusy} onClick={() => void simulate("zones/regenerate")}>Regenerate zones</button>
+              {simulationRunning && canManageAlerts && <button className="button-secondary" onClick={() => void demo()}>Simulate detection</button>}
+            </div>}
+            {simulationError && <p className="form-error" role="alert">{simulationError}</p>}
+            <DroneRoster drones={drones} registered={registered} />
+          </section>
+          <section className="panel-card alert-card" aria-label="Active alert">
+            <div className="panel-heading"><h2>Active alert</h2></div>
+            <AlertPanel alert={alert} onEscalate={canManageAlerts ? escalate : undefined} />
           </section>
         </aside>
       </section>
-      <section className="operations-details" aria-label="Lake details and controls">
-          {operationsDataError && <p className="operations-data-error" role="alert" aria-label="Operational data error">{operationsDataError}</p>}
-          {canReadOperations && <FleetInventoryPanel drones={fleet} />}
-          {canReadOperations && realSafety && <RealFleetSafetyPanel capabilities={stationCapabilities} status={realSafety} busy={realSafetyBusy} error={realSafetyError} onSetAutonomy={changeRealAutonomy} onRequestSafeReturn={returnRealFleet} />}
-          <section className="panel-card alert-card">
-            <div className="panel-heading"><div><p className="panel-eyebrow">Response</p><h2>Active alert</h2></div></div>
-            <AlertPanel alert={alert} onEscalate={canManageAlerts ? escalate : undefined} />
-          </section>
-          {canManageAlerts && <section className="panel-card action-card">
-            <div className="panel-heading"><div><p className="panel-eyebrow">Response</p><h2>Alert simulation</h2></div></div>
-            <button className="button-secondary" onClick={demo}>Fire demo trigger</button>
-          </section>}
-          {canManageAutonomy && <AutonomyControls capabilities={stationCapabilities} drones={fleet} pendingId={pendingCirculationId} reconciliationId={reconciliationId} error={circulationError} onRequest={changeCirculation} />}
-      </section>
+      {(operationsDataError || (registered.length > 0 && realSafety)) && <section className="operations-details" aria-label="Lake details and controls">
+        {operationsDataError && <p className="operations-data-error" role="alert" aria-label="Operational data error">{operationsDataError}</p>}
+        {registered.length > 0 && realSafety && <RealFleetSafetyPanel capabilities={stationCapabilities} status={realSafety} busy={realSafetyBusy} error={realSafetyError} onSetAutonomy={changeRealAutonomy} onRequestSafeReturn={returnRealFleet} />}
+      </section>}
     </main>
   );
 }

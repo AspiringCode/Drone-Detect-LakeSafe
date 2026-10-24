@@ -30,7 +30,7 @@ export function AlertsPage({ client = supabase, fetcher = fetch }: { client?: Su
             {filtered.map((alert) => (
               <article className="alert-record" key={`${alert.lakeId}-${alert.alert_id}`}>
                 <div className="alert-record__status"><span className={alert.confirmed ? "record-badge record-badge--confirmed" : "record-badge"}>{alert.confirmed ? "Confirmed" : "Needs review"}</span><span>{alert.source}</span></div>
-                <div><p className="panel-eyebrow">{alert.lakeName}</p><h2>{alert.detection_mode} detection</h2></div>
+                <div><h2>{alert.detection_mode} detection</h2><p className="field-help">{alert.lakeName}</p></div>
                 <dl><div><dt>Drone</dt><dd>{alert.drone_id}</dd></div><div><dt>Latency</dt><dd>{alert.latency_ms === null ? "—" : `${alert.latency_ms} ms`}</dd></div><div><dt>Recorded</dt><dd>{new Date(alert.created_at).toLocaleString()}</dd></div></dl>
                 <Link to={`/lakes/${alert.lakeId}`}>Open lake <span aria-hidden="true">→</span></Link>
               </article>

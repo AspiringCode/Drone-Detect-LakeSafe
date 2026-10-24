@@ -1,15 +1,20 @@
-import type { Drone } from "../lib/types";
+import type { Drone, RegisteredDrone } from "../lib/types";
 
 // Real devices report their inventory UUID; the first block matches the Device ID shown in the registry.
 const shortId = (id: string) => id.replace(/^([0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i, "$1…");
 
 interface DroneRosterProps {
   drones: Drone[];
+  /** Real drones assigned to the lake; those without a live position still get a row. */
+  registered?: RegisteredDrone[];
 }
 
-export function DroneRoster({ drones }: DroneRosterProps) {
-  if (drones.length === 0) {
-    return <p className="panel-empty">Waiting for fleet telemetry.</p>;
+export function DroneRoster({ drones, registered = [] }: DroneRosterProps) {
+  const live = new Set(drones.map((drone) => drone.drone_id));
+  const waiting = registered.filter((drone) => !live.has(drone.inventory_id));
+  const name = (id: string) => registered.find((drone) => drone.inventory_id === id)?.serial ?? shortId(id);
+  if (drones.length === 0 && waiting.length === 0) {
+    return <p className="panel-empty">No drones yet. Start a simulation, or assign a registered drone to this lake.</p>;
   }
 
   return (
@@ -25,7 +30,7 @@ export function DroneRoster({ drones }: DroneRosterProps) {
       <tbody>
         {drones.map((drone) => (
           <tr key={drone.drone_id}>
-            <td><span className="drone-id" title={drone.drone_id}><span aria-hidden="true" />{shortId(drone.drone_id)}</span><small className="drone-source">{drone.source}</small></td>
+            <td><span className="drone-id" title={drone.drone_id}><span aria-hidden="true" />{name(drone.drone_id)}</span><small className="drone-source">{drone.source}</small></td>
             <td><span className="drone-status" data-status={drone.status}><span className="drone-status__dot" aria-hidden="true" />{drone.status.replace(/_/g, " ")}</span></td>
             <td>
               <div className="battery-reading">
@@ -36,6 +41,14 @@ export function DroneRoster({ drones }: DroneRosterProps) {
               </div>
             </td>
             <td><span className={drone.assigned_zone ? "zone-chip" : "zone-chip zone-chip--empty"}>{drone.assigned_zone ?? "-"}</span></td>
+          </tr>
+        ))}
+        {waiting.map((drone) => (
+          <tr key={drone.inventory_id}>
+            <td><span className="drone-id" title={drone.inventory_id}><span aria-hidden="true" />{drone.serial ?? shortId(drone.inventory_id)}</span><small className="drone-source">real</small></td>
+            <td><span className="drone-status" data-status="offline"><span className="drone-status__dot" aria-hidden="true" />{drone.last_heartbeat_at ? "offline" : "awaiting heartbeat"}</span></td>
+            <td>-</td>
+            <td><span className="zone-chip zone-chip--empty">-</span></td>
           </tr>
         ))}
       </tbody>

@@ -35,16 +35,12 @@ export function RealFleetSafetyPanel({ capabilities, status, busy = false, error
     if (action === "return") onRequestSafeReturn(trimmed);
     else onSetAutonomy(action === "enable", trimmed);
   };
-  const hasPendingVersion = status.desiredStateVersion !== status.acknowledgedStateVersion;
-
   return <section className="panel-card real-fleet-safety" aria-label="Real fleet safety status">
-    <div className="panel-heading"><div><p className="panel-eyebrow">Real fleet</p><h2>Safety policy</h2></div><span className={`real-safety-state real-safety-state--${status.realAutonomy}`}>{status.realAutonomy.replace(/_/g, " ")}</span></div>
+    <div className="panel-heading"><h2>Real drone safety</h2><span className={`real-safety-state real-safety-state--${status.realAutonomy}`}>{status.realAutonomy.replace(/_/g, " ")}</span></div>
     <p className="real-safety-copy" role="status">{describeState(status.realAutonomy)}</p>
     <dl className="real-safety-details">
-      <div><dt>Source</dt><dd>Authenticated real devices</dd></div>
       <div><dt>Heartbeat</dt><dd>{heartbeat(status.heartbeatAgeSeconds)}</dd></div>
       <div><dt>Eligibility</dt><dd>{status.eligible === null ? "Not reported" : status.eligible ? "Eligible" : "Not eligible"}</dd></div>
-      <div><dt>State versions</dt><dd className={hasPendingVersion ? "real-safety-pending" : ""}>Desired {status.desiredStateVersion} · Acknowledged {status.acknowledgedStateVersion}</dd></div>
     </dl>
     {canManage && <div className="real-safety-actions">
       <label>Safety reason<textarea aria-label="Safety reason" value={reason} onChange={(event) => setReason(event.target.value)} maxLength={500} placeholder="Record the operational reason" /></label>

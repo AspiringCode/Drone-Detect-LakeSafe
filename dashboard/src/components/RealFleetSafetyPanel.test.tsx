@@ -19,9 +19,7 @@ describe("real fleet safety controls", () => {
 
   it("labels desired state as pending until device acknowledgement", () => {
     render(<RealFleetSafetyPanel capabilities={["autonomy.manage"]} status={{ ...paused, realAutonomy: "pending_ack", desiredStateVersion: 6, acknowledgedStateVersion: 5 }} onSetAutonomy={vi.fn()} onRequestSafeReturn={vi.fn()} />);
-    expect(screen.getByText(/waiting for device acknowledgement/i)).toBeVisible();
-    expect(screen.getByText("State versions").parentElement).toHaveTextContent("Desired 6");
-    expect(screen.getByText("State versions").parentElement).toHaveTextContent("Acknowledged 5");
+    expect(screen.getByText(/waiting for device acknowledgement\. desired policy is not active yet/i)).toBeVisible();
   });
 
   it("sends only an enabled policy and nonempty reason", () => {

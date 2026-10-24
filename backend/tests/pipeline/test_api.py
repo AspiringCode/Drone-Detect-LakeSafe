@@ -7,7 +7,7 @@ from shapely.geometry import shape
 from shapely.ops import unary_union
 
 from app.coordination.assignment import haversine_m
-from app.main import app, lake_runtimes
+from app.main import app, lake_runtimes, simulated_fleet
 from app.risk_zones.shoreline import load_lake_polygon
 
 
@@ -37,6 +37,14 @@ def fake_access_repository(monkeypatch):
     monkeypatch.setattr("app.main.get_access_repository", lambda: FakeAccessRepository())
 
 
+@pytest.fixture
+def running_simulation():
+    runtime = lake_runtimes[LAKE_ID]
+    runtime.engine.set_fleet(simulated_fleet(runtime))
+    yield runtime
+    runtime.engine.set_fleet([])
+
+
 @pytest.mark.parametrize("lake_id", SUPPORTED_LAKE_IDS)
 def test_get_riskmap_returns_feature_collection_for_each_local_runtime(monkeypatch, lake_id):
     client = TestClient(app)
@@ -54,7 +62,7 @@ def test_operational_read_routes_reject_anonymous_clients(path):
     assert TestClient(app).get(path).status_code == 401
 
 
-def test_demo_trigger_creates_alert_retrievable(monkeypatch):
+def test_demo_trigger_creates_alert_retrievable(monkeypatch, running_simulation):
     monkeypatch.setattr("app.main.verify_supabase_jwt", lambda token: {"sub": "owner", "aal": "aal2"})
     client = TestClient(app)
     response = client.post(f"/api/lakes/{LAKE_ID}/demo/trigger", headers={"Authorization": "Bearer signed-token"})
@@ -64,7 +72,7 @@ def test_demo_trigger_creates_alert_retrievable(monkeypatch):
     assert any(alert["alert_id"] == alert_id for alert in alerts)
 
 
-def test_positions_ws_receives_state_with_source(monkeypatch):
+def test_positions_ws_receives_state_with_source(monkeypatch, running_simulation):
     monkeypatch.setattr("app.main.verify_supabase_jwt", lambda token: {"sub": "owner", "aal": "aal2"})
     client = TestClient(app)
     with client.websocket_connect(f"/ws/operations/lakes/{LAKE_ID}", subprotocols=["bearer.signed-token"]) as ws:
@@ -114,7 +122,7 @@ def test_simulation_assigns_from_every_rendered_zone():
     assert runtime.engine.zones == runtime.zones
 
 
-def test_demo_drones_start_spread_across_lake():
+def test_demo_drones_start_spread_across_lake(running_simulation):
     drones = lake_runtimes[LAKE_ID].engine.drones
     pairwise_distances = [
         haversine_m(left.pos, right.pos)
@@ -216,7 +224,7 @@ def test_deploy_rejects_when_inventory_cap_reached(monkeypatch):
     assert response.status_code == 409
 
 
-def test_deploy_allows_aal2_owner_when_tessellated_zones_are_fully_staffed(monkeypatch):
+def test_deploy_allows_aal2_owner_when_tessellated_zones_are_fully_staffed(monkeypatch, running_simulation):
     runtime = lake_runtimes[LAKE_ID]
     before = len(runtime.engine.drones)
     monkeypatch.setattr("app.main.verify_supabase_jwt", lambda token: {"sub": "owner", "aal": "aal2"})
@@ -234,8 +242,6 @@ def test_deploy_allows_aal2_owner_when_tessellated_zones_are_fully_staffed(monke
     assert deployed["status"] == "idle"
     assert deployed["assigned_zone"] is None
     assert deployed["position"] == {"lat": 47.55686175, "lon": -122.07109931}
-    runtime.engine.drones.pop()
-    runtime.engine._initial_assign()
 
 
 def test_operational_routes_deny_civilian_and_inactive_access(monkeypatch):
@@ -255,3 +261,53 @@ def test_cross_station_operation_is_not_disclosed(monkeypatch):
     monkeypatch.setattr("app.main.verify_supabase_jwt", lambda token: {"sub": "not-owner", "aal": "aal2"})
     response = TestClient(app).post(f"/api/lakes/{LAKE_ID}/drones/deploy", headers={"Authorization": "Bearer signed-token"})
     assert response.status_code == 404
+
+
+class FakeLakeDevices:
+    def __init__(self, drones=()):
+        self.drones = list(drones)
+
+    def real_on_lake(self, lake_id):
+        return self.drones
+
+
+def test_simulation_is_off_until_started_and_stops_cleanly(monkeypatch):
+    headers = _read_headers(monkeypatch)
+    client = TestClient(app)
+    runtime = lake_runtimes[LAKE_ID]
+    assert runtime.engine.drones == []
+    assert client.post(f"/api/lakes/{LAKE_ID}/demo/trigger", headers=headers).status_code == 409
+    started = client.post(f"/api/lakes/{LAKE_ID}/simulation/start", headers=headers).json()
+    assert started["simulated_drones"] == len(runtime.zones) + 1  # one per zone plus the reserve
+    assert client.post(f"/api/lakes/{LAKE_ID}/simulation/start", headers=headers).json()["simulated_drones"] == started["simulated_drones"]
+    assert client.post(f"/api/lakes/{LAKE_ID}/simulation/stop", headers=headers).json()["simulated_drones"] == 0
+    assert TestClient(app).post(f"/api/lakes/{LAKE_ID}/simulation/start").status_code == 401
+
+
+def test_regenerating_zones_divides_the_lake_for_simulated_and_registered_drones(monkeypatch):
+    headers = _read_headers(monkeypatch)
+    client = TestClient(app)
+    runtime = lake_runtimes[LAKE_ID]
+    original = runtime.zones
+    devices = FakeLakeDevices()
+    monkeypatch.setattr("app.main.get_device_repository", lambda: devices)
+    try:
+        assert client.post(f"/api/lakes/{LAKE_ID}/zones/regenerate", headers=headers).status_code == 409
+        client.post(f"/api/lakes/{LAKE_ID}/simulation/start", headers=headers)
+        devices.drones = [{"inventory_id": "real-1"}, {"inventory_id": "real-2"}]
+        result = client.post(f"/api/lakes/{LAKE_ID}/zones/regenerate", headers=headers).json()
+        # four simulated patrol drones plus two registered drones, each with its own zone
+        assert result["zones"] == 6 and len(result["riskmap"]["features"]) == 6
+        assert runtime.engine.zones == runtime.zones
+        patrol = [drone for drone in runtime.engine.drones if drone.assigned_zone]
+        assert len(patrol) == 4 and len({drone.assigned_zone for drone in patrol}) == 4
+    finally:
+        runtime.zones = original
+        runtime.engine.set_fleet([], original)
+
+
+def test_registered_drones_lists_real_drones_assigned_to_the_lake(monkeypatch):
+    monkeypatch.setattr("app.main.get_device_repository", lambda: FakeLakeDevices([{"inventory_id": "real-1", "serial": "SN-1", "credential_state": "active", "last_heartbeat_at": None}]))
+    response = TestClient(app).get(f"/api/lakes/{LAKE_ID}/registered-drones", headers=_read_headers(monkeypatch))
+    [drone] = response.json()["drones"]
+    assert drone["serial"] == "SN-1" and drone["last_heartbeat_at"] is None and "credential_state" not in drone

@@ -16,7 +16,7 @@ from app.risk_zones.connectors.base import NormalizedRiskPoint
 from app.risk_zones.plan_builder import RiskDataUnavailable, _assignable_proxy_seed
 from app.lakes import catalog
 from app.lakes.catalog import load_reviewed_lake
-from app.main import build_lake_runtime, lake_runtimes
+from app.main import build_lake_runtime, lake_runtimes, simulated_fleet
 from app.risk_zones.shoreline import load_lake_polygon
 
 
@@ -151,6 +151,8 @@ def test_runtime_proxy_priority_cells_represent_exact_catalog_seeds(lake_id: str
 @pytest.mark.parametrize("lake_id", EXPECTED_LAKES)
 def test_runtime_has_five_distinct_interior_demo_drone_positions(lake_id: str) -> None:
     runtime = build_lake_runtime(lake_id)
+    assert runtime.engine.drones == []  # no simulated fleet until an operator starts a session
+    runtime.engine.set_fleet(simulated_fleet(runtime))
     shoreline = load_lake_polygon(lake_id)
     positions = {(drone.pos.lat, drone.pos.lon) for drone in runtime.engine.drones}
 
@@ -163,6 +165,7 @@ def test_runtime_has_five_distinct_interior_demo_drone_positions(lake_id: str) -
 @pytest.mark.parametrize("lake_id", EXPECTED_LAKES)
 def test_runtime_reserves_one_of_five_drones_and_never_overassigns_plan_capacity(lake_id: str) -> None:
     runtime = build_lake_runtime(lake_id)
+    runtime.engine.set_fleet(simulated_fleet(runtime))
     assigned = [drone for drone in runtime.engine.drones if drone.assigned_zone is not None]
     standby = [drone for drone in runtime.engine.drones if drone.assigned_zone is None]
 

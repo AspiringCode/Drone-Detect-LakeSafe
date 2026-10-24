@@ -1,43 +1,17 @@
 import { apiRequest } from "./apiClient";
-import type { FleetDrone, RealFleetSafetyStatus, ReconcileStatus, Source, ZonePlanSummary } from "./types";
+import type { RealFleetSafetyStatus, RegisteredDrone } from "./types";
 import type { SupabaseLike } from "./supabase";
 
-type FleetWire = { inventory_id: string; source: Source; lifecycle: string; battery_percent: number | null; health: string; connectivity: string; maintenance_due?: string | null; heartbeat_age_seconds?: number | null; eligible?: boolean | null; desired_state_version: number; acknowledged_state_version: number };
 type RealSafetyWire = { autonomy: RealFleetSafetyStatus["realAutonomy"]; source?: "real"; heartbeat_age_seconds?: number | null; eligible?: boolean | null; desired_state_version?: number; acknowledged_state_version?: number; active_assignments?: string[]; pending_assignments?: string[] };
-type PlanWire = { plan_id: string; snapshot_id: string; algorithm_version: string; source_fresh_through: string | null; source_attribution?: string[]; activity_data_unavailable?: boolean; cells: Array<{ kind: string; metadata?: { is_proxy?: boolean } }> };
+type SimulationWire = { simulated_drones: number; zones: number; riskmap: { type: "FeatureCollection"; features: unknown[] } };
 
-const fleetDrone = (item: FleetWire): FleetDrone => ({
-  inventoryId: item.inventory_id, source: item.source, lifecycle: item.lifecycle,
-  batteryPercent: item.battery_percent, health: item.health, connectivity: item.connectivity,
-  maintenanceDue: item.maintenance_due ?? null, desiredStateVersion: item.desired_state_version,
-  acknowledgedStateVersion: item.acknowledged_state_version, heartbeatAgeSeconds: item.heartbeat_age_seconds ?? null,
-  eligible: item.eligible ?? null,
-});
-
-export async function loadFleet(stationId: string, lakeId: string, client?: SupabaseLike, fetcher?: typeof fetch): Promise<FleetDrone[]> {
-  const payload = await apiRequest<{ drones: FleetWire[] }>(`/api/stations/${encodeURIComponent(stationId)}/lakes/${encodeURIComponent(lakeId)}/fleet`, undefined, client, fetcher);
-  return payload.drones.map(fleetDrone);
+export async function loadRegisteredDrones(lakeId: string, client?: SupabaseLike, fetcher?: typeof fetch): Promise<RegisteredDrone[]> {
+  return (await apiRequest<{ drones: RegisteredDrone[] }>(`/api/lakes/${encodeURIComponent(lakeId)}/registered-drones`, undefined, client, fetcher)).drones;
 }
 
-export async function loadZonePlan(stationId: string, lakeId: string, client?: SupabaseLike, fetcher?: typeof fetch): Promise<ZonePlanSummary> {
-  const plan = await apiRequest<PlanWire>(`/api/stations/${encodeURIComponent(stationId)}/lakes/${encodeURIComponent(lakeId)}/zone-plan`, undefined, client, fetcher);
-  return {
-    planId: plan.plan_id, snapshotId: plan.snapshot_id, algorithmVersion: plan.algorithm_version,
-    sourceFreshThrough: plan.source_fresh_through, activityDataUnavailable: Boolean(plan.activity_data_unavailable),
-    priorityCells: plan.cells.filter((cell) => cell.kind === "hotspot").length,
-    proxyPriorityCells: plan.cells.filter((cell) => cell.kind === "hotspot" && cell.metadata?.is_proxy === true).length,
-    coverageCells: plan.cells.filter((cell) => cell.kind === "coverage").length,
-    fallbackCells: plan.cells.filter((cell) => cell.kind === "fallback").length,
-    sourceAttribution: plan.source_attribution ?? [],
-  };
-}
-
-export async function requestCirculation(stationId: string, lakeId: string, droneId: string, request: { eligible: boolean; reason: string }, client?: SupabaseLike, fetcher?: typeof fetch): Promise<ReconcileStatus> {
-  const payload = await apiRequest<{ reconciliation_id: string; desired_state_version: number; acknowledged_state_version: number }>(
-    `/api/stations/${encodeURIComponent(stationId)}/lakes/${encodeURIComponent(lakeId)}/circulation/${encodeURIComponent(droneId)}`,
-    { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(request) }, client, fetcher,
-  );
-  return { reconciliationId: payload.reconciliation_id, desiredStateVersion: payload.desired_state_version, acknowledgedStateVersion: payload.acknowledged_state_version };
+/** Start/stop a lake's simulated session, or re-divide its zones; each returns the resulting zone map. */
+export function changeSimulation(lakeId: string, action: "simulation/start" | "simulation/stop" | "zones/regenerate", client?: SupabaseLike, fetcher?: typeof fetch): Promise<SimulationWire> {
+  return apiRequest<SimulationWire>(`/api/lakes/${encodeURIComponent(lakeId)}/${action}`, { method: "POST" }, client, fetcher);
 }
 
 function safetyStatus(payload: RealSafetyWire): RealFleetSafetyStatus {
@@ -71,14 +45,4 @@ export async function requestSafeReturn(stationId: string, lakeId: string, reaso
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reason }),
   }, client, fetcher);
   return safetyStatus(payload);
-}
-
-/** A request changes desired state only.  The acknowledged runtime lifecycle
- * remains server-reported until a later fleet refresh confirms the change. */
-export function applyReconcileStatus(drones: FleetDrone[], droneId: string, status: ReconcileStatus): FleetDrone[] {
-  return drones.map((drone) => drone.inventoryId === droneId ? {
-    ...drone,
-    desiredStateVersion: status.desiredStateVersion,
-    acknowledgedStateVersion: status.acknowledgedStateVersion,
-  } : drone);
 }

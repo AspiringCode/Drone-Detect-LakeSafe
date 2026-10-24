@@ -56,6 +56,19 @@ class SimulationEngine:
                 drone.status = DroneStatus.EN_ROUTE
                 self.targets[drone.drone_id] = zone_by_id[zone_id].centroid
 
+    def set_fleet(self, drones: list[Drone], zones: list[RiskZone] | None = None) -> None:
+        """Start (or, with no drones, end) a simulation session; each drone heads to its zone."""
+        if zones is not None:
+            self.zones = zones
+            self._assign_patrol_params()
+        self.drones = drones
+        self.altitudes = {drone.drone_id: 30.0 for drone in drones}
+        self.targets = {}
+        self._patrol_waypoints = {}
+        self._patrol_index = {}
+        self._confirmation = None
+        self._initial_assign()
+
     def apply_plan(
         self,
         zones: list[RiskZone],
