@@ -97,10 +97,23 @@ safe return. This pathway exists in software but has not been physically flight-
 
 ## Thermal and evidence path
 
-`ThermalDetector` converts a single-channel frame for an Ultralytics model and emits
-bounded detection records. `TemporalPersistenceFilter` requires spatially overlapping
+![LakeSafe system layers](diagrams/lakesafe-layers.png)
+
+On the drone, `drone_detect` reads the InfiRay P2 Pro as a UVC camera with OpenCV's RGB
+conversion turned off. Each 256x384 YUYV frame holds the palette image on top and 16-bit
+little-endian temperatures (kelvin × 64) on the bottom. Without a model, `HotSpotDetector`
+thresholds that temperature frame at max(absolute floor, scene median + margin) and keeps
+connected blobs of at least 4 pixels. With `--model`, `ThermalDetector` converts a
+single-channel frame for an Ultralytics model. Either way, it emits bounded detection
+records. `TemporalPersistenceFilter` requires spatially overlapping
 detections across consecutive frames before emission. This is implemented code, not
 proof of open-water accuracy. Operational thermal clips are kept in a private Supabase
 bucket. The backend checks officer/station/capability access and emits an audited signed
 URL with a maximum lifetime of 60 seconds; browser credentials cannot directly read the
 bucket.
+
+A confirmed detection is signed with the drone's Ed25519 key and posted with the position
+`mavlink_bridge` last wrote. A detection is held, not sent, when that position is older
+than 5 seconds. For demo footage, `drone_detect --record` saves the palette view with
+confirmed boxes, and `pi_camera_record` saves the Pi CSI camera as H.264 MPEG-TS segments.
+Both stamp a UTC clock so the two can be lined up.

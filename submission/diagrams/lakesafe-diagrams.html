@@ -1,0 +1,1259 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LakeSafe Diagrams</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root { --ink: #111827; --muted: #6b7280; --accent: #2563eb; --water: #e7effd; --water-2: #f3f7fe; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #fff; color: var(--ink); font-family: "IBM Plex Sans", "Segoe UI", sans-serif; }
+  nav { max-width: 1328px; margin: 0 auto; padding: 16px 24px 0; display: flex; flex-wrap: wrap; gap: 24px; }
+  nav a { font-size: 14px; color: var(--muted); text-decoration: none; padding: 6px 0; border-bottom: 2px solid transparent; }
+  nav a:hover { color: var(--ink); }
+  nav a[aria-current="page"] { color: var(--ink); font-weight: 600; border-bottom-color: var(--ink); }
+  main { max-width: 1328px; margin: 0 auto; padding: 8px 24px 32px; }
+  section { display: none; }
+  section.on { display: block; }
+  section svg { width: 100%; height: auto; display: block; background: #fff; }
+  body.export nav { display: none; }
+  body.export main { padding: 0; max-width: none; }
+  body.export section svg { width: 1280px; height: 720px; }
+
+  svg text { fill: var(--ink); font-family: "IBM Plex Sans", "Segoe UI", sans-serif; }
+  .h1 { font-size: 28px; font-weight: 600; }
+  .col { font-size: 15px; font-weight: 600; fill: var(--muted); }
+  .t { font-size: 14px; font-weight: 500; }
+  .tl { font-size: 17px; font-weight: 600; }
+  .b { font-size: 13px; fill: var(--muted); }
+  .s { font-size: 12px; fill: var(--muted); }
+  .k { font-weight: 700; }
+  .box { fill: #fff; stroke: var(--ink); stroke-width: 1.25; }
+  .key { fill: #fff; stroke: var(--ink); stroke-width: 2.75; }
+  .ln { fill: none; stroke: var(--ink); stroke-width: 1.25; marker-end: url(#arr); }
+  .ln-acc { fill: none; stroke: var(--accent); stroke-width: 2; marker-end: url(#arr-acc); }
+  .rail { fill: none; stroke: var(--ink); stroke-width: 1.25; }
+  .life { stroke: #d1d5db; stroke-width: 1; }
+  .acc { fill: var(--accent) !important; }
+  .dot { fill: var(--ink); }
+  .dot-t { font-size: 11px; font-weight: 600; fill: #fff; }
+  a { cursor: pointer; }
+  a:hover .key, a:hover .box { stroke: var(--accent); }
+  a:hover .link { text-decoration: underline; }
+  .link { fill: var(--accent) !important; }
+  .grp { fill: #fff; stroke: #d1d5db; stroke-width: 1.25; }
+  .tag { font-size: 12px; font-weight: 600; letter-spacing: .1em; fill: var(--muted); }
+  .ic { color: var(--ink); fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  .ic-k { stroke-width: 2.2; }
+  a:hover .ic { color: var(--accent); }
+  .nl { font-size: 14px; font-weight: 500; }
+  .nl.k { font-weight: 700; }
+  .ns { font-size: 12.5px; fill: var(--muted); }
+  .el { font-size: 12.5px; fill: #374151; text-anchor: middle; dominant-baseline: central; paint-order: stroke; stroke: #fff; stroke-width: 6px; stroke-linejoin: round; }
+  /* suite */
+  .bnd { fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 7 5; }
+  .dash { stroke-dasharray: 6 5; }
+  .rule { stroke: #d1d5db; stroke-width: 1; }
+  .kk { font-size: 11px; font-weight: 600; fill: var(--muted); }
+  .col-t { font-size: 13px; }
+  /* /suite */
+  @media print { nav { display: none; } section { display: block; page-break-after: always; } }
+</style>
+</head>
+<body>
+<nav>
+  <a href="#arch">Architecture v1</a>
+  <a href="#arch2">Architecture v2</a>
+  <a href="#context">System Context</a>
+  <a href="#deploy">Deployment</a>
+  <a href="#dfd">Data Flow</a>
+  <a href="#states">State Machines</a>
+  <a href="#erd">Database (ER)</a>
+  <a href="#usecases">Use Cases</a>
+  <a href="#map">Overview A</a>
+  <a href="#layers">Overview B</a>
+  <a href="#sequence">Overview C</a>
+  <a href="#drone">Drone Flowchart</a>
+  <a href="#operator">Operator Flowchart</a>
+</nav>
+<main>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9" fill="none" stroke="#111827" stroke-width="1.6"/></marker>
+    <marker id="arr-acc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9" fill="none" stroke="#2563eb" stroke-width="1.8"/></marker>
+    <!-- suite markers -->
+    <marker id="many" viewBox="0 0 14 14" refX="14" refY="7" markerWidth="14" markerHeight="14" orient="auto-start-reverse"><path d="M14,1 L2,7 L14,13 M2,7 H14 M2,2 V12" fill="none" stroke="#111827" stroke-width="1.2"/></marker>
+    <marker id="one" viewBox="0 0 14 14" refX="14" refY="7" markerWidth="14" markerHeight="14" orient="auto-start-reverse"><path d="M6,2 V12 M10,2 V12" fill="none" stroke="#111827" stroke-width="1.2"/></marker>
+    <!-- /suite markers -->
+    <symbol id="quad" viewBox="-16 -16 32 32">
+      <path d="M-9,-9 L9,9 M9,-9 L-9,9" stroke="#111827" stroke-width="2"/>
+      <g fill="#fff" stroke="#111827" stroke-width="1.5"><circle cx="-9" cy="-9" r="5.5"/><circle cx="9" cy="-9" r="5.5"/><circle cx="-9" cy="9" r="5.5"/><circle cx="9" cy="9" r="5.5"/></g>
+      <rect x="-3.5" y="-3.5" width="7" height="7" fill="#111827"/>
+    </symbol>
+  </defs>
+</svg>
+
+
+
+<section id="arch">
+<svg viewBox="0 0 1600 900" role="img" aria-label="LakeSafe architecture v1">
+  <defs>
+    <symbol id="i-camera" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="14" rx="2"/><circle cx="12" cy="13" r="4"/><path d="M8 6l1.5-2h5L16 6"/></symbol>
+    <symbol id="i-video" viewBox="0 0 24 24"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="M16 10l6-3v10l-6-3"/></symbol>
+    <symbol id="i-scan" viewBox="0 0 24 24"><path d="M3 7V4h3M21 7V4h-3M3 17v3h3M21 17v3h-3"/><circle cx="12" cy="12" r="3.5"/></symbol>
+    <symbol id="i-swap" viewBox="0 0 24 24"><path d="M4 8h15M15 4l4 4-4 4M20 16H5M9 12l-4 4 4 4"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M14.5 8.5l2 2"/></symbol>
+    <symbol id="i-record" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/></symbol>
+    <symbol id="i-sd" viewBox="0 0 24 24"><path d="M7 3h8l4 4v14H7z"/><path d="M10 3v4M13 3v4M16 4v3"/></symbol>
+    <symbol id="i-chip" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></symbol>
+    <symbol id="i-remote" viewBox="0 0 24 24"><rect x="3" y="9" width="18" height="11" rx="3"/><path d="M12 9V3M7 14.5h3M8.5 13v3"/><circle cx="16" cy="14.5" r="1"/></symbol>
+    <symbol id="i-person" viewBox="0 0 24 24"><circle cx="12" cy="7" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></symbol>
+    <symbol id="i-laptop" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="11" rx="1"/><path d="M2 19h20"/></symbol>
+    <symbol id="i-server" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><rect x="9" y="11" width="6" height="5" rx="1"/><path d="M10 11V9.5a2 2 0 014 0V11"/></symbol>
+    <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M3 13l3-8h12l3 8v6H3z"/><path d="M3 13h5l1.5 2h5L16 13h5"/></symbol>
+    <symbol id="i-live" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M8 8a5.7 5.7 0 000 8M16 8a5.7 5.7 0 010 8M5 5a10 10 0 000 14M19 5a10 10 0 010 14"/></symbol>
+    <symbol id="i-map" viewBox="0 0 24 24"><path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3z"/><path d="M9 3v15M15 6v15"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M6 2h9l5 5v15H6z"/><path d="M15 2v5h5M9 13h7M9 17h7"/></symbol>
+    <symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2 20c0-3.5 3-5.5 7-5.5s7 2 7 5.5M16 4.5a3.5 3.5 0 010 7M18 14.8c2.4.6 4 2.3 4 5.2"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></symbol>
+    <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16v-5a6 6 0 0112 0v5l2 2H4z"/><path d="M10 21h4"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10M10 20v-5h4v5"/></symbol>
+  </defs>
+  <text x="40" y="56" class="h1">Architecture v1</text>
+  <rect x="40" y="100" width="500" height="530" rx="12" class="grp"/>
+  <text x="524" y="124" class="tag" text-anchor="end">ON THE DRONE</text>
+  <rect x="175" y="150" width="340" height="320" rx="12" class="grp"/>
+  <text x="499" y="174" class="tag" text-anchor="end">RASPBERRY PI</text>
+  <rect x="700" y="100" width="480" height="530" rx="12" class="grp"/>
+  <text x="1164" y="124" class="tag" text-anchor="end">LAKESAFE API</text>
+  <rect x="1240" y="100" width="320" height="200" rx="12" class="grp"/>
+  <text x="1544" y="124" class="tag" text-anchor="end">SUPABASE</text>
+  <rect x="700" y="650" width="760" height="180" rx="12" class="grp"/>
+  <text x="1444" y="674" class="tag" text-anchor="end">WEB APP</text>
+  <use href="#i-camera" x="78" y="208" width="44" height="44" class="ic"/>
+  <text x="100" y="272" class="nl" text-anchor="middle">Thermal Camera</text>
+  <text x="100" y="289" class="ns" text-anchor="middle">InfiRay P2 Pro</text>
+  <use href="#i-video" x="78" y="378" width="44" height="44" class="ic"/>
+  <text x="100" y="442" class="nl" text-anchor="middle">Pi Camera</text>
+  <a href="#drone">
+  <use href="#i-scan" x="248" y="208" width="44" height="44" class="ic ic-k"/>
+  <text x="270" y="272" class="nl k" text-anchor="middle">Swimmer Detector</text>
+  <text x="270" y="289" class="ns" text-anchor="middle">drone_detect.py</text>
+  </a><a href="#drone">
+  <use href="#i-swap" x="408" y="208" width="44" height="44" class="ic"/>
+  <text x="430" y="272" class="nl" text-anchor="middle">MAVLink Bridge</text>
+  <text x="430" y="289" class="ns" text-anchor="middle">mavlink_bridge.py</text>
+  </a>
+  <use href="#i-key" x="328" y="308" width="44" height="44" class="ic"/>
+  <text x="350" y="372" class="nl" text-anchor="middle">Drone Key</text>
+  <text x="350" y="389" class="ns" text-anchor="middle">signs every message</text>
+  <use href="#i-record" x="248" y="378" width="44" height="44" class="ic"/>
+  <text x="270" y="442" class="nl" text-anchor="middle">Video Recorder</text>
+  <use href="#i-sd" x="248" y="523" width="44" height="44" class="ic"/>
+  <text x="270" y="587" class="nl" text-anchor="middle">Footage</text>
+  <text x="270" y="604" class="ns" text-anchor="middle">SD card</text>
+  <use href="#i-chip" x="408" y="523" width="44" height="44" class="ic"/>
+  <text x="430" y="587" class="nl" text-anchor="middle">Flight Controller</text>
+  <text x="430" y="604" class="ns" text-anchor="middle">ArduPilot</text>
+  <use href="#i-person" x="148" y="713" width="44" height="44" class="ic"/>
+  <text x="170" y="777" class="nl" text-anchor="middle">Pilot</text>
+  <use href="#i-remote" x="328" y="713" width="44" height="44" class="ic"/>
+  <text x="350" y="777" class="nl" text-anchor="middle">RC Transmitter</text>
+  <use href="#i-laptop" x="598" y="523" width="44" height="44" class="ic"/>
+  <text x="620" y="587" class="nl" text-anchor="middle">Mission Planner</text>
+  <text x="620" y="604" class="ns" text-anchor="middle">laptop</text>
+  <use href="#i-server" x="768" y="208" width="44" height="44" class="ic ic-k"/>
+  <text x="790" y="272" class="nl k" text-anchor="middle">Device Gateway</text>
+  <use href="#i-shield" x="908" y="208" width="44" height="44" class="ic"/>
+  <text x="930" y="272" class="nl" text-anchor="middle">Signature Check</text>
+  <text x="930" y="289" class="ns" text-anchor="middle">Ed25519, no replays</text>
+  <use href="#i-live" x="1058" y="208" width="44" height="44" class="ic"/>
+  <text x="1080" y="272" class="nl" text-anchor="middle">Live Stream</text>
+  <text x="1080" y="289" class="ns" text-anchor="middle">WebSocket</text>
+  <use href="#i-inbox" x="768" y="368" width="44" height="44" class="ic"/>
+  <text x="790" y="432" class="nl" text-anchor="middle">Command Outbox</text>
+  <use href="#i-lock" x="908" y="368" width="44" height="44" class="ic"/>
+  <text x="930" y="432" class="nl" text-anchor="middle">2FA and Role Check</text>
+  <use href="#i-file" x="768" y="523" width="44" height="44" class="ic"/>
+  <text x="790" y="587" class="nl" text-anchor="middle">Mission Export</text>
+  <use href="#i-map" x="908" y="523" width="44" height="44" class="ic"/>
+  <text x="930" y="587" class="nl" text-anchor="middle">Risk-Zone Planner</text>
+  <use href="#i-globe" x="1378" y="523" width="44" height="44" class="ic"/>
+  <text x="1400" y="587" class="nl" text-anchor="middle">King County</text>
+  <text x="1400" y="604" class="ns" text-anchor="middle">Open Data</text>
+  <use href="#i-db" x="1278" y="188" width="44" height="44" class="ic"/>
+  <text x="1300" y="252" class="nl" text-anchor="middle">Alerts and</text>
+  <text x="1300" y="269" class="ns" text-anchor="middle">Telemetry</text>
+  <use href="#i-file" x="1378" y="188" width="44" height="44" class="ic"/>
+  <text x="1400" y="252" class="nl" text-anchor="middle">Audit Log</text>
+  <use href="#i-users" x="1478" y="188" width="44" height="44" class="ic"/>
+  <text x="1500" y="252" class="nl" text-anchor="middle">Stations and</text>
+  <text x="1500" y="269" class="ns" text-anchor="middle">Officers</text>
+  <a href="#operator">
+  <use href="#i-monitor" x="938" y="723" width="44" height="44" class="ic ic-k"/>
+  <text x="960" y="787" class="nl k" text-anchor="middle">Operator Dashboard</text>
+  </a>
+  <use href="#i-home" x="778" y="723" width="44" height="44" class="ic"/>
+  <text x="800" y="787" class="nl" text-anchor="middle">Send Home or Hold</text>
+  <use href="#i-bell" x="1098" y="723" width="44" height="44" class="ic"/>
+  <text x="1120" y="787" class="nl" text-anchor="middle">Alert Sound</text>
+  <text x="1120" y="804" class="ns" text-anchor="middle">and Map Pin</text>
+  <use href="#i-monitor" x="1338" y="723" width="44" height="44" class="ic"/>
+  <text x="1360" y="787" class="nl" text-anchor="middle">Public Lake Page</text>
+  <use href="#i-person" x="578" y="723" width="44" height="44" class="ic"/>
+  <text x="600" y="787" class="nl" text-anchor="middle">Responder</text>
+  <use href="#i-person" x="1508" y="723" width="44" height="44" class="ic"/>
+  <text x="1530" y="787" class="nl" text-anchor="middle">Public</text>
+  <path d="M126,230 L244,230" class="ln"/>
+  <text x="185" y="230" class="el">USB</text>
+  <path d="M126,400 L244,400" class="ln"/>
+  <text x="185" y="400" class="el">CSI</text>
+  <path d="M270,466 L270,519" class="ln"/>
+  <path d="M404,230 L296,230" class="ln"/>
+  <text x="350" y="230" class="el">GPS</text>
+  <path d="M430,296 L430,519" class="ln" marker-start="url(#arr)"/>
+  <text x="430" y="440" class="el">MAVLink</text>
+  <path d="M196,735 L324,735" class="ln"/>
+  <path d="M350,709 L350,557 Q350,545 362,545 L404,545" class="ln"/>
+  <text x="350" y="640" class="el">takes over</text>
+  <path d="M594,545 L456,545" class="ln"/>
+  <text x="525" y="545" class="el">upload</text>
+  <path d="M456,230 L764,230" class="ln" marker-start="url(#arr)"/>
+  <text x="610" y="230" class="el">heartbeat, commands</text>
+  <path d="M270,204 L270,92 Q270,80 282,80 L778,80 Q790,80 790,92 L790,204" class="ln-acc"/>
+  <text x="530" y="80" class="el acc">signed alert with GPS</text>
+  <path d="M816,230 L904,230" class="ln-acc"/>
+  <path d="M956,230 L1054,230" class="ln-acc"/>
+  <path d="M930,204 L930,162 Q930,150 942,150 L1288,150 Q1300,150 1300,162 L1300,186" class="ln"/>
+  <text x="1120" y="150" class="el">save</text>
+  <path d="M790,364 L790,296" class="ln"/>
+  <path d="M904,390 L816,390" class="ln"/>
+  <path d="M904,545 L816,545" class="ln"/>
+  <path d="M764,545 L646,545" class="ln"/>
+  <text x="705" y="545" class="el">waypoints</text>
+  <path d="M1374,545 L956,545" class="ln"/>
+  <text x="1290" y="545" class="el">beach and water sites</text>
+  <path d="M1106,230 L1138,230 Q1150,230 1150,242 L1150,678 Q1150,690 1138,690 L972,690 Q960,690 960,702 L960,719" class="ln-acc"/>
+  <text x="1150" y="460" class="el acc">live alert</text>
+  <path d="M986,745 L1094,745" class="ln-acc"/>
+  <path d="M934,745 L826,745" class="ln"/>
+  <path d="M800,719 L800,682 Q800,670 812,670 L998,670 Q1010,670 1010,658 L1010,402 Q1010,390 998,390 L956,390" class="ln"/>
+  <text x="1010" y="470" class="el">send home</text>
+  <path d="M1480,300 L1480,608 Q1480,620 1468,620 L1372,620 Q1360,620 1360,632 L1360,719" class="ln"/>
+  <text x="1480" y="420" class="el">delayed summary</text>
+  <path d="M1504,745 L1386,745" class="ln"/>
+  <path d="M626,745 L774,745" class="ln"/>
+</svg>
+</section>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+    <symbol id="i-camera" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="14" rx="2"/><circle cx="12" cy="13" r="4"/><path d="M8 6l1.5-2h5L16 6"/></symbol>
+    <symbol id="i-video" viewBox="0 0 24 24"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="M16 10l6-3v10l-6-3"/></symbol>
+    <symbol id="i-scan" viewBox="0 0 24 24"><path d="M3 7V4h3M21 7V4h-3M3 17v3h3M21 17v3h-3"/><circle cx="12" cy="12" r="3.5"/></symbol>
+    <symbol id="i-swap" viewBox="0 0 24 24"><path d="M4 8h15M15 4l4 4-4 4M20 16H5M9 12l-4 4 4 4"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M14.5 8.5l2 2"/></symbol>
+    <symbol id="i-record" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/></symbol>
+    <symbol id="i-sd" viewBox="0 0 24 24"><path d="M7 3h8l4 4v14H7z"/><path d="M10 3v4M13 3v4M16 4v3"/></symbol>
+    <symbol id="i-chip" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></symbol>
+    <symbol id="i-remote" viewBox="0 0 24 24"><rect x="3" y="9" width="18" height="11" rx="3"/><path d="M12 9V3M7 14.5h3M8.5 13v3"/><circle cx="16" cy="14.5" r="1"/></symbol>
+    <symbol id="i-person" viewBox="0 0 24 24"><circle cx="12" cy="7" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></symbol>
+    <symbol id="i-laptop" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="11" rx="1"/><path d="M2 19h20"/></symbol>
+    <symbol id="i-server" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><rect x="9" y="11" width="6" height="5" rx="1"/><path d="M10 11V9.5a2 2 0 014 0V11"/></symbol>
+    <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M3 13l3-8h12l3 8v6H3z"/><path d="M3 13h5l1.5 2h5L16 13h5"/></symbol>
+    <symbol id="i-live" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M8 8a5.7 5.7 0 000 8M16 8a5.7 5.7 0 010 8M5 5a10 10 0 000 14M19 5a10 10 0 010 14"/></symbol>
+    <symbol id="i-map" viewBox="0 0 24 24"><path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3z"/><path d="M9 3v15M15 6v15"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M6 2h9l5 5v15H6z"/><path d="M15 2v5h5M9 13h7M9 17h7"/></symbol>
+    <symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2 20c0-3.5 3-5.5 7-5.5s7 2 7 5.5M16 4.5a3.5 3.5 0 010 7M18 14.8c2.4.6 4 2.3 4 5.2"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></symbol>
+    <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16v-5a6 6 0 0112 0v5l2 2H4z"/><path d="M10 21h4"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10M10 20v-5h4v5"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></symbol>
+    <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M2 9a15 15 0 0120 0M5 12.5a10 10 0 0114 0M8.5 16a5 5 0 017 0"/><circle cx="12" cy="19.5" r="1"/></symbol>
+    <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7 18h10a4.5 4.5 0 00.6-9A6 6 0 006 10a4 4 0 001 8z"/></symbol>
+    <symbol id="i-quad" viewBox="0 0 24 24"><path d="M7.5 7.5l9 9M16.5 7.5l-9 9"/><circle cx="5.5" cy="5.5" r="3"/><circle cx="18.5" cy="5.5" r="3"/><circle cx="5.5" cy="18.5" r="3"/><circle cx="18.5" cy="18.5" r="3"/><rect x="10" y="10" width="4" height="4"/></symbol>
+    <symbol id="i-id" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="8" cy="11" r="2.5"/><path d="M4.5 16.5c.7-1.8 2-2.5 3.5-2.5s2.8.7 3.5 2.5M14 10h5M14 14h4"/></symbol>
+</defs></svg>
+<section id="arch2">
+<svg viewBox="0 0 1600 900" role="img" aria-label="Architecture v2">
+  <text x="40" y="56" class="h1">Architecture v2</text>
+  <rect x="40" y="100" width="200" height="460" rx="12" class="grp"/>
+  <text x="56" y="124" class="tag">PEOPLE</text>
+  <rect x="40" y="600" width="200" height="290" rx="12" class="grp"/>
+  <text x="56" y="624" class="tag">OTHER INPUT</text>
+  <rect x="290" y="100" width="490" height="245" rx="12" class="grp"/>
+  <text x="764" y="124" class="tag" text-anchor="end">WEB APP</text>
+  <rect x="290" y="380" width="490" height="365" rx="12" class="grp"/>
+  <text x="764" y="404" class="tag" text-anchor="end">DRONE</text>
+  <rect x="440" y="410" width="330" height="320" rx="12" class="grp"/>
+  <text x="754" y="434" class="tag" text-anchor="end">RASPBERRY PI</text>
+  <rect x="290" y="770" width="490" height="115" rx="12" class="grp"/>
+  <text x="764" y="794" class="tag" text-anchor="end">GROUND STATION</text>
+  <rect x="830" y="100" width="410" height="785" rx="12" class="grp"/>
+  <text x="1224" y="124" class="tag" text-anchor="end">LAKESAFE API</text>
+  <rect x="1290" y="100" width="270" height="785" rx="12" class="grp"/>
+  <text x="1544" y="124" class="tag" text-anchor="end">SUPABASE</text>
+  <use href="#i-person" x="118" y="158" width="44" height="44" class="ic"/>
+  <text x="140" y="222" class="nl" text-anchor="middle">Responder</text>
+  <use href="#i-person" x="118" y="258" width="44" height="44" class="ic"/>
+  <text x="140" y="322" class="nl" text-anchor="middle">Public</text>
+  <use href="#i-person" x="118" y="438" width="44" height="44" class="ic"/>
+  <text x="140" y="502" class="nl" text-anchor="middle">Pilot</text>
+  <use href="#i-globe" x="118" y="678" width="44" height="44" class="ic"/>
+  <text x="140" y="742" class="nl" text-anchor="middle">King County</text>
+  <text x="140" y="759" class="ns" text-anchor="middle">beaches, water sites,</text>
+  <text x="140" y="776" class="ns" text-anchor="middle">shoreline</text>
+  <a href="#operator">
+  <use href="#i-monitor" x="628" y="158" width="44" height="44" class="ic ic-k"/>
+  <text x="650" y="222" class="nl k" text-anchor="middle">Operator Dashboard <tspan class="link">↗</tspan></text>
+  <text x="650" y="239" class="ns" text-anchor="middle">alert sound, map pin</text>
+  </a>
+  <use href="#i-monitor" x="398" y="258" width="44" height="44" class="ic"/>
+  <text x="420" y="322" class="nl" text-anchor="middle">Public Lake Page</text>
+  <use href="#i-camera" x="338" y="438" width="44" height="44" class="ic"/>
+  <text x="360" y="502" class="nl" text-anchor="middle">Thermal Camera</text>
+  <use href="#i-video" x="338" y="538" width="44" height="44" class="ic"/>
+  <text x="360" y="602" class="nl" text-anchor="middle">Pi Camera</text>
+  <use href="#i-chip" x="338" y="638" width="44" height="44" class="ic"/>
+  <text x="360" y="702" class="nl" text-anchor="middle">Flight Controller</text>
+  <a href="#drone">
+  <use href="#i-scan" x="488" y="438" width="44" height="44" class="ic ic-k"/>
+  <text x="510" y="502" class="nl k" text-anchor="middle">Swimmer Detector <tspan class="link">↗</tspan></text>
+  </a>
+  <use href="#i-record" x="488" y="538" width="44" height="44" class="ic"/>
+  <text x="510" y="602" class="nl" text-anchor="middle">Video Recorder</text>
+  <text x="510" y="619" class="ns" text-anchor="middle">saves to SD card</text>
+  <a href="#drone">
+  <use href="#i-swap" x="488" y="638" width="44" height="44" class="ic"/>
+  <text x="510" y="702" class="nl" text-anchor="middle">MAVLink Bridge <tspan class="link">↗</tspan></text>
+  </a>
+  <use href="#i-key" x="678" y="538" width="44" height="44" class="ic ic-k"/>
+  <text x="700" y="602" class="nl k" text-anchor="middle">Private Key</text>
+  <text x="700" y="619" class="ns" text-anchor="middle">signs every message</text>
+  <use href="#i-remote" x="358" y="798" width="44" height="44" class="ic"/>
+  <text x="380" y="862" class="nl" text-anchor="middle">RC Transmitter</text>
+  <use href="#i-laptop" x="518" y="798" width="44" height="44" class="ic"/>
+  <text x="540" y="862" class="nl" text-anchor="middle">Mission Planner</text>
+  <use href="#i-file" x="678" y="798" width="44" height="44" class="ic"/>
+  <text x="700" y="862" class="nl" text-anchor="middle">Mission Export</text>
+  <use href="#i-live" x="1038" y="158" width="44" height="44" class="ic"/>
+  <text x="1060" y="129" class="nl" text-anchor="middle">Live Stream</text>
+  <text x="1060" y="146" class="ns" text-anchor="middle">WebSocket</text>
+  <use href="#i-lock" x="878" y="340" width="44" height="44" class="ic"/>
+  <text x="900" y="404" class="nl" text-anchor="middle">2FA and Role Check</text>
+  <use href="#i-inbox" x="878" y="438" width="44" height="44" class="ic"/>
+  <text x="900" y="502" class="nl" text-anchor="middle">Command Outbox</text>
+  <use href="#i-server" x="878" y="538" width="44" height="44" class="ic ic-k"/>
+  <text x="900" y="602" class="nl k" text-anchor="middle">Device Gateway</text>
+  <use href="#i-shield" x="1038" y="538" width="44" height="44" class="ic"/>
+  <text x="1060" y="602" class="nl" text-anchor="middle">Signature Check</text>
+  <text x="1060" y="619" class="ns" text-anchor="middle">with drone's public key</text>
+  <use href="#i-map" x="938" y="798" width="44" height="44" class="ic"/>
+  <text x="960" y="786" class="nl" text-anchor="middle">Risk-Zone Planner</text>
+  <use href="#i-db" x="1403" y="158" width="44" height="44" class="ic"/>
+  <text x="1425" y="222" class="nl" text-anchor="middle">Public Alerts</text>
+  <text x="1425" y="239" class="ns" text-anchor="middle">delayed copy</text>
+  <use href="#i-users" x="1403" y="278" width="44" height="44" class="ic"/>
+  <text x="1425" y="342" class="nl" text-anchor="middle">Stations</text>
+  <text x="1425" y="359" class="ns" text-anchor="middle">and Officers</text>
+  <use href="#i-file" x="1403" y="398" width="44" height="44" class="ic"/>
+  <text x="1425" y="462" class="nl" text-anchor="middle">Audit Log</text>
+  <use href="#i-db" x="1403" y="538" width="44" height="44" class="ic"/>
+  <text x="1425" y="602" class="nl" text-anchor="middle">Alerts and</text>
+  <text x="1425" y="619" class="ns" text-anchor="middle">Telemetry</text>
+  <use href="#i-key" x="1403" y="658" width="44" height="44" class="ic ic-k"/>
+  <text x="1425" y="722" class="nl k" text-anchor="middle">Drone Public Keys</text>
+  <use href="#i-map" x="1403" y="798" width="44" height="44" class="ic"/>
+  <text x="1425" y="786" class="nl" text-anchor="middle">Zone Plans</text>
+  <path d="M166,180 L624,180" class="ln" marker-end="url(#arr)"/>
+  <path d="M166,280 L394,280" class="ln" marker-end="url(#arr)"/>
+  <path d="M166,460 L260,460 Q272,460 272,472 L272,808 Q272,820 280,820 L288,820" class="ln" marker-end="url(#arr)"/>
+  <path d="M140,790 L140,880" class="ln" marker-end="none"/>
+  <path d="M140,880 L236,880 Q248,880 248,886.5 L248,886.5 Q248,893 260,893 L948,893 Q960,893 960,881 L960,846" class="ln" marker-end="url(#arr)"/>
+  <text x="600" y="893" class="el">beach and water data</text>
+  <path d="M386,460 L484,460" class="ln" marker-end="url(#arr)"/>
+  <text x="435" y="460" class="el">USB</text>
+  <path d="M386,560 L484,560" class="ln" marker-end="url(#arr)"/>
+  <text x="435" y="560" class="el">CSI</text>
+  <path d="M386,660 L484,660" class="ln" marker-end="url(#arr)" marker-start="url(#arr)"/>
+  <text x="435" y="660" class="el">MAVLink</text>
+  <path d="M536,460 L608,460 Q620,460 620,472 L620,548 Q620,560 632,560 L674,560" class="ln-acc" marker-end="none"/>
+  <path d="M536,660 L608,660 Q620,660 620,648 L620,560" class="ln" marker-end="none"/>
+  <path d="M726,560 L874,560" class="ln-acc" marker-end="url(#arr-acc)" marker-start="url(#arr-acc)"/>
+  <text x="800" y="560" class="el acc">signed HTTPS</text>
+  <path d="M460,770 L460,747" class="ln" marker-end="url(#arr)"/>
+  <text x="460" y="758" class="el">RC, mission upload</text>
+  <path d="M674,820 L566,820" class="ln" marker-end="url(#arr)"/>
+  <path d="M934,820 L726,820" class="ln" marker-end="url(#arr)"/>
+  <text x="830" y="820" class="el">zones</text>
+  <path d="M926,560 L1034,560" class="ln-acc" marker-end="url(#arr-acc)"/>
+  <path d="M1060,526 L1060,206" class="ln-acc" marker-end="url(#arr-acc)"/>
+  <text x="1060" y="300" class="el acc">alert</text>
+  <path d="M1034,180 L676,180" class="ln-acc" marker-end="url(#arr-acc)"/>
+  <text x="850" y="180" class="el acc">live alert</text>
+  <path d="M650,252 L650,350 Q650,362 662,362 L874,362" class="ln" marker-end="url(#arr)"/>
+  <text x="760" y="362" class="el">send home or hold</text>
+  <path d="M900,422 L900,436" class="ln" marker-end="url(#arr)"/>
+  <path d="M900,520 L900,536" class="ln" marker-end="url(#arr)"/>
+  <path d="M1086,560 L1399,560" class="ln" marker-end="url(#arr)"/>
+  <text x="1240" y="560" class="el">save alert</text>
+  <path d="M1060,624 L1060,668 Q1060,680 1072,680 L1399,680" class="ln" marker-end="url(#arr)"/>
+  <text x="1240" y="680" class="el">look up</text>
+  <path d="M986,820 L1399,820" class="ln" marker-end="url(#arr)"/>
+  <text x="1240" y="820" class="el">publish</text>
+  <path d="M1425,154 L1425,92 Q1425,80 1413,80 L432,80 Q420,80 420,92 L420,256" class="ln" marker-end="url(#arr)"/>
+  <text x="900" y="80" class="el">delayed summary</text>
+</svg>
+</section>
+<section id="context">
+<svg viewBox="0 0 1600 900" role="img" aria-label="System Context">
+  <text x="40" y="56" class="h1">System Context</text>
+  <rect x="600" y="330" width="400" height="240" rx="14" class="key"/>
+  <use href="#i-quad" x="778" y="362" width="44" height="44" class="ic ic-k"/>
+  <text x="800" y="440" class="nl k" text-anchor="middle" style="font-size:20px">LakeSafe</text>
+  <text x="800" y="474" class="ns" text-anchor="middle" style="font-size:14px">Drones patrol a lake and spot swimmers</text>
+  <text x="800" y="494" class="ns" text-anchor="middle" style="font-size:14px">in thermal video. Verified responders get</text>
+  <text x="800" y="514" class="ns" text-anchor="middle" style="font-size:14px">the alert and decide what to do.</text>
+  <rect x="40" y="100" width="300" height="790" rx="12" class="grp"/>
+  <text x="56" y="124" class="tag">PEOPLE</text>
+  <rect x="1260" y="100" width="300" height="790" rx="12" class="grp"/>
+  <text x="1544" y="124" class="tag" text-anchor="end">OTHER SYSTEMS</text>
+  <use href="#i-person" x="168" y="158" width="44" height="44" class="ic"/>
+  <text x="190" y="222" class="nl" text-anchor="middle">Responder</text>
+  <text x="190" y="239" class="ns" text-anchor="middle">station officer</text>
+  <path d="M216,180 L598,360" class="ln" marker-end="url(#arr)"/>
+  <text x="427.0" y="270.0" class="el">watches alerts, sends drones home</text>
+  <use href="#i-person" x="168" y="318" width="44" height="44" class="ic"/>
+  <text x="190" y="382" class="nl" text-anchor="middle">Station Admin</text>
+  <text x="190" y="399" class="ns" text-anchor="middle">runs a station</text>
+  <path d="M216,340 L598,405" class="ln" marker-end="url(#arr)"/>
+  <text x="427.0" y="372.5" class="el">adds members, drones, lakes</text>
+  <use href="#i-person" x="168" y="478" width="44" height="44" class="ic"/>
+  <text x="190" y="542" class="nl" text-anchor="middle">Public</text>
+  <text x="190" y="559" class="ns" text-anchor="middle">anyone</text>
+  <path d="M216,500 L598,450" class="ln" marker-end="url(#arr)"/>
+  <text x="427.0" y="475.0" class="el">checks lake status</text>
+  <use href="#i-person" x="168" y="638" width="44" height="44" class="ic"/>
+  <text x="190" y="702" class="nl" text-anchor="middle">Pilot</text>
+  <text x="190" y="719" class="ns" text-anchor="middle">certified drone pilot</text>
+  <path d="M216,660 L598,495" class="ln" marker-end="url(#arr)"/>
+  <text x="427.0" y="577.5" class="el">flies, uploads missions</text>
+  <use href="#i-person" x="168" y="778" width="44" height="44" class="ic"/>
+  <text x="190" y="842" class="nl" text-anchor="middle">Reviewer</text>
+  <text x="190" y="859" class="ns" text-anchor="middle">LakeSafe staff</text>
+  <path d="M216,800 L598,540" class="ln" marker-end="url(#arr)"/>
+  <text x="427.0" y="670.0" class="el">approves officers, stations</text>
+  <use href="#i-globe" x="1388" y="188" width="44" height="44" class="ic"/>
+  <text x="1410" y="252" class="nl" text-anchor="middle">King County Open Data</text>
+  <text x="1410" y="269" class="ns" text-anchor="middle">beaches, water sites</text>
+  <path d="M1384,210 L1002,380" class="ln" marker-end="url(#arr)"/>
+  <text x="1193.0" y="295.0" class="el">lake and water data</text>
+  <use href="#i-id" x="1388" y="428" width="44" height="44" class="ic"/>
+  <text x="1410" y="492" class="nl" text-anchor="middle">ID.me</text>
+  <text x="1410" y="509" class="ns" text-anchor="middle">identity checks</text>
+  <path d="M1384,450 L1002,450" class="ln" marker-end="url(#arr)" marker-start="url(#arr)"/>
+  <text x="1193.0" y="450.0" class="el">verifies officers</text>
+  <use href="#i-laptop" x="1388" y="668" width="44" height="44" class="ic"/>
+  <text x="1410" y="732" class="nl" text-anchor="middle">Mission Planner</text>
+  <text x="1410" y="749" class="ns" text-anchor="middle">ground software</text>
+  <path d="M1384,690 L1002,520" class="ln" marker-end="url(#arr)" marker-start="url(#arr)"/>
+  <text x="1193.0" y="605.0" class="el">waypoint file, mission upload</text>
+</svg>
+</section>
+<section id="deploy">
+<svg viewBox="0 0 1600 900" role="img" aria-label="Deployment">
+  <text x="40" y="56" class="h1">Deployment</text>
+  <rect x="40" y="100" width="700" height="640" rx="12" class="grp"/>
+  <text x="724" y="124" class="tag" text-anchor="end">QUADCOPTER</text>
+  <rect x="60" y="140" width="460" height="580" rx="12" class="grp"/>
+  <text x="76" y="164" class="tag">RASPBERRY PI ZERO 2 W</text>
+  <rect x="40" y="770" width="700" height="115" rx="12" class="grp"/>
+  <text x="56" y="794" class="tag">PILOT'S GEAR</text>
+  <rect x="800" y="100" width="360" height="320" rx="12" class="grp"/>
+  <text x="1144" y="124" class="tag" text-anchor="end">RENDER</text>
+  <rect x="800" y="480" width="360" height="405" rx="12" class="grp"/>
+  <text x="1144" y="504" class="tag" text-anchor="end">VERCEL</text>
+  <rect x="1220" y="100" width="340" height="320" rx="12" class="grp"/>
+  <text x="1544" y="124" class="tag" text-anchor="end">SUPABASE</text>
+  <rect x="1220" y="480" width="340" height="405" rx="12" class="grp"/>
+  <text x="1544" y="504" class="tag" text-anchor="end">BROWSERS</text>
+  <use href="#i-scan" x="128" y="218" width="44" height="44" class="ic ic-k"/>
+  <text x="150" y="282" class="nl k" text-anchor="middle">lakesafe-detect</text>
+  <text x="150" y="299" class="ns" text-anchor="middle">systemd service</text>
+  <use href="#i-swap" x="128" y="378" width="44" height="44" class="ic"/>
+  <text x="150" y="442" class="nl" text-anchor="middle">lakesafe-bridge</text>
+  <text x="150" y="459" class="ns" text-anchor="middle">systemd service</text>
+  <use href="#i-record" x="128" y="538" width="44" height="44" class="ic"/>
+  <text x="150" y="602" class="nl" text-anchor="middle">lakesafe-camera</text>
+  <text x="150" y="619" class="ns" text-anchor="middle">systemd service</text>
+  <use href="#i-key" x="378" y="298" width="44" height="44" class="ic ic-k"/>
+  <text x="400" y="362" class="nl k" text-anchor="middle">drone.pem</text>
+  <text x="400" y="379" class="ns" text-anchor="middle">private key, signs messages</text>
+  <use href="#i-wifi" x="358" y="458" width="44" height="44" class="ic"/>
+  <text x="380" y="522" class="nl" text-anchor="middle">Wi-Fi</text>
+  <text x="380" y="539" class="ns" text-anchor="middle">hotspot or network</text>
+  <use href="#i-camera" x="598" y="218" width="44" height="44" class="ic"/>
+  <text x="620" y="282" class="nl" text-anchor="middle">P2 Pro</text>
+  <text x="620" y="299" class="ns" text-anchor="middle">USB</text>
+  <use href="#i-chip" x="598" y="378" width="44" height="44" class="ic"/>
+  <text x="620" y="442" class="nl" text-anchor="middle">Flight Controller</text>
+  <text x="620" y="459" class="ns" text-anchor="middle">UART serial</text>
+  <use href="#i-video" x="598" y="538" width="44" height="44" class="ic"/>
+  <text x="620" y="602" class="nl" text-anchor="middle">Pi Camera</text>
+  <text x="620" y="619" class="ns" text-anchor="middle">CSI ribbon</text>
+  <use href="#i-laptop" x="178" y="793" width="44" height="44" class="ic"/>
+  <text x="200" y="857" class="nl" text-anchor="middle">Laptop</text>
+  <use href="#i-remote" x="438" y="793" width="44" height="44" class="ic"/>
+  <text x="460" y="857" class="nl" text-anchor="middle">RC Transmitter</text>
+  <use href="#i-server" x="958" y="208" width="44" height="44" class="ic ic-k"/>
+  <text x="980" y="272" class="nl k" text-anchor="middle">lakesafe-api</text>
+  <text x="980" y="289" class="ns" text-anchor="middle">FastAPI, 1 worker</text>
+  <use href="#i-gear" x="958" y="328" width="44" height="44" class="ic"/>
+  <text x="980" y="392" class="nl" text-anchor="middle">Python 3.13</text>
+  <use href="#i-monitor" x="958" y="618" width="44" height="44" class="ic"/>
+  <text x="980" y="682" class="nl" text-anchor="middle">Dashboard</text>
+  <text x="980" y="699" class="ns" text-anchor="middle">React + Vite build</text>
+  <use href="#i-db" x="1288" y="208" width="44" height="44" class="ic"/>
+  <text x="1310" y="272" class="nl" text-anchor="middle">Postgres</text>
+  <text x="1310" y="289" class="ns" text-anchor="middle">row-level security</text>
+  <use href="#i-lock" x="1448" y="208" width="44" height="44" class="ic"/>
+  <text x="1470" y="272" class="nl" text-anchor="middle">Auth</text>
+  <text x="1470" y="289" class="ns" text-anchor="middle">sign-in, 2FA</text>
+  <use href="#i-monitor" x="1288" y="618" width="44" height="44" class="ic"/>
+  <text x="1310" y="682" class="nl" text-anchor="middle">Responder's</text>
+  <text x="1310" y="699" class="ns" text-anchor="middle">browser</text>
+  <use href="#i-monitor" x="1448" y="618" width="44" height="44" class="ic"/>
+  <text x="1470" y="682" class="nl" text-anchor="middle">Public</text>
+  <text x="1470" y="699" class="ns" text-anchor="middle">browser</text>
+  <path d="M594,240 L176,240" class="ln" marker-end="url(#arr)"/>
+  <text x="290" y="240" class="el">frames</text>
+  <path d="M176,400 L594,400" class="ln" marker-end="url(#arr)" marker-start="url(#arr)"/>
+  <text x="290" y="400" class="el">MAVLink</text>
+  <path d="M594,560 L176,560" class="ln" marker-end="url(#arr)"/>
+  <text x="290" y="560" class="el">video</text>
+  <path d="M176,260 L248,260 Q260,260 260,272 L260,468 Q260,480 272,480 L354,480" class="ln" marker-end="none"/>
+  <path d="M176,420 L260,420" class="ln" marker-end="none"/>
+  <path d="M406,480 L758,480 Q770,480 770,468 L770,242 Q770,230 782,230 L954,230" class="ln-acc" marker-end="url(#arr-acc)" marker-start="url(#arr-acc)"/>
+  <text x="770" y="360" class="el acc">HTTPS: alerts, heartbeats</text>
+  <path d="M226,815 L318,815 Q330,815 330,803 L330,702 Q330,690 342,690 L688,690 Q700,690 700,678 L700,422 Q700,410 688,410 L646,410" class="ln" marker-end="url(#arr)"/>
+  <text x="520" y="690" class="el">USB or telemetry radio</text>
+  <path d="M486,815 L708,815 Q720,815 720,803 L720,402 Q720,390 708,390 L646,390" class="ln" marker-end="url(#arr)"/>
+  <text x="720" y="760" class="el">RC radio</text>
+  <path d="M1006,220 L1284,220" class="ln" marker-end="url(#arr)" marker-start="url(#arr)"/>
+  <text x="1150" y="220" class="el">Postgres over HTTPS</text>
+  <path d="M1220,640 L1006,640" class="ln" marker-end="url(#arr)"/>
+  <text x="1110" y="640" class="el">loads the app</text>
+  <path d="M1390,480 L1390,462 Q1390,450 1378,450 L1112,450 Q1100,450 1100,438 L1100,256 Q1100,244 1088,244 L1006,244" class="ln-acc" marker-end="url(#arr-acc)" marker-start="url(#arr-acc)"/>
+  <text x="1250" y="450" class="el acc">HTTPS, WebSocket</text>
+  <path d="M1490,480 L1490,300" class="ln" marker-end="url(#arr)"/>
+  <text x="1490" y="400" class="el">sign in</text>
+</svg>
+</section>
+<section id="dfd">
+<svg viewBox="0 0 1600 900" role="img" aria-label="Data Flow and Trust Boundaries">
+  <text x="40" y="56" class="h1">Data Flow and Trust Boundaries</text>
+  <rect x="40" y="100" width="300" height="790" rx="12" class="bnd"/>
+  <text x="56" y="124" class="tag acc">DRONE</text>
+  <rect x="380" y="100" width="840" height="790" rx="12" class="bnd"/>
+  <text x="396" y="124" class="tag acc">LAKESAFE SERVER</text>
+  <rect x="1260" y="100" width="300" height="790" rx="12" class="bnd"/>
+  <text x="1544" y="124" class="tag acc" text-anchor="end">BROWSERS</text>
+  <rect x="610" y="150" width="380" height="720" rx="12" class="bnd"/>
+  <text x="974" y="174" class="tag acc" text-anchor="end">DATABASE, ROW-LEVEL SECURITY</text>
+  <rect x="80" y="190" width="220" height="64" rx="0" class="box"/>
+  <text x="190.0" y="218.0" class="nl" text-anchor="middle">Drone detector</text>
+  <text x="190.0" y="236.0" class="ns" text-anchor="middle">signs with private key</text>
+  <rect x="80" y="430" width="220" height="64" rx="0" class="box"/>
+  <text x="190.0" y="458.0" class="nl" text-anchor="middle">Drone bridge</text>
+  <text x="190.0" y="476.0" class="ns" text-anchor="middle">signs with private key</text>
+  <rect x="80" y="750" width="220" height="64" rx="0" class="box"/>
+  <text x="190.0" y="778.0" class="nl" text-anchor="middle">King County</text>
+  <text x="190.0" y="796.0" class="ns" text-anchor="middle">open data</text>
+  <rect x="1300" y="300" width="220" height="64" rx="0" class="box"/>
+  <text x="1410.0" y="328.0" class="nl" text-anchor="middle">Responder</text>
+  <text x="1410.0" y="346.0" class="ns" text-anchor="middle">signed in with 2FA</text>
+  <rect x="1300" y="620" width="220" height="64" rx="0" class="box"/>
+  <text x="1410.0" y="648.0" class="nl" text-anchor="middle">Public</text>
+  <text x="1410.0" y="666.0" class="ns" text-anchor="middle">no account</text>
+  <circle cx="500" cy="300" r="64" class="key"/>
+  <text x="500" y="294" class="nl k" text-anchor="middle">Device Gateway</text>
+  <text x="500" y="313" class="ns" text-anchor="middle">signature, 30 s,</text>
+  <text x="500" y="329" class="ns" text-anchor="middle">sequence once</text>
+  <circle cx="500" cy="782" r="64" class="box"/>
+  <text x="500" y="776" class="nl" text-anchor="middle">Risk Refresh</text>
+  <text x="500" y="795" class="ns" text-anchor="middle">validate, publish</text>
+  <circle cx="1110" cy="332" r="64" class="box"/>
+  <text x="1110" y="326" class="nl" text-anchor="middle">Operator API</text>
+  <text x="1110" y="345" class="ns" text-anchor="middle">JWT, 2FA, role,</text>
+  <text x="1110" y="361" class="ns" text-anchor="middle">rate limits</text>
+  <circle cx="1110" cy="652" r="64" class="box"/>
+  <text x="1110" y="646" class="nl" text-anchor="middle">Public API</text>
+  <text x="1110" y="665" class="ns" text-anchor="middle">read only</text>
+  <path d="M650,190 H950 M650,234 H950 M684,190 V234" class="rail"/>
+  <text x="696" y="217" class="nl">Drone public keys</text>
+  <path d="M650,288 H950 M650,332 H950 M684,288 V332" class="rail"/>
+  <text x="696" y="315" class="nl">Alerts and telemetry</text>
+  <path d="M650,410 H950 M650,454 H950 M684,410 V454" class="rail"/>
+  <text x="696" y="437" class="nl">Command outbox</text>
+  <path d="M650,520 H950 M650,564 H950 M684,520 V564" class="rail"/>
+  <text x="696" y="547" class="nl">Audit log</text>
+  <path d="M650,630 H950 M650,674 H950 M684,630 V674" class="rail"/>
+  <text x="696" y="657" class="nl">Public projections</text>
+  <path d="M650,760 H950 M650,804 H950 M684,760 V804" class="rail"/>
+  <text x="696" y="787" class="nl">Zone plans</text>
+  <path d="M300,222 L488,222 Q500,222 500,228 L500,234" class="ln-acc" marker-end="url(#arr-acc)"/>
+  <text x="390" y="222" class="el acc">detection</text>
+  <path d="M300,462 L488,462 Q500,462 500,450 L500,366" class="ln" marker-end="url(#arr)" marker-start="url(#arr)"/>
+  <text x="390" y="462" class="el">heartbeat, commands</text>
+  <path d="M300,782 L434,782" class="ln" marker-end="url(#arr)"/>
+  <text x="370" y="782" class="el">public data</text>
+  <path d="M558,270 L588,270 Q600,270 600,258 L600,224 Q600,212 612,212 L648,212" class="ln" marker-end="none" marker-start="url(#arr)"/>
+  <text x="600" y="240" class="el">read key</text>
+  <path d="M566,310 L648,310" class="ln-acc" marker-end="url(#arr-acc)"/>
+  <path d="M648,432 L542,432 Q530,432 530,420 L530,362" class="ln" marker-end="url(#arr)"/>
+  <text x="590" y="432" class="el">pending</text>
+  <path d="M566,782 L648,782" class="ln" marker-end="url(#arr)"/>
+  <text x="610" y="782" class="el">write</text>
+  <path d="M952,310 L1048,310" class="ln-acc" marker-end="url(#arr-acc)"/>
+  <text x="1000" y="310" class="el acc">read</text>
+  <path d="M1050,362 L1022,362 Q1010,362 1010,374 L1010,420 Q1010,432 998,432 L952,432" class="ln" marker-end="url(#arr)"/>
+  <text x="1010" y="400" class="el">queue</text>
+  <path d="M1066,380 L1042,380 Q1030,380 1030,392 L1030,530 Q1030,542 1018,542 L952,542" class="ln" marker-end="url(#arr)"/>
+  <text x="1030" y="500" class="el">record</text>
+  <path d="M952,652 L1044,652" class="ln" marker-end="url(#arr)"/>
+  <text x="998" y="652" class="el">read</text>
+  <path d="M1174,320 L1298,320" class="ln-acc" marker-end="url(#arr-acc)"/>
+  <text x="1236" y="320" class="el acc">live alert</text>
+  <path d="M1298,346 L1174,346" class="ln" marker-end="url(#arr)"/>
+  <text x="1236" y="346" class="el">send home</text>
+  <path d="M1176,652 L1298,652" class="ln" marker-end="url(#arr)"/>
+  <text x="1236" y="652" class="el">delayed</text>
+</svg>
+</section>
+<section id="states">
+<svg viewBox="0 0 1600 900" role="img" aria-label="State Machines">
+  <text x="40" y="56" class="h1">State Machines</text>
+  <rect x="40" y="100" width="740" height="380" rx="12" class="grp"/>
+  <text x="56" y="124" class="tag">COMMAND</text>
+  <rect x="820" y="100" width="740" height="380" rx="12" class="grp"/>
+  <text x="836" y="124" class="tag">DRONE FLIGHT</text>
+  <rect x="40" y="510" width="740" height="380" rx="12" class="grp"/>
+  <text x="56" y="534" class="tag">ZONE PLAN</text>
+  <rect x="820" y="510" width="740" height="380" rx="12" class="grp"/>
+  <text x="836" y="534" class="tag">OFFICER VERIFICATION</text>
+  <circle cx="80" cy="200" r="7" class="dot"/>
+  <path d="M87,200 L128,200" class="ln" marker-end="url(#arr)"/>
+  <rect x="130.0" y="178" width="150" height="44" rx="22" class="box"/>
+  <text x="205.0" y="205.0" class="nl" text-anchor="middle">pending</text>
+  <rect x="370.0" y="178" width="150" height="44" rx="22" class="box"/>
+  <text x="445.0" y="205.0" class="nl" text-anchor="middle">claimed</text>
+  <rect x="590.0" y="178" width="150" height="44" rx="22" class="key"/>
+  <text x="665.0" y="205.0" class="nl k" text-anchor="middle">acknowledged</text>
+  <rect x="370.0" y="358" width="150" height="44" rx="22" class="box"/>
+  <text x="445.0" y="385.0" class="nl" text-anchor="middle">failed</text>
+  <path d="M280,200 L368,200" class="ln" marker-end="url(#arr)"/>
+  <text x="324" y="180" class="el">sent in heartbeat</text>
+  <path d="M520,200 L588,200" class="ln" marker-end="url(#arr)"/>
+  <text x="554" y="180" class="el">drone confirms</text>
+  <path d="M445,222 L445,248 Q445,260 433,260 L217,260 Q205,260 205,248 L205,224" class="ln" marker-end="url(#arr)"/>
+  <text x="325" y="260" class="el">no reply, retry</text>
+  <path d="M470,222 L470,356" class="ln" marker-end="url(#arr)"/>
+  <text x="470" y="300" class="el">too many tries</text>
+  <path d="M150,222 L150,368 Q150,380 162,380 L368,380" class="ln" marker-end="url(#arr)"/>
+  <text x="150" y="330" class="el">fleet sent home</text>
+  <circle cx="860" cy="300" r="7" class="dot"/>
+  <path d="M867,300 L900,300" class="ln" marker-end="url(#arr)"/>
+  <rect x="900.0" y="278" width="150" height="44" rx="22" class="box"/>
+  <text x="975.0" y="305.0" class="nl" text-anchor="middle">idle</text>
+  <rect x="1125.0" y="178" width="150" height="44" rx="22" class="key"/>
+  <text x="1200.0" y="205.0" class="nl k" text-anchor="middle">patrolling</text>
+  <rect x="1125.0" y="358" width="150" height="44" rx="22" class="box"/>
+  <text x="1200.0" y="385.0" class="nl" text-anchor="middle">en route</text>
+  <rect x="1365.0" y="278" width="150" height="44" rx="22" class="box"/>
+  <text x="1440.0" y="305.0" class="nl" text-anchor="middle">returning</text>
+  <path d="M1050,290 L1088,290 Q1100,290 1100,278 L1100,212 Q1100,200 1111.5,200 L1123,200" class="ln" marker-end="url(#arr)"/>
+  <text x="1100" y="245" class="el">armed, AUTO</text>
+  <path d="M1200,222 L1200,356" class="ln" marker-end="url(#arr)"/>
+  <text x="1200" y="290" class="el">GUIDED</text>
+  <path d="M1275,200 L1428,200 Q1440,200 1440,212 L1440,276" class="ln" marker-end="url(#arr)"/>
+  <text x="1360" y="200" class="el">RTL, land</text>
+  <path d="M1275,380 L1428,380 Q1440,380 1440,368 L1440,324" class="ln" marker-end="url(#arr)"/>
+  <text x="1360" y="380" class="el">RTL, land</text>
+  <path d="M1515,300 L1528,300 Q1540,300 1540,312 L1540,448 Q1540,460 1528,460 L987,460 Q975,460 975,448 L975,324" class="ln" marker-end="url(#arr)"/>
+  <text x="1260" y="460" class="el">disarmed</text>
+  <circle cx="80" cy="620" r="7" class="dot"/>
+  <path d="M87,620 L128,620" class="ln" marker-end="url(#arr)"/>
+  <rect x="130.0" y="598" width="150" height="44" rx="22" class="box"/>
+  <text x="205.0" y="625.0" class="nl" text-anchor="middle">candidate</text>
+  <rect x="370.0" y="598" width="150" height="44" rx="22" class="box"/>
+  <text x="445.0" y="625.0" class="nl" text-anchor="middle">validated</text>
+  <rect x="590.0" y="598" width="150" height="44" rx="22" class="key"/>
+  <text x="665.0" y="625.0" class="nl k" text-anchor="middle">active</text>
+  <rect x="590.0" y="778" width="150" height="44" rx="22" class="box"/>
+  <text x="665.0" y="805.0" class="nl" text-anchor="middle">superseded</text>
+  <rect x="130.0" y="778" width="150" height="44" rx="22" class="box"/>
+  <text x="205.0" y="805.0" class="nl" text-anchor="middle">invalid</text>
+  <path d="M280,620 L368,620" class="ln" marker-end="url(#arr)"/>
+  <text x="324" y="600" class="el">passes checks</text>
+  <path d="M520,620 L588,620" class="ln" marker-end="url(#arr)"/>
+  <text x="554" y="600" class="el">published</text>
+  <path d="M665,642 L665,776" class="ln" marker-end="url(#arr)"/>
+  <text x="665" y="710" class="el">newer plan</text>
+  <path d="M205,642 L205,776" class="ln" marker-end="url(#arr)"/>
+  <text x="205" y="710" class="el">fails checks</text>
+  <circle cx="860" cy="610" r="7" class="dot"/>
+  <path d="M867,610 L880,610" class="ln" marker-end="url(#arr)"/>
+  <rect x="885.0" y="588" width="160" height="44" rx="22" class="box"/>
+  <text x="965.0" y="615.0" class="nl" text-anchor="middle">not started</text>
+  <rect x="1110.0" y="588" width="150" height="44" rx="22" class="box"/>
+  <text x="1185.0" y="615.0" class="nl" text-anchor="middle">pending</text>
+  <rect x="1365.0" y="588" width="150" height="44" rx="22" class="key"/>
+  <text x="1440.0" y="615.0" class="nl k" text-anchor="middle">verified</text>
+  <rect x="1110.0" y="778" width="150" height="44" rx="22" class="box"/>
+  <text x="1185.0" y="805.0" class="nl" text-anchor="middle">rejected</text>
+  <rect x="1365.0" y="708" width="150" height="44" rx="22" class="box"/>
+  <text x="1440.0" y="735.0" class="nl" text-anchor="middle">expired</text>
+  <rect x="1365.0" y="808" width="150" height="44" rx="22" class="box"/>
+  <text x="1440.0" y="835.0" class="nl" text-anchor="middle">revoked</text>
+  <path d="M1045,610 L1108,610" class="ln" marker-end="url(#arr)"/>
+  <text x="1076" y="590" class="el">start ID.me</text>
+  <path d="M1262,610 L1363,610" class="ln" marker-end="url(#arr)"/>
+  <text x="1312" y="590" class="el">approved</text>
+  <path d="M1185,632 L1185,776" class="ln" marker-end="url(#arr)"/>
+  <text x="1185" y="690" class="el">denied</text>
+  <path d="M1440,632 L1440,706" class="ln" marker-end="url(#arr)"/>
+  <text x="1440" y="668" class="el">lapses</text>
+  <path d="M1515,610 L1533,610 Q1545,610 1545,622 L1545,818 Q1545,830 1533,830 L1517,830" class="ln" marker-end="url(#arr)"/>
+  <text x="1545" y="720" class="el">removed</text>
+  <path d="M1110,790 L1092,790 Q1080,790 1080,778 L1080,637 Q1080,625 1092,625 L1108,625" class="ln" marker-end="url(#arr)"/>
+  <text x="1080" y="700" class="el">try again</text>
+  <path d="M1363,736 L1332,736 Q1320,736 1320,724 L1320,637 Q1320,625 1308,625 L1262,625" class="ln" marker-end="url(#arr)"/>
+  <text x="1320" y="690" class="el">try again</text>
+</svg>
+</section>
+<section id="erd">
+<svg viewBox="0 0 1600 900" role="img" aria-label="Database">
+  <text x="40" y="56" class="h1">Database</text>
+  <rect x="40" y="100" width="760" height="380" rx="12" class="grp"/>
+  <text x="56" y="124" class="tag">IDENTITY AND ACCESS</text>
+  <rect x="840" y="100" width="720" height="380" rx="12" class="grp"/>
+  <text x="856" y="124" class="tag">LAKES AND ZONES</text>
+  <rect x="40" y="510" width="760" height="380" rx="12" class="grp"/>
+  <text x="56" y="534" class="tag">FLEET AND COMMANDS</text>
+  <rect x="840" y="510" width="720" height="380" rx="12" class="grp"/>
+  <text x="856" y="534" class="tag">ALERTS</text>
+  <rect x="60" y="140" width="220" height="82" rx="6" class="box"/>
+  <text x="72" y="162" class="nl k">profiles</text>
+  <line x1="60" y1="172" x2="280" y2="172" class="rule"/>
+  <text x="72" y="192" class="kk">PK</text><text x="100" y="192" class="col-t">user_id</text>
+  <text x="270" y="192" class="kk" text-anchor="end">→ auth.users</text>
+  <text x="72" y="212" class="kk"></text><text x="100" y="212" class="col-t">account_class</text>
+  <rect x="60" y="290" width="220" height="122" rx="6" class="box"/>
+  <text x="72" y="312" class="nl k">officer_verifications</text>
+  <line x1="60" y1="322" x2="280" y2="322" class="rule"/>
+  <text x="72" y="342" class="kk">PK</text><text x="100" y="342" class="col-t">verification_id</text>
+  <text x="72" y="362" class="kk">FK</text><text x="100" y="362" class="col-t">user_id</text>
+  <text x="72" y="382" class="kk"></text><text x="100" y="382" class="col-t">provider</text>
+  <text x="72" y="402" class="kk"></text><text x="100" y="402" class="col-t">status</text>
+  <rect x="300" y="140" width="220" height="122" rx="6" class="box"/>
+  <text x="312" y="162" class="nl k">station_memberships</text>
+  <line x1="300" y1="172" x2="520" y2="172" class="rule"/>
+  <text x="312" y="192" class="kk">PK</text><text x="340" y="192" class="col-t">membership_id</text>
+  <text x="312" y="212" class="kk">FK</text><text x="340" y="212" class="col-t">user_id</text>
+  <text x="312" y="232" class="kk">FK</text><text x="340" y="232" class="col-t">station_id</text>
+  <text x="312" y="252" class="kk"></text><text x="340" y="252" class="col-t">status</text>
+  <rect x="300" y="290" width="220" height="122" rx="6" class="box"/>
+  <text x="312" y="312" class="nl k">audit_events</text>
+  <line x1="300" y1="322" x2="520" y2="322" class="rule"/>
+  <text x="312" y="342" class="kk">PK</text><text x="340" y="342" class="col-t">audit_event_id</text>
+  <text x="312" y="362" class="kk">FK</text><text x="340" y="362" class="col-t">actor_user_id</text>
+  <text x="312" y="382" class="kk">FK</text><text x="340" y="382" class="col-t">station_id</text>
+  <text x="312" y="402" class="kk"></text><text x="340" y="402" class="col-t">decision</text>
+  <rect x="560" y="140" width="220" height="102" rx="6" class="box"/>
+  <text x="572" y="162" class="nl k">stations</text>
+  <line x1="560" y1="172" x2="780" y2="172" class="rule"/>
+  <text x="572" y="192" class="kk">PK</text><text x="600" y="192" class="col-t">station_id</text>
+  <text x="572" y="212" class="kk"></text><text x="600" y="212" class="col-t">name</text>
+  <text x="572" y="232" class="kk"></text><text x="600" y="232" class="col-t">status</text>
+  <rect x="860" y="140" width="220" height="82" rx="6" class="box"/>
+  <text x="872" y="162" class="nl k">lakes</text>
+  <line x1="860" y1="172" x2="1080" y2="172" class="rule"/>
+  <text x="872" y="192" class="kk">PK</text><text x="900" y="192" class="col-t">lake_id</text>
+  <text x="872" y="212" class="kk"></text><text x="900" y="212" class="col-t">name</text>
+  <rect x="860" y="290" width="220" height="102" rx="6" class="box"/>
+  <text x="872" y="312" class="nl k">risk_snapshots</text>
+  <line x1="860" y1="322" x2="1080" y2="322" class="rule"/>
+  <text x="872" y="342" class="kk">PK</text><text x="900" y="342" class="col-t">snapshot_id</text>
+  <text x="872" y="362" class="kk">FK</text><text x="900" y="362" class="col-t">lake_id</text>
+  <text x="872" y="382" class="kk"></text><text x="900" y="382" class="col-t">status</text>
+  <rect x="1100" y="140" width="220" height="122" rx="6" class="box"/>
+  <text x="1112" y="162" class="nl k">zone_plans</text>
+  <line x1="1100" y1="172" x2="1320" y2="172" class="rule"/>
+  <text x="1112" y="192" class="kk">PK</text><text x="1140" y="192" class="col-t">zone_plan_id</text>
+  <text x="1112" y="212" class="kk">FK</text><text x="1140" y="212" class="col-t">lake_id</text>
+  <text x="1112" y="232" class="kk">FK</text><text x="1140" y="232" class="col-t">snapshot_id</text>
+  <text x="1112" y="252" class="kk"></text><text x="1140" y="252" class="col-t">status</text>
+  <rect x="1330" y="140" width="220" height="102" rx="6" class="box"/>
+  <text x="1342" y="162" class="nl k">zone_plan_cells</text>
+  <line x1="1330" y1="172" x2="1550" y2="172" class="rule"/>
+  <text x="1342" y="192" class="kk">PK</text><text x="1370" y="192" class="col-t">zone_plan_cell_id</text>
+  <text x="1342" y="212" class="kk">FK</text><text x="1370" y="212" class="col-t">zone_plan_id</text>
+  <text x="1342" y="232" class="kk"></text><text x="1370" y="232" class="col-t">kind</text>
+  <rect x="1330" y="300" width="220" height="102" rx="6" class="box"/>
+  <text x="1342" y="322" class="nl k">zone_assignments</text>
+  <line x1="1330" y1="332" x2="1550" y2="332" class="rule"/>
+  <text x="1342" y="352" class="kk">PK</text><text x="1370" y="352" class="col-t">zone_assignment_id</text>
+  <text x="1342" y="372" class="kk">FK</text><text x="1370" y="372" class="col-t">zone_plan_cell_id</text>
+  <text x="1342" y="392" class="kk">FK</text><text x="1370" y="392" class="col-t">inventory_id</text>
+  <text x="1540" y="392" class="kk" text-anchor="end">→ fleet</text>
+  <rect x="60" y="550" width="220" height="142" rx="6" class="box"/>
+  <text x="72" y="572" class="nl k">drone_inventory</text>
+  <line x1="60" y1="582" x2="280" y2="582" class="rule"/>
+  <text x="72" y="602" class="kk">PK</text><text x="100" y="602" class="col-t">inventory_id</text>
+  <text x="72" y="622" class="kk">FK</text><text x="100" y="622" class="col-t">station_id</text>
+  <text x="270" y="622" class="kk" text-anchor="end">→ stations</text>
+  <text x="72" y="642" class="kk">FK</text><text x="100" y="642" class="col-t">lake_id</text>
+  <text x="270" y="642" class="kk" text-anchor="end">→ lakes</text>
+  <text x="72" y="662" class="kk"></text><text x="100" y="662" class="col-t">source</text>
+  <text x="72" y="682" class="kk"></text><text x="100" y="682" class="col-t">lifecycle</text>
+  <rect x="60" y="750" width="220" height="122" rx="6" class="box"/>
+  <text x="72" y="772" class="nl k">drone_credentials</text>
+  <line x1="60" y1="782" x2="280" y2="782" class="rule"/>
+  <text x="72" y="802" class="kk">PK</text><text x="100" y="802" class="col-t">credential_id</text>
+  <text x="72" y="822" class="kk">FK</text><text x="100" y="822" class="col-t">drone_id</text>
+  <text x="72" y="842" class="kk"></text><text x="100" y="842" class="col-t">public key</text>
+  <text x="72" y="862" class="kk"></text><text x="100" y="862" class="col-t">credential_state</text>
+  <rect x="300" y="550" width="220" height="142" rx="6" class="box"/>
+  <text x="312" y="572" class="nl k">command_outbox</text>
+  <line x1="300" y1="582" x2="520" y2="582" class="rule"/>
+  <text x="312" y="602" class="kk">PK</text><text x="340" y="602" class="col-t">command_id</text>
+  <text x="312" y="622" class="kk">FK</text><text x="340" y="622" class="col-t">inventory_id</text>
+  <text x="312" y="642" class="kk">FK</text><text x="340" y="642" class="col-t">zone_assignment_id</text>
+  <text x="510" y="642" class="kk" text-anchor="end">→ zones</text>
+  <text x="312" y="662" class="kk"></text><text x="340" y="662" class="col-t">command_type</text>
+  <text x="312" y="682" class="kk"></text><text x="340" y="682" class="col-t">status</text>
+  <rect x="560" y="550" width="220" height="122" rx="6" class="box"/>
+  <text x="572" y="572" class="nl k">command_acks</text>
+  <line x1="560" y1="582" x2="780" y2="582" class="rule"/>
+  <text x="572" y="602" class="kk">PK</text><text x="600" y="602" class="col-t">acknowledgement_id</text>
+  <text x="572" y="622" class="kk">FK</text><text x="600" y="622" class="col-t">command_id</text>
+  <text x="572" y="642" class="kk"></text><text x="600" y="642" class="col-t">sequence</text>
+  <text x="572" y="662" class="kk"></text><text x="600" y="662" class="col-t">status</text>
+  <rect x="300" y="750" width="220" height="102" rx="6" class="box"/>
+  <text x="312" y="772" class="nl k">drone_telemetry</text>
+  <line x1="300" y1="782" x2="520" y2="782" class="rule"/>
+  <text x="312" y="802" class="kk">PK</text><text x="340" y="802" class="col-t">telemetry_id</text>
+  <text x="312" y="822" class="kk">FK</text><text x="340" y="822" class="col-t">drone_id</text>
+  <text x="312" y="842" class="kk"></text><text x="340" y="842" class="col-t">position, battery</text>
+  <rect x="860" y="550" width="220" height="142" rx="6" class="box"/>
+  <text x="872" y="572" class="nl k">operational_alerts</text>
+  <line x1="860" y1="582" x2="1080" y2="582" class="rule"/>
+  <text x="872" y="602" class="kk">PK</text><text x="900" y="602" class="col-t">alert_id</text>
+  <text x="872" y="622" class="kk">FK</text><text x="900" y="622" class="col-t">station_id</text>
+  <text x="1070" y="622" class="kk" text-anchor="end">→ stations</text>
+  <text x="872" y="642" class="kk">FK</text><text x="900" y="642" class="col-t">lake_id</text>
+  <text x="1070" y="642" class="kk" text-anchor="end">→ lakes</text>
+  <text x="872" y="662" class="kk"></text><text x="900" y="662" class="col-t">status</text>
+  <text x="872" y="682" class="kk"></text><text x="900" y="682" class="col-t">source</text>
+  <rect x="1120" y="550" width="220" height="102" rx="6" class="box"/>
+  <text x="1132" y="572" class="nl k">public_alerts</text>
+  <line x1="1120" y1="582" x2="1340" y2="582" class="rule"/>
+  <text x="1132" y="602" class="kk">PK</text><text x="1160" y="602" class="col-t">public_alert_id</text>
+  <text x="1132" y="622" class="kk">FK</text><text x="1160" y="622" class="col-t">operational_alert_id</text>
+  <text x="1132" y="642" class="kk">FK</text><text x="1160" y="642" class="col-t">lake_id</text>
+  <text x="1330" y="642" class="kk" text-anchor="end">→ lakes</text>
+  <path d="M280,188 L285,188 Q290,188 290,198 L290,198 Q290,208 295,208 L300,208" class="ln" marker-end="url(#many)" marker-start="url(#one)"/>
+  <path d="M560,188 L550,188 Q540,188 540,200 L540,216 Q540,228 530,228 L520,228" class="ln" marker-end="url(#many)" marker-start="url(#one)"/>
+  <path d="M100,222 L100,290" class="ln" marker-end="url(#many)" marker-start="url(#one)"/>
+  <path d="M280,188 L285,188 Q290,188 290,200 L290,346 Q290,358 295,358 L300,358" class="ln" marker-end="url(#many)" marker-start="url(#one)"/>
+  <path d="M560,188 L550,188 Q540,188 540,200 L540,366 Q540,378 530,378 L520,378" class="ln" marker-end="url(#many)" marker-start="url(#one)"/>
+  <path d="M1080,188 L1085,188 Q1090,188 1090,198 L1090,198 Q1090,208 1095,208 L1100,208" class="ln" marker-end="url(#many)" marker-start="url(#one)"/>
+  <path d="M900,222 L900,290" class="ln" marker-end="url(#many)" marker-start="url(#one)"/>
+  <path d="M1080,338 L1087,338 Q1094,338 1094,326 L1094,240 Q1094,228 1097,228 L1100,228" class="ln" marker-end="url(#many)" marker-start="url(#one)"/>
+  <path d="M1320,188 L1322.5,188 Q1325,188 1325,198 L1325,198 Q1325,208 1327.5,208 L1330,208" class="ln" marker-end="url(#many)" marker-start="url(#one)"/>
+  <path d="M1440,242 L1440,300" class="ln" marker-end="url(#many)" marker-start="url(#one)"/>
+  <path d="M100,692 L100,750" class="ln" marker-end="url(#many)" marker-start="url(#one)"/>
+  <path d="M280,598 L300,618" class="ln" marker-end="url(#many)" marker-start="url(#one)"/>
+  <path d="M520,598 L560,618" class="ln" marker-end="url(#many)" marker-start="url(#one)"/>
+  <path d="M280,598 L285,598 Q290,598 290,610 L290,806 Q290,818 295,818 L300,818" class="ln" marker-end="url(#many)" marker-start="url(#one)"/>
+  <path d="M1080,598 L1120,618" class="ln" marker-end="url(#many)" marker-start="url(#one)"/>
+</svg>
+</section>
+<section id="usecases">
+<svg viewBox="0 0 1600 900" role="img" aria-label="Use Cases">
+  <text x="40" y="56" class="h1">Use Cases</text>
+  <rect x="360" y="100" width="880" height="790" rx="12" class="grp"/>
+  <text x="376" y="124" class="tag">LAKESAFE</text>
+  <use href="#i-person" x="148" y="248" width="44" height="44" class="ic"/>
+  <text x="170" y="312" class="nl" text-anchor="middle">Responder</text>
+  <use href="#i-person" x="148" y="568" width="44" height="44" class="ic"/>
+  <text x="170" y="632" class="nl" text-anchor="middle">Station Admin</text>
+  <use href="#i-person" x="148" y="778" width="44" height="44" class="ic"/>
+  <text x="170" y="842" class="nl" text-anchor="middle">Public</text>
+  <use href="#i-person" x="1408" y="178" width="44" height="44" class="ic"/>
+  <text x="1430" y="242" class="nl" text-anchor="middle">Pilot</text>
+  <use href="#i-quad" x="1408" y="428" width="44" height="44" class="ic"/>
+  <text x="1430" y="492" class="nl" text-anchor="middle">Drone</text>
+  <use href="#i-person" x="1408" y="718" width="44" height="44" class="ic"/>
+  <text x="1430" y="782" class="nl" text-anchor="middle">Reviewer</text>
+  <ellipse cx="570" cy="160" rx="115" ry="28" class="box"/>
+  <text x="570" y="165" class="nl" text-anchor="middle">Watch the live lake map</text>
+  <path d="M200,270 L455,160" class="ln" marker-end="none"/>
+  <ellipse cx="570" cy="240" rx="115" ry="28" class="key"/>
+  <text x="570" y="245" class="nl k" text-anchor="middle">Get a swimmer alert</text>
+  <path d="M200,270 L455,240" class="ln" marker-end="none"/>
+  <ellipse cx="570" cy="320" rx="115" ry="28" class="box"/>
+  <text x="570" y="325" class="nl" text-anchor="middle">Send drones home or hold</text>
+  <path d="M200,270 L455,320" class="ln" marker-end="none"/>
+  <ellipse cx="570" cy="400" rx="115" ry="28" class="box"/>
+  <text x="570" y="405" class="nl" text-anchor="middle">Review alerts and reports</text>
+  <path d="M200,270 L455,400" class="ln" marker-end="none"/>
+  <ellipse cx="570" cy="520" rx="115" ry="28" class="box"/>
+  <text x="570" y="525" class="nl" text-anchor="middle">Invite station members</text>
+  <path d="M200,590 L455,520" class="ln" marker-end="none"/>
+  <ellipse cx="570" cy="600" rx="115" ry="28" class="box"/>
+  <text x="570" y="605" class="nl" text-anchor="middle">Register a drone</text>
+  <path d="M200,590 L455,600" class="ln" marker-end="none"/>
+  <ellipse cx="570" cy="680" rx="115" ry="28" class="box"/>
+  <text x="570" y="685" class="nl" text-anchor="middle">Add a lake</text>
+  <path d="M200,590 L455,680" class="ln" marker-end="none"/>
+  <ellipse cx="570" cy="800" rx="115" ry="28" class="box"/>
+  <text x="570" y="805" class="nl" text-anchor="middle">Check lake status</text>
+  <path d="M200,800 L455,800" class="ln" marker-end="none"/>
+  <ellipse cx="1030" cy="160" rx="115" ry="28" class="box"/>
+  <text x="1030" y="165" class="nl" text-anchor="middle">Upload a patrol mission</text>
+  <path d="M1400,200 L1145,160" class="ln" marker-end="none"/>
+  <ellipse cx="1030" cy="240" rx="115" ry="28" class="box"/>
+  <text x="1030" y="245" class="nl" text-anchor="middle">Take over with RC</text>
+  <path d="M1400,200 L1145,240" class="ln" marker-end="none"/>
+  <ellipse cx="1030" cy="370" rx="115" ry="28" class="key"/>
+  <text x="1030" y="375" class="nl k" text-anchor="middle">Report a swimmer</text>
+  <path d="M1400,450 L1145,370" class="ln" marker-end="none"/>
+  <ellipse cx="1030" cy="450" rx="115" ry="28" class="box"/>
+  <text x="1030" y="455" class="nl" text-anchor="middle">Send a heartbeat</text>
+  <path d="M1400,450 L1145,450" class="ln" marker-end="none"/>
+  <ellipse cx="1030" cy="530" rx="115" ry="28" class="box"/>
+  <text x="1030" y="535" class="nl" text-anchor="middle">Carry out commands</text>
+  <path d="M1400,450 L1145,530" class="ln" marker-end="none"/>
+  <ellipse cx="1030" cy="700" rx="115" ry="28" class="box"/>
+  <text x="1030" y="705" class="nl" text-anchor="middle">Verify an officer</text>
+  <path d="M1400,740 L1145,700" class="ln" marker-end="none"/>
+  <ellipse cx="1030" cy="780" rx="115" ry="28" class="box"/>
+  <text x="1030" y="785" class="nl" text-anchor="middle">Approve a new station</text>
+  <path d="M1400,740 L1145,780" class="ln" marker-end="none"/>
+  <ellipse cx="800" cy="460" rx="95" ry="28" class="box"/>
+  <text x="800" y="465" class="nl" text-anchor="middle">Sign in with 2FA</text>
+  <path d="M685,320 L760,436" class="ln dash" marker-end="url(#arr)"/>
+  <text x="735" y="380" class="el">requires</text>
+  <path d="M685,600 L760,484" class="ln dash" marker-end="url(#arr)"/>
+  <text x="735" y="540" class="el">requires</text>
+  <path d="M915,370 L685,240" class="ln-acc dash" marker-end="url(#arr-acc)"/>
+  <text x="800" y="305" class="el acc">triggers</text>
+</svg>
+</section>
+
+<!-- Overview A: the lake -->
+<section id="map">
+<svg viewBox="0 0 1280 720" role="img" aria-label="Overview A: LakeSafe on Lake Sammamish">
+  <text x="40" y="60" class="h1">Overview A</text>
+  <g transform="translate(110,110) scale(0.95)">
+    <path d="M20.4,15.9 L30.7,19.3 L51.7,2.3 L54.0,3.1 L56.9,0.6 L67.1,3.5 L67.3,1.3 L69.1,4.8 L69.7,0.0 L73.5,1.1 L77.5,4.9 L82.8,14.8 L90.3,36.4 L119.2,78.5 L118.1,81.6 L113.4,78.4 L113.9,82.7 L137.3,100.1 L153.2,118.5 L163.4,137.6 L165.6,152.7 L165.5,172.4 L162.3,179.4 L161.8,189.6 L169.9,203.1 L175.5,223.8 L175.7,233.2 L171.7,239.5 L173.3,253.2 L149.4,285.1 L148.7,288.0 L7.0,288.0 L10.5,282.6 L14.0,268.4 L17.0,263.6 L28.7,256.7 L43.2,243.3 L58.9,224.5 L74.5,215.6 L82.5,207.9 L97.7,180.4 L97.8,173.0 L100.8,161.7 L100.7,150.1 L98.7,140.5 L92.9,126.4 L79.9,118.1 L78.3,111.5 L75.1,107.3 L42.5,83.5 L41.0,78.3 L41.9,72.8 L28.8,60.3 L23.8,44.4 L20.7,42.1 L22.4,38.0 L21.3,34.5 L19.6,34.4 L21.1,30.8 L17.9,21.0 L14.8,17.3 L20.4,15.9Z" fill="var(--water)"/>
+    <path d="M148.5,289.2 L135.5,303.9 L132.6,311.1 L124.3,316.3 L121.4,326.8 L125.5,334.3 L120.5,342.5 L119.8,349.5 L114.2,356.2 L107.8,359.9 L102.2,376.7 L99.0,381.5 L94.5,383.3 L94.8,386.7 L102.6,399.9 L101.7,408.5 L109.1,415.5 L111.3,428.4 L115.4,436.5 L123.8,444.0 L133.8,446.2 L140.9,452.0 L150.8,477.2 L158.4,486.4 L165.7,489.7 L174.9,501.7 L176.3,509.9 L178.7,512.8 L182.8,517.1 L189.7,519.7 L202.5,520.3 L216.0,524.1 L226.3,532.4 L227.0,541.1 L229.5,541.1 L227.3,550.9 L222.9,558.3 L219.0,560.5 L207.3,551.4 L194.6,555.2 L192.4,559.2 L188.4,558.8 L193.3,562.6 L194.0,564.6 L193.3,565.5 L192.4,562.9 L186.4,560.5 L190.8,564.8 L189.2,574.1 L181.8,584.9 L173.2,587.8 L165.5,585.6 L163.3,591.9 L160.3,594.3 L156.9,595.5 L154.2,592.0 L151.6,592.6 L149.9,597.2 L151.4,600.0 L140.8,598.5 L136.7,588.6 L130.3,580.6 L130.7,569.3 L126.7,551.2 L117.2,523.8 L110.9,516.6 L104.2,511.6 L89.2,513.7 L78.8,503.1 L75.1,503.8 L76.4,505.5 L74.2,508.1 L69.1,509.3 L61.0,502.6 L38.7,498.8 L20.9,492.9 L7.9,481.1 L1.5,472.0 L0.5,466.9 L2.3,460.5 L0.0,457.6 L0.1,451.4 L4.3,442.3 L7.7,423.8 L5.2,380.6 L7.0,377.7 L6.3,374.0 L9.2,352.8 L11.4,343.8 L14.5,340.5 L12.6,333.5 L6.4,325.0 L0.6,305.3 L0.1,298.6 L7.0,288.0 L148.7,288.0 L148.5,289.2Z" fill="var(--water-2)"/>
+    <path d="M14.8,17.3 L20.4,15.9 L30.7,19.3 L51.7,2.3 L54.0,3.1 L56.9,0.6 L67.1,3.5 L67.3,1.3 L69.1,4.8 L69.7,0.0 L73.5,1.1 L77.5,4.9 L82.8,14.8 L90.3,36.4 L119.2,78.5 L118.1,81.6 L113.4,78.4 L113.9,82.7 L137.3,100.1 L153.2,118.5 L163.4,137.6 L165.6,152.7 L165.5,172.4 L162.3,179.4 L161.8,189.6 L169.9,203.1 L175.5,223.8 L175.7,233.2 L171.7,239.5 L173.3,253.2 L149.4,285.1 L148.5,289.2 L135.5,303.9 L132.6,311.1 L124.3,316.3 L121.4,326.8 L125.5,334.3 L120.5,342.5 L119.8,349.5 L114.2,356.2 L107.8,359.9 L102.2,376.7 L99.0,381.5 L94.5,383.3 L94.8,386.7 L102.6,399.9 L101.7,408.5 L109.1,415.5 L111.3,428.4 L115.4,436.5 L123.8,444.0 L133.8,446.2 L140.9,452.0 L150.8,477.2 L158.4,486.4 L165.7,489.7 L174.9,501.7 L176.3,509.9 L178.7,512.8 L182.8,517.1 L189.7,519.7 L202.5,520.3 L216.0,524.1 L226.3,532.4 L227.0,541.1 L229.5,541.1 L227.3,550.9 L222.9,558.3 L219.0,560.5 L207.3,551.4 L194.6,555.2 L192.4,559.2 L188.4,558.8 L193.3,562.6 L194.0,564.6 L193.3,565.5 L192.4,562.9 L186.4,560.5 L190.8,564.8 L189.2,574.1 L181.8,584.9 L173.2,587.8 L165.5,585.6 L163.3,591.9 L160.3,594.3 L156.9,595.5 L154.2,592.0 L151.6,592.6 L149.9,597.2 L151.4,600.0 L140.8,598.5 L136.7,588.6 L130.3,580.6 L130.7,569.3 L126.7,551.2 L117.2,523.8 L110.9,516.6 L104.2,511.6 L89.2,513.7 L78.8,503.1 L75.1,503.8 L76.4,505.5 L74.2,508.1 L69.1,509.3 L61.0,502.6 L38.7,498.8 L20.9,492.9 L7.9,481.1 L1.5,472.0 L0.5,466.9 L2.3,460.5 L0.0,457.6 L0.1,451.4 L4.3,442.3 L7.7,423.8 L5.2,380.6 L7.0,377.7 L6.3,374.0 L9.2,352.8 L11.4,343.8 L14.5,340.5 L12.6,333.5 L6.4,325.0 L0.6,305.3 L0.1,298.6 L10.5,282.6 L14.0,268.4 L17.0,263.6 L28.7,256.7 L43.2,243.3 L58.9,224.5 L74.5,215.6 L82.5,207.9 L97.7,180.4 L97.8,173.0 L100.8,161.7 L100.7,150.1 L98.7,140.5 L92.9,126.4 L79.9,118.1 L78.3,111.5 L75.1,107.3 L42.5,83.5 L41.0,78.3 L41.9,72.8 L28.8,60.3 L23.8,44.4 L20.7,42.1 L22.4,38.0 L21.3,34.5 L19.6,34.4 L21.1,30.8 L17.9,21.0 L14.8,17.3Z" fill="none" stroke="#111827" stroke-width="1.6"/>
+    <path d="M159.6,202.3 L158.4,203.6 L157.1,204.8 L155.7,206.0 L154.4,207.1 L153.0,208.1 L151.6,209.1 L150.2,210.0 L148.8,210.9 L147.3,211.7 L145.8,212.4 L144.3,213.0 L142.8,213.5 L141.3,214.0 L139.8,214.4 L138.3,214.8 L136.8,215.0 L135.2,215.2 L133.7,215.3 L132.1,215.4 L130.6,215.3 L129.0,215.2 L127.5,215.0 L126.0,214.8 L124.4,214.4 L122.9,214.0 L121.4,213.5 L119.9,213.0 L118.4,212.4 L116.9,211.7 L115.5,210.9 L114.1,210.0 L112.6,209.1 L111.2,208.1 L109.9,207.1 L108.5,206.0 L107.2,204.8 L105.9,203.6 L104.6,202.3 L103.4,200.9 L102.2,199.5 L101.0,198.0 L99.8,196.5 L98.8,194.9 L103.1,187.0 L103.5,186.2 L103.9,185.4 L104.2,184.5 L104.4,183.6 L104.6,182.7 L104.7,181.7 L104.7,180.8 L104.9,175.1 L107.4,165.5 L107.6,164.6 L107.8,163.6 L107.9,162.6 L107.9,161.6 L107.8,150.1 L107.8,149.0 L107.7,148.0 L107.5,147.0 L105.4,137.4 L105.1,136.2 L104.7,135.1 L98.9,121.0 L98.5,120.1 L98.1,119.2 L97.5,118.5 L97.0,117.8 L96.4,117.3 L95.7,116.8 L90.2,113.2 L90.5,112.3 L91.2,110.3 L92.0,108.4 L92.9,106.4 L93.7,104.5 L94.7,102.7 L95.6,100.9 L96.6,99.2 L97.7,97.5 L98.7,95.8 L99.8,94.2 L101.0,92.7 L102.2,91.2 L103.4,89.8 L104.6,88.4 L105.9,87.1 L107.2,85.9 L107.4,86.8 L107.7,87.7 L108.1,88.6 L108.5,89.5 L109.0,90.3 L109.5,91.0 L110.1,91.6 L110.8,92.1 L133.5,109.0 L148.2,126.0 L156.8,142.2 L158.5,153.8 L158.5,169.1 L156.4,173.5 L156.1,174.3 L155.8,175.1 L155.6,176.0 L155.4,176.9 L155.3,177.8 L155.2,178.8 L154.8,189.0 L154.7,190.0 L154.8,191.0 L154.9,192.1 L155.1,193.0 L155.4,194.0 L155.7,194.9 L156.1,195.8 L156.5,196.6 L159.8,202.1 L159.6,202.3Z" fill="none" stroke="#6b7280" stroke-width="1.1" stroke-dasharray="5 4"/>
+    <path d="M126.4,461.7 L125.9,464.8 L125.4,467.8 L124.8,470.8 L124.2,473.8 L123.5,476.7 L122.7,479.6 L121.9,482.5 L121.0,485.3 L120.0,488.1 L119.0,490.8 L117.9,493.5 L116.8,496.1 L115.6,498.7 L114.3,501.2 L113.6,502.6 L108.5,498.8 L107.7,498.3 L106.8,497.8 L106.0,497.5 L105.1,497.3 L104.2,497.3 L103.3,497.3 L91.7,498.9 L84.3,491.3 L83.4,490.5 L82.5,489.9 L81.6,489.4 L80.6,489.1 L79.6,488.9 L78.6,488.8 L77.7,488.9 L74.0,489.6 L73.0,489.8 L72.1,490.2 L71.2,490.7 L70.3,491.3 L69.5,492.1 L68.9,492.8 L65.7,490.1 L64.8,489.5 L64.0,489.0 L63.0,488.7 L62.1,488.4 L40.3,484.7 L24.6,479.4 L13.8,469.7 L11.2,466.0 L11.2,466.0 L11.5,464.7 L11.7,463.3 L11.9,462.0 L11.9,460.6 L11.9,459.2 L11.8,457.9 L11.6,456.5 L11.3,455.2 L10.9,454.0 L10.8,453.7 L12.3,450.3 L12.8,448.9 L13.3,447.5 L13.6,446.1 L17.0,427.6 L17.2,426.4 L17.3,425.1 L17.3,423.9 L17.3,422.6 L15.2,385.4 L15.3,385.1 L15.8,383.8 L16.1,382.4 L16.4,381.0 L16.6,379.6 L16.7,378.1 L16.7,377.7 L17.9,375.8 L19.4,373.6 L21.0,371.5 L22.6,369.5 L24.2,367.6 L25.9,365.7 L27.7,363.9 L29.4,362.2 L31.2,360.6 L33.1,359.1 L34.9,357.7 L36.8,356.4 L38.8,355.1 L40.7,354.0 L42.7,352.9 L44.7,352.0 L46.7,351.1 L48.8,350.4 L50.8,349.7 L52.9,349.1 L55.0,348.7 L57.1,348.3 L59.1,348.1 L61.2,347.9 L63.3,347.9 L65.5,347.9 L67.6,348.1 L69.6,348.3 L71.7,348.7 L73.8,349.1 L75.9,349.7 L77.9,350.4 L80.0,351.1 L82.0,352.0 L84.0,352.9 L86.0,354.0 L87.9,355.1 L89.9,356.4 L91.8,357.7 L93.6,359.1 L95.5,360.6 L96.5,361.6 L94.3,368.3 L94.0,368.7 L92.1,369.4 L91.2,369.9 L90.3,370.4 L89.5,371.1 L88.7,371.8 L88.0,372.7 L87.4,373.7 L86.8,374.7 L86.3,375.9 L85.8,377.1 L85.5,378.4 L85.2,379.7 L85.0,381.0 L84.9,382.4 L84.9,383.7 L85.0,385.1 L85.3,388.5 L85.5,389.9 L85.7,391.2 L86.1,392.5 L86.5,393.8 L87.0,394.9 L87.6,396.0 L92.4,404.3 L92.2,406.4 L92.1,407.7 L92.1,409.1 L92.2,410.5 L92.3,411.9 L92.6,413.2 L92.9,414.5 L93.4,415.7 L93.9,416.9 L94.5,417.9 L95.1,418.9 L95.8,419.8 L96.6,420.6 L100.7,424.5 L102.0,431.9 L102.3,433.3 L102.6,434.6 L103.1,435.9 L103.6,437.0 L107.8,445.1 L108.3,446.1 L109.0,447.1 L109.7,447.9 L110.4,448.7 L118.7,456.2 L119.6,456.9 L120.5,457.5 L121.4,457.9 L122.4,458.2 L126.7,459.1 L126.4,461.7Z" fill="none" stroke="#6b7280" stroke-width="1.1" stroke-dasharray="5 4"/>
+    <path d="M159.8,148 L112,176 L132,196 Z" fill="var(--accent)" opacity=".15"/>
+    <circle cx="122" cy="186" r="6" fill="var(--accent)"/>
+    <use href="#quad" x="146" y="134" width="28" height="28"/>
+    <use href="#quad" x="112.7" y="411" width="28" height="28"/>
+  </g>
+  <circle cx="172" cy="172" r="11" class="dot"/><text x="172" y="176" class="dot-t" text-anchor="middle">1</text>
+  <circle cx="300" cy="226" r="11" class="dot"/><text x="300" y="230" class="dot-t" text-anchor="middle">2</text>
+  <circle cx="190" cy="318" r="11" class="dot acc"/><text x="190" y="322" class="dot-t" text-anchor="middle">3</text>
+
+  <g transform="translate(560,140)">
+    <g>
+      <circle cx="0" cy="12" r="11" class="dot"/><text x="0" y="16" class="dot-t" text-anchor="middle">1</text>
+      <text x="24" y="18" class="tl">Public data becomes patrol zones</text>
+      <text x="24" y="42" class="b">King County beach and water-quality sites are grouped into hot spots,</text>
+      <text x="24" y="60" class="b">then the lake is split into one zone per drone.</text>
+    </g>
+    <g transform="translate(0,92)">
+      <circle cx="0" cy="12" r="11" class="dot"/><text x="0" y="16" class="dot-t" text-anchor="middle">2</text>
+      <text x="24" y="18" class="tl">Each drone flies its zone</text>
+      <text x="24" y="42" class="b">ArduPilot follows the waypoint loop. The pilot can take over</text>
+      <text x="24" y="60" class="b">with the RC transmitter at any time.</text>
+    </g>
+    <a href="#drone"><g transform="translate(0,184)">
+      <circle cx="0" cy="12" r="11" class="dot acc"/><text x="0" y="16" class="dot-t" text-anchor="middle">3</text>
+      <text x="24" y="18" class="tl">The thermal camera spots a swimmer</text>
+      <text x="24" y="42" class="b">The Raspberry Pi finds a warm spot that lasts three frames and sends</text>
+      <text x="24" y="60" class="b">a signed alert with the drone's GPS position. <tspan class="link">Drone flowchart →</tspan></text>
+    </g></a>
+    <g transform="translate(0,276)">
+      <circle cx="0" cy="12" r="11" class="dot"/><text x="0" y="16" class="dot-t" text-anchor="middle">4</text>
+      <text x="24" y="18" class="tl">The server checks the alert</text>
+      <text x="24" y="42" class="b">It verifies the drone's signature, saves the alert, and pushes it</text>
+      <text x="24" y="60" class="b">to the dashboard right away.</text>
+    </g>
+    <a href="#operator"><g transform="translate(0,368)">
+      <circle cx="0" cy="12" r="11" class="dot"/><text x="0" y="16" class="dot-t" text-anchor="middle">5</text>
+      <text x="24" y="18" class="tl">A responder decides what to do</text>
+      <text x="24" y="42" class="b">The dashboard plays a sound and pins the location. The responder</text>
+      <text x="24" y="60" class="b">keeps watching or sends the drones home. <tspan class="link">Operator flowchart →</tspan></text>
+    </g></a>
+    <g transform="translate(0,460)">
+      <circle cx="0" cy="12" r="11" class="dot"/><text x="0" y="16" class="dot-t" text-anchor="middle">6</text>
+      <text x="24" y="18" class="tl">The public sees a safe summary</text>
+      <text x="24" y="42" class="b">The public page shows delayed, general lake status with no exact</text>
+      <text x="24" y="60" class="b">positions or video.</text>
+    </g>
+  </g>
+</svg>
+</section>
+
+<!-- Overview B: three columns -->
+<section id="layers">
+<svg viewBox="0 0 1280 720" role="img" aria-label="Overview B: what runs on the drone, the server, and for people">
+  <text x="40" y="60" class="h1">Overview B</text>
+  <text x="60" y="124" class="col">On each drone</text>
+  <text x="500" y="124" class="col">LakeSafe server</text>
+  <text x="900" y="124" class="col">People</text>
+
+  <rect x="60" y="140" width="170" height="60" class="box"/>
+  <text x="74" y="165" class="t">InfiRay P2 Pro</text><text x="74" y="185" class="s">Thermal camera</text>
+  <rect x="250" y="140" width="170" height="60" class="box"/>
+  <text x="264" y="165" class="t">Pi camera</text><text x="264" y="185" class="s">Regular video</text>
+  <a href="#drone">
+    <rect x="60" y="250" width="360" height="110" class="key"/>
+    <text x="74" y="276" class="t k">Raspberry Pi <tspan class="link">↗</tspan></text>
+    <text x="74" y="300" class="s">Finds swimmers in the thermal video</text>
+    <text x="74" y="320" class="s">Reports position and runs commands</text>
+    <text x="74" y="340" class="s">Records both cameras</text>
+  </a>
+  <rect x="60" y="410" width="360" height="60" class="box"/>
+  <text x="74" y="435" class="t">Flight controller</text><text x="74" y="455" class="s">ArduPilot flies the patrol and returns home</text>
+  <rect x="60" y="520" width="360" height="60" class="box"/>
+  <text x="74" y="545" class="t">RC transmitter</text><text x="74" y="565" class="s">The pilot can take over at any time</text>
+
+  <rect x="500" y="140" width="320" height="60" class="box"/>
+  <text x="514" y="165" class="t">Database</text><text x="514" y="185" class="s">Each station sees only its own data</text>
+  <rect x="500" y="250" width="320" height="110" class="key"/>
+  <text x="514" y="276" class="t k">Device gateway</text>
+  <text x="514" y="300" class="s">Checks every drone message is signed</text>
+  <text x="514" y="320" class="s">Turns detections into alerts</text>
+  <text x="514" y="340" class="s">Holds commands until the drone confirms</text>
+  <rect x="500" y="410" width="320" height="60" class="box"/>
+  <text x="514" y="435" class="t">Risk-zone planner</text><text x="514" y="455" class="s">Splits the lake into one zone per drone</text>
+  <rect x="500" y="520" width="320" height="60" class="box"/>
+  <text x="514" y="545" class="t">Mission export</text><text x="514" y="565" class="s">Writes each zone as a waypoint file</text>
+
+  <rect x="900" y="140" width="320" height="60" class="box"/>
+  <text x="914" y="165" class="t">Public lake page</text><text x="914" y="185" class="s">Anyone, delayed general status</text>
+  <a href="#operator">
+    <rect x="900" y="250" width="320" height="110" class="key"/>
+    <text x="914" y="276" class="t k">Operator dashboard <tspan class="link">↗</tspan></text>
+    <text x="914" y="300" class="s">Verified staff with 2FA</text>
+    <text x="914" y="320" class="s">Live map, zones, and alert sound</text>
+    <text x="914" y="340" class="s">Send drones home or hold them</text>
+  </a>
+  <rect x="900" y="520" width="320" height="60" class="box"/>
+  <text x="914" y="545" class="t">Mission Planner</text><text x="914" y="565" class="s">Loads the waypoint file onto the drone</text>
+
+  <path d="M145,200 V248" class="ln"/>
+  <path d="M335,200 V248" class="ln"/>
+  <path d="M240,362 V408" class="ln" marker-start="url(#arr)"/>
+  <path d="M240,520 V472" class="ln"/>
+  <path d="M420,285 H498" class="ln-acc"/><text x="459" y="277" class="s acc" text-anchor="middle">alert</text>
+  <path d="M500,330 H422" class="ln"/><text x="461" y="350" class="s" text-anchor="middle">commands</text>
+  <path d="M660,248 V202" class="ln" marker-start="url(#arr)"/>
+  <path d="M660,470 V518" class="ln"/>
+  <path d="M820,170 H898" class="ln"/>
+  <path d="M820,285 H898" class="ln-acc"/><text x="859" y="277" class="s acc" text-anchor="middle">alert</text>
+  <path d="M900,330 H822" class="ln"/><text x="861" y="350" class="s" text-anchor="middle">send home</text>
+  <path d="M820,550 H898" class="ln"/>
+  <path d="M1060,580 V640 H460 V440 H422" class="ln"/><text x="760" y="632" class="s" text-anchor="middle">mission upload</text>
+</svg>
+</section>
+
+<!-- Overview C: one alert -->
+<section id="sequence">
+<svg viewBox="0 0 1280 720" role="img" aria-label="Overview C: one alert from the camera to the operator and back">
+  <text x="40" y="60" class="h1">Overview C</text>
+  <rect x="40" y="96" width="120" height="40" class="box"/><text x="100" y="121" class="t" text-anchor="middle">P2 Pro</text>
+  <a href="#drone"><rect x="190" y="96" width="130" height="40" class="key"/><text x="255" y="121" class="t k" text-anchor="middle">Detector <tspan class="link">↗</tspan></text></a>
+  <a href="#drone"><rect x="350" y="96" width="130" height="40" class="box"/><text x="415" y="121" class="t" text-anchor="middle">Bridge <tspan class="link">↗</tspan></text></a>
+  <rect x="510" y="96" width="130" height="40" class="box"/><text x="575" y="121" class="t" text-anchor="middle">Flight controller</text>
+  <rect x="680" y="96" width="140" height="40" class="key"/><text x="750" y="121" class="t k" text-anchor="middle">Server</text>
+  <rect x="850" y="96" width="110" height="40" class="box"/><text x="905" y="121" class="t" text-anchor="middle">Database</text>
+  <a href="#operator"><rect x="990" y="96" width="120" height="40" class="key"/><text x="1050" y="121" class="t k" text-anchor="middle">Dashboard <tspan class="link">↗</tspan></text></a>
+  <rect x="1140" y="96" width="100" height="40" class="box"/><text x="1190" y="121" class="t" text-anchor="middle">Responder</text>
+  <g>
+    <line x1="100" y1="136" x2="100" y2="690" class="life"/>
+    <line x1="255" y1="136" x2="255" y2="690" class="life"/>
+    <line x1="415" y1="136" x2="415" y2="690" class="life"/>
+    <line x1="575" y1="136" x2="575" y2="690" class="life"/>
+    <line x1="750" y1="136" x2="750" y2="690" class="life"/>
+    <line x1="905" y1="136" x2="905" y2="690" class="life"/>
+    <line x1="1050" y1="136" x2="1050" y2="690" class="life"/>
+    <line x1="1190" y1="136" x2="1190" y2="690" class="life"/>
+  </g>
+  <g>
+    <path d="M100,170 H253" class="ln"/><text x="110" y="162" class="s">1 thermal frame</text>
+    <path d="M255,194 h28 v18 h-26" class="ln"/><text x="290" y="206" class="s">2 find warm spots</text>
+    <path d="M255,230 h28 v18 h-26" class="ln"/><text x="290" y="242" class="s">3 same spot for 3 frames</text>
+    <path d="M415,280 H257" class="ln"/><text x="265" y="272" class="s">4 GPS position</text>
+    <path d="M255,314 H748" class="ln-acc"/><text x="430" y="306" class="s acc">5 signed alert with GPS</text>
+    <path d="M750,338 h28 v18 h-26" class="ln"/><text x="785" y="350" class="s">6 verify signature</text>
+    <path d="M750,384 H903" class="ln"/><text x="760" y="376" class="s">7 save alert</text>
+    <path d="M750,418 H1048" class="ln-acc"/><text x="915" y="410" class="s acc">8 push live alert</text>
+    <path d="M1050,450 H1188" class="ln-acc"/><text x="1060" y="442" class="s acc">9 sound and map pin</text>
+    <path d="M1190,498 H1052" class="ln"/><text x="1060" y="490" class="s">10 send drones home</text>
+    <path d="M1050,530 H752" class="ln"/><text x="790" y="522" class="s">11 queue return command</text>
+    <path d="M415,566 H748" class="ln"/><text x="430" y="558" class="s">12 heartbeat, every second</text>
+    <path d="M750,598 H417" class="ln"/><text x="430" y="590" class="s">13 reply includes the command</text>
+    <path d="M415,630 H573" class="ln"/><text x="425" y="622" class="s">14 return home</text>
+    <path d="M415,666 H748" class="ln"/><text x="430" y="658" class="s">15 confirm</text>
+  </g>
+</svg>
+</section>
+
+<!-- Drone flowchart -->
+<section id="drone">
+<svg viewBox="0 0 1280 720" role="img" aria-label="Drone flowchart">
+  <text x="40" y="60" class="h1">Drone Flowchart</text>
+  <a href="#map"><text x="1240" y="56" class="t link" text-anchor="end">← Overview</text></a>
+
+  <text x="300" y="112" class="col" text-anchor="middle">Detector</text>
+  <rect x="190" y="126" width="220" height="36" rx="18" class="box"/><text x="300" y="149" class="t" text-anchor="middle">Open thermal camera</text>
+  <path d="M300,162 V178" class="ln"/>
+  <rect x="190" y="180" width="220" height="36" class="box"/><text x="300" y="203" class="t" text-anchor="middle">Read a frame</text>
+  <path d="M300,216 V232" class="ln"/>
+  <rect x="190" y="234" width="220" height="36" class="box"/><text x="300" y="257" class="t" text-anchor="middle">Convert to temperatures</text>
+  <path d="M300,270 V286" class="ln"/>
+  <rect x="190" y="288" width="220" height="36" class="box"/><text x="300" y="311" class="t" text-anchor="middle">Find warm spots</text>
+  <path d="M300,324 V340" class="ln"/>
+  <polygon points="300,342 395,374 300,406 205,374" class="box"/><text x="300" y="370" class="t" text-anchor="middle">Same spot for</text><text x="300" y="386" class="t" text-anchor="middle">3 frames?</text>
+  <path d="M300,406 V424" class="ln"/><text x="308" y="419" class="s">yes</text>
+  <polygon points="300,426 395,458 300,490 205,458" class="box"/><text x="300" y="454" class="t" text-anchor="middle">30 s since</text><text x="300" y="470" class="t" text-anchor="middle">last alert?</text>
+  <path d="M300,490 V508" class="ln"/><text x="308" y="503" class="s">yes</text>
+  <polygon points="300,510 395,542 300,574 205,542" class="box"/><text x="300" y="538" class="t" text-anchor="middle">Fresh GPS</text><text x="300" y="554" class="t" text-anchor="middle">position?</text>
+  <path d="M300,574 V594" class="ln-acc"/><text x="308" y="588" class="s">yes</text>
+  <rect x="190" y="596" width="220" height="40" class="key"/><text x="300" y="621" class="t k" text-anchor="middle">Send signed alert</text>
+  <path d="M410,616 H470" class="ln-acc"/>
+  <a href="#operator"><rect x="472" y="596" width="180" height="40" class="box"/><text x="562" y="621" class="t" text-anchor="middle">Operator dashboard <tspan class="link">↗</tspan></text></a>
+  <path d="M205,374 H140" class="rail"/><text x="150" y="366" class="s">no</text>
+  <path d="M205,458 H140" class="rail"/><text x="150" y="450" class="s">no</text>
+  <path d="M205,542 H140" class="rail"/><text x="150" y="534" class="s">no</text>
+  <path d="M190,616 H140 V198 H188" class="ln"/>
+  <path d="M410,198 H450 V232" class="ln"/>
+  <rect x="440" y="234" width="170" height="36" class="box"/><text x="525" y="257" class="t" text-anchor="middle">Save video</text>
+
+  <path d="M808,252 H700 V542 H397" class="ln"/><text x="708" y="400" class="s">GPS position</text>
+
+  <text x="930" y="112" class="col" text-anchor="middle">Bridge</text>
+  <rect x="810" y="126" width="240" height="36" rx="18" class="box"/><text x="930" y="149" class="t" text-anchor="middle">Connect to flight controller</text>
+  <path d="M930,162 V178" class="ln"/>
+  <rect x="810" y="180" width="240" height="36" class="box"/><text x="930" y="203" class="t" text-anchor="middle">Read GPS, battery, and mode</text>
+  <path d="M930,216 V232" class="ln"/>
+  <rect x="810" y="234" width="240" height="36" class="box"/><text x="930" y="257" class="t" text-anchor="middle">Send heartbeat to server</text>
+  <path d="M930,270 V288" class="ln"/>
+  <polygon points="930,290 1025,322 930,354 835,322" class="box"/><text x="930" y="318" class="t" text-anchor="middle">New</text><text x="930" y="334" class="t" text-anchor="middle">command?</text>
+  <path d="M930,354 V372" class="ln"/><text x="938" y="367" class="s">yes</text>
+  <polygon points="930,374 1025,406 930,438 835,406" class="box"/><text x="930" y="402" class="t" text-anchor="middle">Drone</text><text x="930" y="418" class="t" text-anchor="middle">flying?</text>
+  <path d="M930,438 V456" class="ln"/><text x="938" y="451" class="s">yes</text>
+  <rect x="790" y="458" width="280" height="56" class="key"/>
+  <text x="930" y="481" class="t k" text-anchor="middle">Change flight mode</text>
+  <text x="930" y="501" class="s" text-anchor="middle">Return home, hold, or fly patrol</text>
+  <path d="M930,514 V530" class="ln"/>
+  <rect x="810" y="532" width="240" height="36" class="box"/><text x="930" y="555" class="t" text-anchor="middle">Confirm to server</text>
+  <path d="M1025,322 H1200" class="rail"/><text x="1036" y="314" class="s">no</text>
+  <path d="M1025,406 H1200" class="rail"/><text x="1036" y="398" class="s">no</text>
+  <path d="M1050,550 H1200 V198 H1052" class="ln"/>
+</svg>
+</section>
+
+<!-- Operator flowchart -->
+<section id="operator">
+<svg viewBox="0 0 1280 720" role="img" aria-label="Operator flowchart">
+  <text x="40" y="60" class="h1">Operator Flowchart</text>
+  <a href="#map"><text x="1240" y="56" class="t link" text-anchor="end">← Overview</text></a>
+
+  <rect x="40" y="148" width="120" height="36" rx="18" class="box"/><text x="100" y="171" class="t" text-anchor="middle">Open LakeSafe</text>
+  <path d="M160,166 H186" class="ln"/>
+  <rect x="188" y="148" width="104" height="36" class="box"/><text x="240" y="171" class="t" text-anchor="middle">Sign in</text>
+  <path d="M292,166 H318" class="ln"/>
+  <rect x="320" y="148" width="120" height="36" class="box"/><text x="380" y="171" class="t" text-anchor="middle">2FA code</text>
+  <path d="M440,166 H466" class="ln"/>
+  <polygon points="555,128 645,166 555,204 465,166" class="box"/><text x="555" y="163" class="t" text-anchor="middle">Verified</text><text x="555" y="179" class="t" text-anchor="middle">officer?</text>
+  <path d="M555,204 V236" class="ln"/><text x="563" y="226" class="s">no</text>
+  <rect x="480" y="238" width="150" height="36" class="box"/><text x="555" y="261" class="t" text-anchor="middle">Public lake page</text>
+  <path d="M645,166 H676" class="ln"/><text x="650" y="158" class="s">yes</text>
+  <rect x="678" y="148" width="130" height="36" class="box"/><text x="743" y="171" class="t" text-anchor="middle">Pick a lake</text>
+  <path d="M808,166 H834" class="ln"/>
+  <rect x="836" y="148" width="190" height="36" class="box"/><text x="931" y="171" class="t" text-anchor="middle">Live lake map</text>
+  <path d="M1026,166 H1060" class="ln"/>
+  <polygon points="1140,128 1220,166 1140,204 1060,166" class="box"/><text x="1140" y="170" class="t" text-anchor="middle">New alert?</text>
+  <path d="M1140,128 V104 H931 V146" class="ln"/><text x="1036" y="98" class="s" text-anchor="middle">no</text>
+
+  <path d="M1140,204 V354" class="ln-acc"/><text x="1148" y="290" class="s">yes</text>
+  <rect x="1040" y="356" width="200" height="52" class="key"/><text x="1140" y="378" class="t k" text-anchor="middle">Sound and map pin</text><text x="1140" y="397" class="s" text-anchor="middle">where the drone saw them</text>
+  <path d="M1040,382 H962" class="ln-acc"/>
+  <polygon points="880,340 960,382 880,424 800,382" class="box"/><text x="880" y="378" class="t" text-anchor="middle">Responder</text><text x="880" y="394" class="t" text-anchor="middle">decides</text>
+  <path d="M880,340 V186" class="ln"/><text x="888" y="290" class="s">keep watching</text>
+  <path d="M800,382 H662" class="ln"/><text x="731" y="374" class="s" text-anchor="middle">send home</text>
+  <polygon points="560,334 660,382 560,430 460,382" class="box"/><text x="560" y="378" class="t" text-anchor="middle">Recent 2FA and</text><text x="560" y="394" class="t" text-anchor="middle">permission?</text>
+  <path d="M560,430 V462" class="ln"/><text x="568" y="452" class="s">no</text>
+  <rect x="480" y="464" width="160" height="36" class="box"/><text x="560" y="487" class="t" text-anchor="middle">Enter 2FA again</text>
+  <path d="M460,382 H362" class="ln"/><text x="380" y="374" class="s">yes</text>
+  <rect x="160" y="364" width="200" height="36" class="box"/><text x="260" y="387" class="t" text-anchor="middle">Queue the command</text>
+
+  <path d="M260,400 V570" class="ln"/>
+  <a href="#drone"><rect x="160" y="572" width="240" height="40" class="box"/><text x="280" y="597" class="t" text-anchor="middle">Drone picks it up <tspan class="link">↗</tspan></text></a>
+  <path d="M400,592 H468" class="ln"/>
+  <rect x="470" y="572" width="220" height="40" class="box"/><text x="580" y="597" class="t" text-anchor="middle">Drone returns home</text>
+  <path d="M690,592 H758" class="ln"/>
+  <polygon points="850,552 940,592 850,632 760,592" class="box"/><text x="850" y="588" class="t" text-anchor="middle">Drone</text><text x="850" y="604" class="t" text-anchor="middle">confirmed?</text>
+  <path d="M940,592 H1008" class="ln"/><text x="950" y="584" class="s">yes</text>
+  <rect x="1010" y="572" width="230" height="40" class="key"/><text x="1125" y="597" class="t k" text-anchor="middle">Shown as done</text>
+  <path d="M850,632 V662" class="ln"/><text x="858" y="654" class="s">no</text>
+  <rect x="750" y="664" width="200" height="36" class="box"/><text x="850" y="687" class="t" text-anchor="middle">Expired, try again</text>
+</svg>
+</section>
+</main>
+<script>
+  const views = ["arch", "arch2", "context", "deploy", "dfd", "states", "erd", "usecases", "map", "layers", "sequence", "drone", "operator"];
+  const params = new URLSearchParams(location.search);
+  if (params.has("export")) document.body.classList.add("export");
+  function show(id) {
+    const view = views.includes(id) ? id : "arch";
+    for (const s of document.querySelectorAll("main > section")) s.classList.toggle("on", s.id === view);
+    for (const a of document.querySelectorAll("nav a")) {
+      if (a.getAttribute("href") === "#" + view) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+    }
+    window.scrollTo(0, 0);
+  }
+  // Handle in-page links here so they also work where the URL hash can't change (previews, some file viewers).
+  document.addEventListener("click", (event) => {
+    const link = event.target.closest("a");
+    const href = link && link.getAttribute("href");
+    if (!href || !href.startsWith("#")) return;
+    event.preventDefault();
+    show(href.slice(1));
+    try { history.replaceState(null, "", href); } catch (_) { /* opaque origins refuse; the view still switches */ }
+  });
+  addEventListener("hashchange", () => show(location.hash.slice(1)));
+  show(params.get("export") || location.hash.slice(1));
+</script>
+</body>
+</html>
