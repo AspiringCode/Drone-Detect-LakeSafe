@@ -57,6 +57,11 @@ describe("DroneRoster", () => {
     expect(screen.getByText("awaiting heartbeat")).toBeTruthy();
   });
 
+  it("shortens simulated lake drone IDs and keeps the full ID on hover", () => {
+    render(<DroneRoster drones={[{ ...drones[0], drone_id: "lake-sammamish-d0" }]} />);
+    expect(screen.getByText("Sim 1")).toHaveAttribute("title", "lake-sammamish-d0");
+  });
+
   it("explains how to get drones when the lake has none", () => {
     render(<DroneRoster drones={[]} />);
     expect(screen.getByText(/Start a simulation, or assign a registered drone/)).toBeTruthy();

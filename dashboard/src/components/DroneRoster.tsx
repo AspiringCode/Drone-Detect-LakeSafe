@@ -12,7 +12,9 @@ interface DroneRosterProps {
 export function DroneRoster({ drones, registered = [] }: DroneRosterProps) {
   const live = new Set(drones.map((drone) => drone.drone_id));
   const waiting = registered.filter((drone) => !live.has(drone.inventory_id));
-  const name = (id: string) => registered.find((drone) => drone.inventory_id === id)?.serial ?? shortId(id);
+  // Simulated IDs repeat the lake slug ("lake-sammamish-d0"), so show "Sim 1"; the full ID stays in the title.
+  const name = (drone: Drone) => registered.find((item) => item.inventory_id === drone.drone_id)?.serial
+    ?? (drone.source === "simulated" ? drone.drone_id.replace(/^.*-d(\d+)$/, (_, n) => `Sim ${Number(n) + 1}`) : shortId(drone.drone_id));
   if (drones.length === 0 && waiting.length === 0) {
     return <p className="panel-empty">No drones yet. Start a simulation, or assign a registered drone to this lake.</p>;
   }
@@ -30,7 +32,7 @@ export function DroneRoster({ drones, registered = [] }: DroneRosterProps) {
       <tbody>
         {drones.map((drone) => (
           <tr key={drone.drone_id}>
-            <td><span className="drone-id" title={drone.drone_id}><span aria-hidden="true" />{name(drone.drone_id)}</span><small className="drone-source">{drone.source}</small></td>
+            <td><span className="drone-id" title={drone.drone_id}><span aria-hidden="true" />{name(drone)}</span><small className="drone-source">{drone.source}</small></td>
             <td><span className="drone-status" data-status={drone.status}><span className="drone-status__dot" aria-hidden="true" />{drone.status.replace(/_/g, " ")}</span></td>
             <td>
               <div className="battery-reading">
