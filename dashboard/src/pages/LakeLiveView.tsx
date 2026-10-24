@@ -10,14 +10,13 @@ import { useNewAlertCue } from "../lib/useNewAlertCue";
 import type { Alert, Capability, LatLon, Principal, RealFleetSafetyStatus, RegisteredDrone, SimulationState } from "../lib/types";
 import { AppHeader } from "../components/AppHeader";
 import { useOptionalPrincipal } from "../auth/PrincipalProvider";
-import { changeSimulation, loadRealFleetSafetyStatus, loadRegisteredDrones, requestSafeReturn, setRealAutonomy } from "../lib/fleetData";
+import { changeSimulation, loadRealFleetSafetyStatus, loadRegisteredDrones, requestSafeReturn, setRealAutonomy, type RealDroneChoice, type SimulationAction } from "../lib/fleetData";
 import { RealFleetSafetyPanel } from "../components/RealFleetSafetyPanel";
 import { ApiError } from "../lib/apiClient";
 
 const API = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 const wsFor = (lakeId: string) => `${API.replace(/^http/, "ws")}/ws/operations/lakes/${lakeId}`;
 type LakeMetadata = { name: string; centroid_lat: number; centroid_lon: number; station_id?: string };
-type SimulationAction = "simulation/start" | "simulation/stop" | "zones/regenerate";
 
 export function hasLakeCapability(principal: Principal | null | undefined, lakeStationId: string | null, capability: Capability): boolean {
   return Boolean(lakeStationId && principal && (principal.aal === "aal2" || principal.judge_demo_access === true) && principal.memberships.some((item) => item.station_id === lakeStationId && item.status === "active" && item.capabilities.includes(capability)));
@@ -41,6 +40,7 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
   const [registered, setRegistered] = useState<RegisteredDrone[]>([]);
   const [simulationBusy, setSimulationBusy] = useState(false);
   const [simulationError, setSimulationError] = useState<string | null>(null);
+  const [askAboutRealDrones, setAskAboutRealDrones] = useState(false);
   const [operationsDataError, setOperationsDataError] = useState<string | null>(null);
   const [realSafety, setRealSafety] = useState<RealFleetSafetyStatus | null>(null);
   const [realSafetyBusy, setRealSafetyBusy] = useState(false);
@@ -112,16 +112,22 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
     return () => { active = false; };
   }, [canReadOperations, lakeStationId, lakeId, client, fetcher]);
 
-  async function simulate(action: SimulationAction) {
+  async function simulate(action: SimulationAction, realDrones?: RealDroneChoice) {
     if (!canManageAutonomy) return;
+    setAskAboutRealDrones(false);
     setSimulationBusy(true); setSimulationError(null);
     try {
-      const result = await changeSimulation(lakeId, action, client, fetcher);
+      const result = await changeSimulation(lakeId, action, client, fetcher, realDrones);
       setRiskmap(result.riskmap as RiskGeoJSON);
       setSimulationRunning(result.simulated_drones > 0);
+      // Zone changes can move real drones, so their Zone column is refreshed too.
+      if (registered.length) setRegistered(await loadRegisteredDrones(lakeId, client, fetcher));
     } catch (error) { setSimulationError(error instanceof Error ? error.message : "The simulation could not be changed."); }
     finally { setSimulationBusy(false); }
   }
+  const start = () => registered.length ? setAskAboutRealDrones(true) : void simulate("simulation/start");
+  // Test markers are simulated too, but they are not part of the session.
+  const waitingDrones = drones.filter((drone) => drone.source === "simulated" && !drone.assigned_zone && !drone.drone_id.endsWith("(test)"));
   async function changeRealAutonomy(enabled: boolean, reason: string) {
     if (!canManageAutonomy || !lakeStationId) return;
     setRealSafetyBusy(true); setRealSafetyError(null);
@@ -164,10 +170,18 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
           <section className="panel-card fleet-card" aria-label="Fleet">
             <div className="panel-heading"><h2>Fleet</h2></div>
             {canManageAutonomy && <div className="fleet-actions">
-              <button className="button-secondary" disabled={simulationBusy} onClick={() => void simulate(simulationRunning ? "simulation/stop" : "simulation/start")}>{simulationRunning ? "Stop simulation" : "Start simulation"}</button>
-              <button className="button-secondary" disabled={simulationBusy} onClick={() => void simulate("zones/regenerate")}>Regenerate zones</button>
-              {simulationRunning && canManageAlerts && <button className="button-secondary" onClick={() => void demo()}>Simulate detection</button>}
+              {simulationRunning ? <>
+                <button className="button-secondary" disabled={simulationBusy} onClick={() => void simulate("simulation/drones")}>Add simulated drone</button>
+                {/* A waiting drone has no zone until the lake is re-divided, so that becomes the primary action. */}
+                <button className={waitingDrones.length ? undefined : "button-secondary"} disabled={simulationBusy} onClick={() => void simulate("zones/regenerate")}>Regenerate zones</button>
+                {canManageAlerts && <button className="button-secondary" onClick={() => void demo()}>Simulate detection</button>}
+                <button className="button-secondary" disabled={simulationBusy} onClick={() => void simulate("simulation/stop")}>Stop simulation</button>
+              </> : <>
+                <button className="button-secondary" disabled={simulationBusy} onClick={start}>Start simulation</button>
+                {registered.length > 0 && <button className="button-secondary" disabled={simulationBusy} onClick={() => void simulate("zones/regenerate")}>Regenerate zones</button>}
+              </>}
             </div>}
+            {waitingDrones.length > 0 && <p className="fleet-prompt" role="status">{waitingDrones.length === 1 ? "A new drone is" : `${waitingDrones.length} new drones are`} waiting ashore. Regenerate zones to give {waitingDrones.length === 1 ? "it" : "them"} a patrol area.</p>}
             {simulationError && <p className="form-error" role="alert">{simulationError}</p>}
             <DroneRoster drones={drones} registered={registered} />
           </section>
@@ -181,6 +195,17 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
         {operationsDataError && <p className="operations-data-error" role="alert" aria-label="Operational data error">{operationsDataError}</p>}
         {registered.length > 0 && realSafety && <RealFleetSafetyPanel capabilities={stationCapabilities} status={realSafety} busy={realSafetyBusy} error={realSafetyError} onSetAutonomy={changeRealAutonomy} onRequestSafeReturn={returnRealFleet} />}
       </section>}
+      {askAboutRealDrones && <div className="modal-backdrop" onKeyDown={(event) => { if (event.key === "Escape") setAskAboutRealDrones(false); }}>
+        <div className="modal-card" role="dialog" aria-modal="true" aria-labelledby="real-drones-title">
+          <h2 id="real-drones-title">Change real drones’ flight paths?</h2>
+          <p>{registered.length === 1 ? "A real drone is" : `${registered.length} real drones are`} on this lake. Changing re-divides the lake for every drone, so {registered.length === 1 ? "its" : "their"} next patrol uses a new zone.</p>
+          <div className="modal-actions">
+            <button autoFocus onClick={() => void simulate("simulation/start", "replan")}>Change flight paths</button>
+            <button className="button-secondary" onClick={() => void simulate("simulation/start", "keep")}>Leave unaffected</button>
+            <button className="button-secondary" onClick={() => setAskAboutRealDrones(false)}>Cancel</button>
+          </div>
+        </div>
+      </div>}
     </main>
   );
 }

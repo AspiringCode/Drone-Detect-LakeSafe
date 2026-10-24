@@ -114,22 +114,32 @@ def place_test_position(station_id: str, drone_id: str, value: TestPosition, pri
     live_positions.record(lake_id, replace(marker, source="simulated"), datetime.now(timezone.utc), ttl_seconds=TEST_POSITION_SECONDS)
     return {"lake_id": lake_id, "expires_in_seconds": TEST_POSITION_SECONDS}
 
+def _patrol_layout(station_id: str, drone: dict) -> tuple[list, str | None]:
+    """The zones real drones on this drone's lake fly, and the one assigned to this drone."""
+    from app.main import get_runtime, real_zone_layout, sync_real_assignments  # lazy: app.main imports this router
+
+    runtime = get_runtime(drone["lake_id"])
+    try:
+        lake_drones = [d["inventory_id"] for d in get_device_repository().list_real(station_id) if d.get("lake_id") == drone["lake_id"]]
+    except DeviceRepositoryError as exc:
+        raise HTTPException(503, "Real inventory is unavailable") from exc
+    return real_zone_layout(runtime), sync_real_assignments(runtime, lake_drones).get(drone["inventory_id"])
+
 class PatrolRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     zone_id: str | None = Field(default=None, min_length=1, max_length=120)
 
 @router.post("/{drone_id}/patrol", status_code=status.HTTP_202_ACCEPTED)
 def send_patrol(station_id: str, drone_id: str, value: PatrolRequest, request: Request, principal: Principal = Depends(get_principal)) -> dict:
-    """Queue one patrol loop for the drone's Pi to upload; the pilot still arms it, and RC always overrides."""
-    from app.main import get_runtime  # lazy: app.main imports this router
-
+    """Queue one patrol loop of the drone's own zone for its Pi to upload; the pilot still arms it, and RC always overrides."""
     _access(principal, station_id)
     require_rate_limit("inventory.real.patrol", principal, request, station_id=station_id)
     drone = _assigned_drone(station_id, drone_id)
     if drone.get("credential_state") != "active":
         raise HTTPException(409, "The drone's credential is not active")
-    zones = get_runtime(drone["lake_id"]).zones
-    zone = next((z for z in zones if value.zone_id in (None, z.zone_id) and z.radius_m), None)
+    zones, assigned = _patrol_layout(station_id, drone)
+    wanted = value.zone_id or assigned
+    zone = next((z for z in zones if wanted in (None, z.zone_id) and z.radius_m), None)
     if zone is None:
         raise HTTPException(404, "Patrol zone not found")
     plan = build_patrol_plan(zone.centroid, zone.radius_m, DEFAULT_ALTITUDE_M, home=zone.centroid)
@@ -144,12 +154,11 @@ def send_patrol(station_id: str, drone_id: str, value: PatrolRequest, request: R
 @router.get("/{drone_id}/patrol-zones")
 def list_patrol_zones(station_id: str, drone_id: str, principal: Principal = Depends(get_principal)) -> dict:
     """The runtime zones Send patrol flies, so a downloaded mission matches the hand-off."""
-    from app.main import get_runtime  # lazy: app.main imports this router
-
     _admin(principal, station_id)
-    lake_id = _assigned_drone(station_id, drone_id)["lake_id"]
-    zones = [z for z in get_runtime(lake_id).zones if z.radius_m]
-    return {"lake_id": lake_id, "zones": [{"zone_id": z.zone_id, "radius_m": round(z.radius_m), "is_proxy": z.is_proxy} for z in zones]}
+    drone = _assigned_drone(station_id, drone_id)
+    zones, assigned = _patrol_layout(station_id, drone)
+    return {"lake_id": drone["lake_id"], "assigned_zone_id": assigned,
+            "zones": [{"zone_id": z.zone_id, "radius_m": round(z.radius_m), "is_proxy": z.is_proxy} for z in zones if z.radius_m]}
 
 class MissionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -163,11 +172,9 @@ MAX_HOME_DISTANCE_M = 5000
 @router.post("/{drone_id}/mission")
 def download_mission(station_id: str, drone_id: str, value: MissionRequest, principal: Principal = Depends(get_principal)) -> PlainTextResponse:
     """A Mission Planner file for the operator to review and load; nothing is sent to the drone."""
-    from app.main import get_runtime  # lazy: app.main imports this router
-
     _admin(principal, station_id)
-    lake_id = _assigned_drone(station_id, drone_id)["lake_id"]
-    zone = next((z for z in get_runtime(lake_id).zones if z.zone_id == value.zone_id and z.radius_m), None)
+    zones, _ = _patrol_layout(station_id, _assigned_drone(station_id, drone_id))
+    zone = next((z for z in zones if z.zone_id == value.zone_id and z.radius_m), None)
     if zone is None:
         raise HTTPException(404, "Patrol zone not found")
     home = LatLon(value.home_lat, value.home_lon)

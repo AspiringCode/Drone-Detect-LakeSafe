@@ -149,30 +149,26 @@ def test_runtime_proxy_priority_cells_represent_exact_catalog_seeds(lake_id: str
 
 
 @pytest.mark.parametrize("lake_id", EXPECTED_LAKES)
-def test_runtime_has_five_distinct_interior_demo_drone_positions(lake_id: str) -> None:
+def test_runtime_fleet_puts_one_drone_inside_each_zone(lake_id: str) -> None:
     runtime = build_lake_runtime(lake_id)
     assert runtime.engine.drones == []  # no simulated fleet until an operator starts a session
     runtime.engine.set_fleet(simulated_fleet(runtime))
     shoreline = load_lake_polygon(lake_id)
     positions = {(drone.pos.lat, drone.pos.lon) for drone in runtime.engine.drones}
 
-    assert len(runtime.engine.drones) == 5
-    assert len(positions) == 5
+    assert len(runtime.engine.drones) == len(runtime.zones) == len(positions)
     assert all(shoreline.contains(Point(drone.pos.lon, drone.pos.lat)) for drone in runtime.engine.drones)
     assert runtime.shore_station == load_reviewed_lake(lake_id).shore_station.as_lat_lon()
 
 
 @pytest.mark.parametrize("lake_id", EXPECTED_LAKES)
-def test_runtime_reserves_one_of_five_drones_and_never_overassigns_plan_capacity(lake_id: str) -> None:
+def test_runtime_never_assigns_two_drones_to_one_zone(lake_id: str) -> None:
     runtime = build_lake_runtime(lake_id)
     runtime.engine.set_fleet(simulated_fleet(runtime))
-    assigned = [drone for drone in runtime.engine.drones if drone.assigned_zone is not None]
-    standby = [drone for drone in runtime.engine.drones if drone.assigned_zone is None]
+    assigned = [drone.assigned_zone for drone in runtime.engine.drones if drone.assigned_zone is not None]
 
     assert len(runtime.zones) <= 4
-    assert len(assigned) <= 4
-    assert len(standby) >= 1
-    assert all(drone.status.value == "idle" for drone in standby)
+    assert len(assigned) == len(set(assigned)) == len(runtime.zones)
 
 
 def _metric_square_and_proxy(outside_distance_m: float) -> tuple[Polygon, NormalizedRiskPoint]:

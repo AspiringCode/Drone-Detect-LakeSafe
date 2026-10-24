@@ -113,3 +113,17 @@ def test_mission_download_is_a_reviewed_waypoints_file_from_the_patrol_zone(monk
     assert not live_commands.pending("d-1")
     viewer, _ = _client(monkeypatch, StationRole.VIEWER)
     assert viewer.post("/api/stations/st-1/inventory/d-1/mission", json=body).status_code == 403
+
+
+def test_patrol_and_mission_zones_default_to_the_drones_assigned_zone(monkeypatch):
+    from app.main import lake_runtimes
+
+    monkeypatch.setattr(live_commands, "_mailbox", {})
+    client, repo = _client(monkeypatch, StationRole.STATION_ADMIN)
+    repo.drones["d-1"].update(lake_id="lake-sammamish", credential_state="active")
+    runtime = lake_runtimes["lake-sammamish"]
+    monkeypatch.setattr(runtime, "real_assignments", {"d-1": "cell-2"})
+    assert client.get("/api/stations/st-1/inventory/d-1/patrol-zones").json()["assigned_zone_id"] == "cell-2"
+    assert client.post("/api/stations/st-1/inventory/d-1/patrol", json={}).json()["zone_id"] == "cell-2"
+    # an explicit zone still wins
+    assert client.post("/api/stations/st-1/inventory/d-1/patrol", json={"zone_id": "cell-0"}).json()["zone_id"] == "cell-0"

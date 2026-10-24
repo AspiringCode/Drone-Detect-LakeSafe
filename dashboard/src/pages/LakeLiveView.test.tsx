@@ -16,28 +16,56 @@ const member = (capabilities: string[]) => vi.fn().mockResolvedValue({ aal: "aal
 const view = (client: unknown, request: unknown, fetcher: unknown, connectOperational: unknown = vi.fn(() => () => {})) => render(<PrincipalProvider client={client as never} request={request as never}><MemoryRouter initialEntries={["/lakes/lake-1"]}><Routes><Route path="/lakes/:lakeId" element={<LakeLiveView client={client as never} fetcher={fetcher as never} connectOperational={connectOperational as never} />} /></Routes></MemoryRouter></PrincipalProvider>);
 
 describe("LakeLiveView", () => {
-  it("starts with an empty fleet, starts a simulation and regenerates zones", async () => {
+  it("starts one simulated drone, adds another and prompts to regenerate zones", async () => {
     let push: (state: unknown) => void = () => {};
     const connectOperational = vi.fn((_url: string, _token: string, onState: (state: unknown) => void) => { push = onState; return () => {}; });
+    const status = (zones: number, simulated: number) => response({ simulated_drones: simulated, waiting_drones: 0, real_drones_unaffected: false, zones, riskmap: { type: "FeatureCollection", features: Array.from({ length: zones }, (_, i) => i) } });
     const fetcher = vi.fn(async (url: string) => {
       if (url.includes("/alerts")) return response([]);
       if (url.includes("/registered-drones")) return response({ drones: [] });
-      if (url.includes("/simulation/start")) return response({ simulated_drones: 5, zones: 4, riskmap: { type: "FeatureCollection", features: [1, 2, 3, 4] } });
-      if (url.includes("/zones/regenerate")) return response({ simulated_drones: 5, zones: 6, riskmap: { type: "FeatureCollection", features: [1, 2, 3, 4, 5, 6] } });
+      if (url.includes("/simulation/start")) return status(4, 1);
+      if (url.includes("/simulation/drones")) return status(4, 2);
+      if (url.includes("/zones/regenerate")) return status(2, 2);
       return response({ type: "FeatureCollection", features: [] });
     });
+    const sim = (id: string, zone: string | null) => ({ drone_id: id, pos: { lat: 47.5, lon: -122.1 }, battery: 1, status: zone ? "patrolling" : "idle", assigned_zone: zone, source: "simulated" });
     view(lakeClient({ name: "Canonical Lake", centroid_lat: 47.5, centroid_lon: -122.1, station_id: "station" }), member(["station.read", "autonomy.manage", "alert.manage"]), fetcher, connectOperational);
-    expect(await screen.findByRole("heading", { level: 1, name: "Canonical Lake" })).toBeVisible();
     expect(await screen.findByText(/Start a simulation, or assign a registered drone/)).toBeVisible();
-    expect(screen.queryByRole("button", { name: "Simulate detection" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add simulated drone" })).not.toBeInTheDocument();
     fireEvent.click(await screen.findByRole("button", { name: "Start simulation" }));
-    await waitFor(() => expect(screen.getByRole("region", { name: "Canonical Lake operator map" })).toHaveAttribute("data-zones", "4"));
-    expect(fetcher).toHaveBeenCalledWith(expect.stringContaining("/api/lakes/lake-1/simulation/start"), expect.objectContaining({ method: "POST" }));
-    act(() => push({ drones: [{ drone_id: "lake-1-d0", pos: { lat: 47.5, lon: -122.1 }, battery: 1, status: "patrolling", assigned_zone: "cell-0", source: "simulated" }], conflicts: [], t: 1, simulation_running: true }));
+    await waitFor(() => expect(fetcher).toHaveBeenCalledWith(expect.stringContaining("/api/lakes/lake-1/simulation/start"), expect.objectContaining({ method: "POST" })));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();  // no real drones, so nothing to ask
+    act(() => push({ drones: [sim("lake-1-d0", "cell-0")], conflicts: [], t: 1, simulation_running: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Add simulated drone" }));
+    await waitFor(() => expect(fetcher).toHaveBeenCalledWith(expect.stringContaining("/simulation/drones"), expect.anything()));
+    act(() => push({ drones: [sim("lake-1-d0", "cell-0"), sim("lake-1-d1", null)], conflicts: [], t: 2, simulation_running: true }));
+    expect(screen.getByRole("status")).toHaveTextContent("A new drone is waiting ashore. Regenerate zones to give it a patrol area.");
+    expect(screen.getByRole("button", { name: "Regenerate zones" })).not.toHaveClass("button-secondary");
+    fireEvent.click(screen.getByRole("button", { name: "Regenerate zones" }));
+    await waitFor(() => expect(screen.getByRole("region", { name: "Canonical Lake operator map" })).toHaveAttribute("data-zones", "2"));
+    act(() => push({ drones: [sim("lake-1-d0", "cell-0"), sim("lake-1-d1", "cell-1")], conflicts: [], t: 3, simulation_running: true }));
+    expect(screen.queryByText(/waiting ashore/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Stop simulation" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Simulate detection" })).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "Regenerate zones" }));
-    await waitFor(() => expect(screen.getByRole("region", { name: "Canonical Lake operator map" })).toHaveAttribute("data-zones", "6"));
+  });
+
+  it("asks whether starting a simulation should change real drones' flight paths", async () => {
+    const fetcher = vi.fn(async (url: string) => {
+      if (url.includes("/alerts")) return response([]);
+      if (url.includes("/registered-drones")) return response({ drones: [{ inventory_id: "real-1", manufacturer: "Holybro", serial: "SN-1", last_heartbeat_at: null, zone_id: "cell-1" }] });
+      if (url.includes("/simulation/start")) return response({ simulated_drones: 1, waiting_drones: 0, real_drones_unaffected: true, zones: 4, riskmap: { type: "FeatureCollection", features: [] } });
+      return response({ type: "FeatureCollection", features: [] });
+    });
+    view(lakeClient({ name: "Canonical Lake", centroid_lat: 47.5, centroid_lon: -122.1, station_id: "station" }), member(["station.read", "autonomy.manage"]), fetcher);
+    expect(await screen.findByText("cell-1")).toBeVisible();  // the real drone's own zone
+    fireEvent.click(await screen.findByRole("button", { name: "Start simulation" }));
+    expect(screen.getByRole("dialog", { name: "Change real drones’ flight paths?" })).toBeVisible();
+    expect(fetcher).not.toHaveBeenCalledWith(expect.stringContaining("/simulation/start"), expect.anything());
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Start simulation" }));
+    fireEvent.click(screen.getByRole("button", { name: "Leave unaffected" }));
+    await waitFor(() => expect(fetcher).toHaveBeenCalledWith(expect.stringContaining("/simulation/start"), expect.objectContaining({ body: JSON.stringify({ real_drones: "keep" }) })));
   });
 
   it("has no eyebrow subheadings, coverage plan, source line or page source badge", async () => {

@@ -100,6 +100,8 @@ export interface RegisteredDrone {
   manufacturer: string | null;
   serial: string | null;
   last_heartbeat_at: string | null;
+  /** The zone this drone patrols; null when every zone is taken. */
+  zone_id?: string | null;
 }
 
 export type RealAutonomyState = "paused" | "pending_ack" | "active" | "degraded" | "safe_return_requested" | "gateway_unavailable";

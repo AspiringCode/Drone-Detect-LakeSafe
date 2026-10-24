@@ -271,48 +271,81 @@ class FakeLakeDevices:
         return self.drones
 
 
-def test_simulation_is_off_until_started_and_stops_cleanly(monkeypatch):
-    headers = _read_headers(monkeypatch)
-    monkeypatch.setattr("app.main.get_device_repository", lambda: FakeLakeDevices())
-    client = TestClient(app)
-    runtime = lake_runtimes[LAKE_ID]
-    assert runtime.engine.drones == []
-    assert client.post(f"/api/lakes/{LAKE_ID}/demo/trigger", headers=headers).status_code == 409
-    started = client.post(f"/api/lakes/{LAKE_ID}/simulation/start", headers=headers).json()
-    assert started["simulated_drones"] == len(runtime.zones) + 1  # one per zone plus the reserve
-    assert client.post(f"/api/lakes/{LAKE_ID}/simulation/start", headers=headers).json()["simulated_drones"] == started["simulated_drones"]
-    assert client.post(f"/api/lakes/{LAKE_ID}/simulation/stop", headers=headers).json()["simulated_drones"] == 0
-    assert TestClient(app).post(f"/api/lakes/{LAKE_ID}/simulation/start").status_code == 401
-
-
-def test_regenerating_zones_divides_the_lake_for_simulated_and_registered_drones(monkeypatch):
-    headers = _read_headers(monkeypatch)
-    client = TestClient(app)
+@pytest.fixture
+def lake(monkeypatch):
+    """Lake Sammamish with fake registered drones; its session state is reset afterwards."""
     runtime = lake_runtimes[LAKE_ID]
     original = runtime.zones
     devices = FakeLakeDevices()
     monkeypatch.setattr("app.main.get_device_repository", lambda: devices)
-    try:
-        assert client.post(f"/api/lakes/{LAKE_ID}/zones/regenerate", headers=headers).status_code == 409
-        client.post(f"/api/lakes/{LAKE_ID}/simulation/start", headers=headers)
-        devices.drones = [{"inventory_id": "real-1"}, {"inventory_id": "real-2"}]
-        result = client.post(f"/api/lakes/{LAKE_ID}/zones/regenerate", headers=headers).json()
-        # four simulated patrol drones plus two registered drones, each with its own zone
-        assert result["zones"] == 6 and len(result["riskmap"]["features"]) == 6
-        assert runtime.engine.zones == runtime.zones
-        patrol = [drone for drone in runtime.engine.drones if drone.assigned_zone]
-        assert len(patrol) == 4 and len({drone.assigned_zone for drone in patrol}) == 4
-        # A fresh session on the six-zone layout still leaves two zones for the registered drones.
-        client.post(f"/api/lakes/{LAKE_ID}/simulation/stop", headers=headers)
-        assert client.post(f"/api/lakes/{LAKE_ID}/simulation/start", headers=headers).json()["simulated_drones"] == 4 + 1
-        assert len({drone.assigned_zone for drone in runtime.engine.drones if drone.assigned_zone}) == 4
-    finally:
-        runtime.zones = original
-        runtime.engine.set_fleet([], original)
+    yield runtime, devices, TestClient(app), _read_headers(monkeypatch)
+    runtime.zones, runtime.real_zones, runtime.real_assignments = original, None, {}
+    runtime.engine.set_fleet([], original)
 
 
-def test_registered_drones_lists_real_drones_assigned_to_the_lake(monkeypatch):
-    monkeypatch.setattr("app.main.get_device_repository", lambda: FakeLakeDevices([{"inventory_id": "real-1", "serial": "SN-1", "credential_state": "active", "last_heartbeat_at": None}]))
-    response = TestClient(app).get(f"/api/lakes/{LAKE_ID}/registered-drones", headers=_read_headers(monkeypatch))
-    [drone] = response.json()["drones"]
+def _post(client, headers, path, **body):
+    return client.post(f"/api/lakes/{LAKE_ID}/{path}", headers=headers, **({"json": body} if body else {}))
+
+
+def test_simulation_starts_with_one_drone_and_grows_one_at_a_time(lake):
+    runtime, _, client, headers = lake
+    assert runtime.engine.drones == []
+    assert _post(client, headers, "demo/trigger").status_code == 409
+    assert _post(client, headers, "simulation/drones").status_code == 409  # nothing to add to yet
+    started = _post(client, headers, "simulation/start").json()
+    assert started["simulated_drones"] == 1 and started["waiting_drones"] == 0
+    added = _post(client, headers, "simulation/drones").json()
+    # the new drone waits ashore until the lake is re-divided
+    assert added["simulated_drones"] == 2 and added["waiting_drones"] == 1
+    assert [drone.drone_id for drone in runtime.engine.drones] == [f"{LAKE_ID}-d0", f"{LAKE_ID}-d1"]
+    divided = _post(client, headers, "zones/regenerate").json()
+    assert divided["zones"] == 2 and divided["waiting_drones"] == 0
+    assert len({drone.assigned_zone for drone in runtime.engine.drones}) == 2
+    assert _post(client, headers, "simulation/stop").json()["simulated_drones"] == 0
+    assert TestClient(app).post(f"/api/lakes/{LAKE_ID}/simulation/start").status_code == 401
+
+
+def test_regenerate_gives_each_registered_drone_its_own_zone(lake):
+    runtime, devices, client, headers = lake
+    devices.drones = [{"inventory_id": "real-1"}, {"inventory_id": "real-2"}]
+    _post(client, headers, "simulation/start", real_drones="replan")
+    _post(client, headers, "simulation/drones")
+    result = _post(client, headers, "zones/regenerate").json()
+    assert result["zones"] == 4  # two simulated drones plus two registered drones
+    simulated = {drone.assigned_zone for drone in runtime.engine.drones}
+    real = set(runtime.real_assignments.values())
+    assert len(simulated) == 2 and len(real) == 2 and not simulated & real
+    listed = client.get(f"/api/lakes/{LAKE_ID}/registered-drones", headers=headers).json()["drones"]
+    assert {drone["zone_id"] for drone in listed} == real
+
+
+def test_starting_can_leave_real_drones_on_their_current_zones(lake):
+    runtime, devices, client, headers = lake
+    devices.drones = [{"inventory_id": "real-1"}]
+    client.get(f"/api/lakes/{LAKE_ID}/registered-drones", headers=headers)
+    before = (list(runtime.zones), dict(runtime.real_assignments))
+    started = _post(client, headers, "simulation/start", real_drones="keep").json()
+    assert started["real_drones_unaffected"] is True
+    assert runtime.engine.drones[0].assigned_zone not in before[1].values()
+    _post(client, headers, "simulation/drones")
+    assert _post(client, headers, "zones/regenerate").json()["zones"] == 2  # simulated drones only
+    # real drones keep flying the layout they had before the session
+    assert (runtime.real_zones, runtime.real_assignments) == before
+    _post(client, headers, "simulation/stop")
+    assert runtime.zones == before[0] and runtime.real_zones is None
+
+
+def test_starting_can_replan_real_drones_with_the_simulation(lake):
+    runtime, devices, client, headers = lake
+    devices.drones = [{"inventory_id": "real-1"}]
+    started = _post(client, headers, "simulation/start", real_drones="replan").json()
+    assert started["zones"] == 2 and started["real_drones_unaffected"] is False
+    assert runtime.real_assignments["real-1"] != runtime.engine.drones[0].assigned_zone
+
+
+def test_registered_drones_lists_real_drones_assigned_to_the_lake(lake):
+    _, devices, client, headers = lake
+    devices.drones = [{"inventory_id": "real-1", "serial": "SN-1", "credential_state": "active", "last_heartbeat_at": None}]
+    [drone] = client.get(f"/api/lakes/{LAKE_ID}/registered-drones", headers=headers).json()["drones"]
     assert drone["serial"] == "SN-1" and drone["last_heartbeat_at"] is None and "credential_state" not in drone
+    assert drone["zone_id"] is not None

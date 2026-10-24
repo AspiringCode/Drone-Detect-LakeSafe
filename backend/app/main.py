@@ -6,9 +6,9 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from time import monotonic
 from uuid import uuid4
-from dataclasses import asdict, dataclass, is_dataclass
+from dataclasses import asdict, dataclass, field, is_dataclass
 from datetime import datetime, timezone
-from typing import Callable
+from typing import Callable, Literal
 
 import httpx
 from fastapi import FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
@@ -154,8 +154,10 @@ class LakeRuntime:
     shore_station: LatLon
     # Rebuilds the lake's zones for a patrol drone count (the "regenerate zones" action).
     zone_builder: Callable[[int], list] = lambda patrol_drones: []
-    # Where a simulated session parks its spare drone; None means no reserve drone.
-    reserve_position: LatLon | None = None
+    # The zone each registered real drone patrols, by inventory ID.
+    real_assignments: dict[str, str] = field(default_factory=dict)
+    # Set while a simulation runs with real drones left unaffected: the layout they keep flying.
+    real_zones: list | None = None
 
 
 DEFAULT_PATROL_DRONES = 4
@@ -164,8 +166,6 @@ DEFAULT_PATROL_DRONES = 4
 def build_lake_runtime(lake_id: str) -> LakeRuntime:
     lake = load_reviewed_lake(lake_id)
     zones = build_catalog_zones(lake_id, DEFAULT_PATROL_DRONES)
-    shoreline = load_lake_polygon(lake_id)
-    reserve_point = shoreline.representative_point()
     shore_station = lake.shore_station.as_lat_lon()
     backend = InMemoryBackend()
     # The simulated fleet starts empty; an operator starts a session from the lake view.
@@ -175,7 +175,6 @@ def build_lake_runtime(lake_id: str) -> LakeRuntime:
         alerts=AlertRepository(backend), alert_backend=backend, hub=ConnectionHub(),
         public_hub=ConnectionHub(), shore_station=shore_station,
         zone_builder=lambda patrol_drones: build_catalog_zones(lake_id, patrol_drones),
-        reserve_position=LatLon(reserve_point.y, reserve_point.x),
     )
 
 
@@ -245,15 +244,31 @@ def build_catalog_zones(lake_id: str, patrol_drones: int) -> list[RiskZone]:
     ]
 
 
-def simulated_fleet(runtime: LakeRuntime, patrol_drones: int | None = None) -> list[Drone]:
-    """Simulated drones starting on their zones (one per zone by default), plus a reserve drone when the lake has one."""
-    positions = [zone.centroid for zone in runtime.zones[:patrol_drones]]
-    if runtime.reserve_position is not None:
-        reserve = runtime.reserve_position
-        if reserve in positions:
-            reserve = next(zone.seed for zone in runtime.zones if zone.seed not in positions)
-        positions.append(reserve)
-    return [Drone(f"{runtime.lake_id}-d{index}", position, 1.0, DroneStatus.IDLE, None) for index, position in enumerate(positions)]
+def simulated_fleet(runtime: LakeRuntime, zones: list[RiskZone] | None = None) -> list[Drone]:
+    """One simulated drone starting on each of `zones` (default: every zone on the lake)."""
+    return [Drone(f"{runtime.lake_id}-d{index}", zone.centroid, 1.0, DroneStatus.IDLE, None)
+            for index, zone in enumerate(runtime.zones if zones is None else zones)]
+
+
+def real_zone_layout(runtime: LakeRuntime) -> list[RiskZone]:
+    """The zones real drones fly: frozen while a simulation leaves them unaffected, otherwise the lake's shared layout."""
+    return runtime.real_zones if runtime.real_zones is not None else runtime.zones
+
+
+def sync_real_assignments(runtime: LakeRuntime, real_ids: list[str]) -> dict[str, str]:
+    """Keep each real drone's zone while it still exists; give an unassigned drone a zone no other drone patrols."""
+    zone_ids = [zone.zone_id for zone in real_zone_layout(runtime) if zone.radius_m]
+    kept = {drone: zone for drone, zone in runtime.real_assignments.items() if drone in real_ids and zone in zone_ids}
+    taken = set(kept.values())
+    if runtime.real_zones is None:  # sharing the layout, so simulated drones' zones are taken too
+        taken |= {drone.assigned_zone for drone in runtime.engine.drones if drone.assigned_zone}
+    for drone_id in real_ids:
+        free = next((zone for zone in zone_ids if zone not in taken), None)
+        if drone_id not in kept and free:
+            kept[drone_id] = free
+            taken.add(free)
+    runtime.real_assignments = kept
+    return kept
 
 
 TEST_AREA_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "drone_test_area.json"
@@ -538,20 +553,68 @@ def demo_trigger(lake_id: str, authorization: str | None = Header(default=None))
 
 
 def _simulation_status(runtime: LakeRuntime) -> dict:
-    return {"simulated_drones": len(runtime.engine.drones), "zones": len(runtime.zones), "riskmap": zones_to_geojson(runtime.zones)}
+    drones = runtime.engine.drones
+    return {
+        "simulated_drones": len(drones),
+        # Added drones wait ashore with no zone until the lake is re-divided.
+        "waiting_drones": sum(1 for drone in drones if drone.assigned_zone is None),
+        "real_drones_unaffected": runtime.real_zones is not None,
+        "zones": len(runtime.zones), "riskmap": zones_to_geojson(runtime.zones),
+    }
+
+
+def _real_drone_ids(lake_id: str) -> list[str]:
+    try:
+        return [str(drone["inventory_id"]) for drone in get_device_repository().real_on_lake(lake_id)]
+    except DeviceRepositoryError as exc:
+        raise HTTPException(status_code=503, detail="Registered drones are unavailable") from exc
+
+
+def _divide(runtime: LakeRuntime, patrol_drones: int) -> list[RiskZone]:
+    try:
+        return runtime.zone_builder(patrol_drones)
+    except RiskDataUnavailable as exc:
+        raise HTTPException(status_code=409, detail="This lake cannot be divided for that many drones") from exc
+
+
+class StartSimulationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    # "replan" re-divides the lake for the simulated and real drones together; "keep" leaves real drones' zones alone.
+    real_drones: Literal["replan", "keep"] = "keep"
 
 
 @app.post("/api/lakes/{lake_id}/simulation/start")
-def start_simulation(lake_id: str, authorization: str | None = Header(default=None)):
+def start_simulation(lake_id: str, value: StartSimulationRequest | None = None, authorization: str | None = Header(default=None)):
+    """Start a session with one simulated drone; more are added one at a time."""
+    authorize_lake(lake_id, authorization, Permission.CHANGE_SIMULATED_CIRCULATION)
+    runtime = get_runtime(lake_id)
+    if runtime.engine.drones:
+        return _simulation_status(runtime)
+    real = _real_drone_ids(lake_id)
+    if real and (value or StartSimulationRequest()).real_drones == "replan":
+        zones = _divide(runtime, 1 + len(real))
+        runtime.zones, runtime.real_zones = zones, None
+        runtime.engine.set_fleet(simulated_fleet(runtime, zones[:1]), zones[:1])
+        runtime.real_assignments = {drone: zone.zone_id for drone, zone in zip(real, zones[1:])}
+    else:
+        runtime.real_zones = list(runtime.zones) if real else None
+        assigned = set(sync_real_assignments(runtime, real).values())
+        free = [zone for zone in runtime.zones if zone.radius_m and zone.zone_id not in assigned]
+        # With every zone held by a real drone, the simulated drone waits ashore for a re-division.
+        fleet = simulated_fleet(runtime, free[:1]) or [Drone(f"{lake_id}-d0", runtime.shore_station, 1.0, DroneStatus.IDLE, None)]
+        runtime.engine.set_fleet(fleet, free)
+    return _simulation_status(runtime)
+
+
+@app.post("/api/lakes/{lake_id}/simulation/drones", status_code=201)
+def add_simulated_drone(lake_id: str, authorization: str | None = Header(default=None)):
+    """Add one simulated drone ashore; it gets a zone when the lake is re-divided."""
     authorize_lake(lake_id, authorization, Permission.CHANGE_SIMULATED_CIRCULATION)
     runtime = get_runtime(lake_id)
     if not runtime.engine.drones:
-        try:
-            real = len(get_device_repository().real_on_lake(lake_id))
-        except DeviceRepositoryError as exc:
-            raise HTTPException(status_code=503, detail="Registered drones are unavailable") from exc
-        # Zones beyond the simulated fleet stay free for the lake's registered drones.
-        runtime.engine.set_fleet(simulated_fleet(runtime, max(1, len(runtime.zones) - real)))
+        raise HTTPException(status_code=409, detail="Start a simulation first")
+    index = 1 + max(int(drone.drone_id.rsplit("-d", 1)[1]) for drone in runtime.engine.drones)
+    runtime.engine.add_drone(Drone(f"{lake_id}-d{index}", runtime.shore_station, 1.0, DroneStatus.IDLE, None))
     return _simulation_status(runtime)
 
 
@@ -559,43 +622,40 @@ def start_simulation(lake_id: str, authorization: str | None = Header(default=No
 def stop_simulation(lake_id: str, authorization: str | None = Header(default=None)):
     authorize_lake(lake_id, authorization, Permission.CHANGE_SIMULATED_CIRCULATION)
     runtime = get_runtime(lake_id)
-    runtime.engine.set_fleet([])
+    if runtime.real_zones is not None:  # real drones never left this layout, so the map returns to it
+        runtime.zones, runtime.real_zones = runtime.real_zones, None
+    runtime.engine.set_fleet([], runtime.zones)
     return _simulation_status(runtime)
 
 
 @app.get("/api/lakes/{lake_id}/registered-drones")
 def registered_drones(lake_id: str, authorization: str | None = Header(default=None)):
-    """Real drones assigned to this lake, live or not, so the fleet table lists them before a heartbeat."""
+    """Real drones assigned to this lake with their patrol zone, live or not, so the fleet table lists them before a heartbeat."""
     authorize_lake(lake_id, authorization, Permission.READ_OPERATIONS)
     try:
         drones = get_device_repository().real_on_lake(lake_id)
     except DeviceRepositoryError as exc:
         raise HTTPException(status_code=503, detail="Registered drones are unavailable") from exc
+    zones = sync_real_assignments(get_runtime(lake_id), [str(drone["inventory_id"]) for drone in drones])
     keys = ("inventory_id", "manufacturer", "serial", "battery_percent", "health", "connectivity", "last_heartbeat_at")
-    return {"drones": [{key: drone.get(key) for key in keys} for drone in drones]}
+    return {"drones": [{**{key: drone.get(key) for key in keys}, "zone_id": zones.get(str(drone["inventory_id"]))} for drone in drones]}
 
 
 @app.post("/api/lakes/{lake_id}/zones/regenerate")
 def regenerate_zones(lake_id: str, authorization: str | None = Header(default=None)):
-    """Re-divide the lake among the simulated patrol drones plus the real drones assigned to it."""
+    """Re-divide the lake: one zone per simulated drone, plus one per real drone unless they are left unaffected."""
     authorize_lake(lake_id, authorization, Permission.CHANGE_SIMULATED_CIRCULATION)
     runtime = get_runtime(lake_id)
-    try:
-        real = len(get_device_repository().real_on_lake(lake_id))
-    except DeviceRepositoryError as exc:
-        raise HTTPException(status_code=503, detail="Registered drones are unavailable") from exc
+    real = [] if runtime.real_zones is not None else _real_drone_ids(lake_id)
     simulated = len(runtime.engine.drones)
-    if simulated and runtime.reserve_position is not None:
-        simulated -= 1  # the reserve drone waits ashore and gets no zone of its own
-    if simulated + real == 0:
+    if simulated + len(real) == 0:
         raise HTTPException(status_code=409, detail="Start a simulation or assign a drone to this lake first")
-    try:
-        zones = runtime.zone_builder(simulated + real)
-    except RiskDataUnavailable as exc:
-        raise HTTPException(status_code=409, detail="This lake cannot be divided for that many drones") from exc
+    zones = _divide(runtime, simulated + len(real))
     runtime.zones = zones
     # A new layout restarts the session: simulated drones take the first zones, real drones the rest.
-    runtime.engine.set_fleet(simulated_fleet(runtime, simulated) if simulated else [], zones)
+    runtime.engine.set_fleet(simulated_fleet(runtime, zones[:simulated]), zones[:simulated])
+    if runtime.real_zones is None:
+        runtime.real_assignments = {drone: zone.zone_id for drone, zone in zip(real, zones[simulated:])}
     return _simulation_status(runtime)
 
 

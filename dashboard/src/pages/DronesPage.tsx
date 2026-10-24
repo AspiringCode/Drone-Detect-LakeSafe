@@ -156,13 +156,18 @@ export function DronesPage({ client = supabase, setup = false }: { client?: Supa
 
 function MissionDownload({ drone, stationId, client }: { drone: RealDrone; stationId: string; client: SupabaseLike }) {
   const [zones, setZones] = useState<PatrolZone[] | null>(null);
+  const [assigned, setAssigned] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const base = `/api/stations/${encodeURIComponent(stationId)}/inventory/${drone.inventory_id}`;
   async function loadZones(open: boolean) {
     if (!open || zones) return;
     setError("");
-    try { setZones((await apiRequest<{ zones: PatrolZone[] }>(`${base}/patrol-zones`, {}, client)).zones); }
+    try {
+      const result = await apiRequest<{ zones: PatrolZone[]; assigned_zone_id?: string | null }>(`${base}/patrol-zones`, {}, client);
+      setAssigned(result.assigned_zone_id ?? null);
+      setZones(result.zones);
+    }
     catch (value) { setError(message(value, "Patrol zones could not be loaded.")); }
   }
   async function download(event: FormEvent<HTMLFormElement>) {
@@ -185,7 +190,7 @@ function MissionDownload({ drone, stationId, client }: { drone: RealDrone; stati
     <p className="field-help">One loop of a patrol zone, then return to launch, as a Mission Planner <code>.waypoints</code> file. Zones are this lake’s runtime patrol zones, the same ones Send patrol uses, not the stored coverage plan. Nothing is sent to the drone: review the file in Mission Planner before any flight.</p>
     {error && <p className="form-error" role="alert">{error}</p>}
     {!zones ? !error && <p className="field-help">Loading patrol zones…</p> : !zones.length ? <p>No patrol zones are available for this lake.</p> : <form onSubmit={download} aria-busy={busy}>
-      <label>Patrol zone<select name="zone_id" required>{zones.map((zone) => <option key={zone.zone_id} value={zone.zone_id}>{zone.zone_id} · {zone.radius_m} m radius{zone.is_proxy ? " · proxy data" : ""}</option>)}</select></label>
+      <label>Patrol zone<select name="zone_id" required defaultValue={assigned ?? undefined}>{zones.map((zone) => <option key={zone.zone_id} value={zone.zone_id}>{zone.zone_id} · {zone.radius_m} m radius{zone.zone_id === assigned ? " · this drone’s zone" : ""}{zone.is_proxy ? " · proxy data" : ""}</option>)}</select></label>
       <label>Home latitude<input name="home_lat" type="number" step="any" min={-90} max={90} required /></label>
       <label>Home longitude<input name="home_lon" type="number" step="any" min={-180} max={180} required /></label>
       <p className="field-help">Home is where the drone takes off and returns: the launch point on shore, within 5 km of the zone.</p>

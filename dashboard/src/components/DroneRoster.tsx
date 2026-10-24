@@ -12,6 +12,8 @@ interface DroneRosterProps {
 export function DroneRoster({ drones, registered = [] }: DroneRosterProps) {
   const live = new Set(drones.map((drone) => drone.drone_id));
   const waiting = registered.filter((drone) => !live.has(drone.inventory_id));
+  // Real drones report no zone of their own; theirs comes from the lake's assignment.
+  const zone = (drone: Drone) => drone.assigned_zone ?? registered.find((item) => item.inventory_id === drone.drone_id)?.zone_id ?? null;
   // Simulated IDs repeat the lake slug ("lake-sammamish-d0"), so show "Sim 1"; the full ID stays in the title.
   const name = (drone: Drone) => registered.find((item) => item.inventory_id === drone.drone_id)?.serial
     ?? (drone.source === "simulated" ? drone.drone_id.replace(/^.*-d(\d+)$/, (_, n) => `Sim ${Number(n) + 1}`) : shortId(drone.drone_id));
@@ -42,7 +44,7 @@ export function DroneRoster({ drones, registered = [] }: DroneRosterProps) {
                 </span>
               </div>
             </td>
-            <td><span className={drone.assigned_zone ? "zone-chip" : "zone-chip zone-chip--empty"}>{drone.assigned_zone ?? "-"}</span></td>
+            <td><span className={zone(drone) ? "zone-chip" : "zone-chip zone-chip--empty"}>{zone(drone) ?? "-"}</span></td>
           </tr>
         ))}
         {waiting.map((drone) => (
@@ -50,7 +52,7 @@ export function DroneRoster({ drones, registered = [] }: DroneRosterProps) {
             <td><span className="drone-id" title={drone.inventory_id}><span aria-hidden="true" />{drone.serial ?? shortId(drone.inventory_id)}</span><small className="drone-source">real</small></td>
             <td><span className="drone-status" data-status="offline"><span className="drone-status__dot" aria-hidden="true" />{drone.last_heartbeat_at ? "offline" : "awaiting heartbeat"}</span></td>
             <td>-</td>
-            <td><span className="zone-chip zone-chip--empty">-</span></td>
+            <td><span className={drone.zone_id ? "zone-chip" : "zone-chip zone-chip--empty"}>{drone.zone_id ?? "-"}</span></td>
           </tr>
         ))}
       </tbody>

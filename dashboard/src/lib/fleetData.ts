@@ -3,15 +3,19 @@ import type { RealFleetSafetyStatus, RegisteredDrone } from "./types";
 import type { SupabaseLike } from "./supabase";
 
 type RealSafetyWire = { autonomy: RealFleetSafetyStatus["realAutonomy"]; source?: "real"; heartbeat_age_seconds?: number | null; eligible?: boolean | null; desired_state_version?: number; acknowledged_state_version?: number; active_assignments?: string[]; pending_assignments?: string[] };
-type SimulationWire = { simulated_drones: number; zones: number; riskmap: { type: "FeatureCollection"; features: unknown[] } };
+type SimulationWire = { simulated_drones: number; waiting_drones: number; real_drones_unaffected: boolean; zones: number; riskmap: { type: "FeatureCollection"; features: unknown[] } };
+export type SimulationAction = "simulation/start" | "simulation/drones" | "simulation/stop" | "zones/regenerate";
+/** On start, whether real drones are re-planned with the simulation or keep their zones. */
+export type RealDroneChoice = "replan" | "keep";
 
 export async function loadRegisteredDrones(lakeId: string, client?: SupabaseLike, fetcher?: typeof fetch): Promise<RegisteredDrone[]> {
   return (await apiRequest<{ drones: RegisteredDrone[] }>(`/api/lakes/${encodeURIComponent(lakeId)}/registered-drones`, undefined, client, fetcher)).drones;
 }
 
-/** Start/stop a lake's simulated session, or re-divide its zones; each returns the resulting zone map. */
-export function changeSimulation(lakeId: string, action: "simulation/start" | "simulation/stop" | "zones/regenerate", client?: SupabaseLike, fetcher?: typeof fetch): Promise<SimulationWire> {
-  return apiRequest<SimulationWire>(`/api/lakes/${encodeURIComponent(lakeId)}/${action}`, { method: "POST" }, client, fetcher);
+/** Start, grow or stop a lake's simulated session, or re-divide its zones; each returns the resulting zone map. */
+export function changeSimulation(lakeId: string, action: SimulationAction, client?: SupabaseLike, fetcher?: typeof fetch, realDrones?: RealDroneChoice): Promise<SimulationWire> {
+  const init: RequestInit = realDrones ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ real_drones: realDrones }) } : { method: "POST" };
+  return apiRequest<SimulationWire>(`/api/lakes/${encodeURIComponent(lakeId)}/${action}`, init, client, fetcher);
 }
 
 function safetyStatus(payload: RealSafetyWire): RealFleetSafetyStatus {

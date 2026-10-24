@@ -69,6 +69,11 @@ class SimulationEngine:
         self._confirmation = None
         self._initial_assign()
 
+    def add_drone(self, drone: Drone) -> None:
+        """Join the session idle; the drone gets a zone at the next re-division."""
+        self.drones.append(drone)
+        self.altitudes[drone.drone_id] = 30.0
+
     def apply_plan(
         self,
         zones: list[RiskZone],
