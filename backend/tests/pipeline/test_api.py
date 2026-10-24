@@ -273,6 +273,7 @@ class FakeLakeDevices:
 
 def test_simulation_is_off_until_started_and_stops_cleanly(monkeypatch):
     headers = _read_headers(monkeypatch)
+    monkeypatch.setattr("app.main.get_device_repository", lambda: FakeLakeDevices())
     client = TestClient(app)
     runtime = lake_runtimes[LAKE_ID]
     assert runtime.engine.drones == []
@@ -301,6 +302,10 @@ def test_regenerating_zones_divides_the_lake_for_simulated_and_registered_drones
         assert runtime.engine.zones == runtime.zones
         patrol = [drone for drone in runtime.engine.drones if drone.assigned_zone]
         assert len(patrol) == 4 and len({drone.assigned_zone for drone in patrol}) == 4
+        # A fresh session on the six-zone layout still leaves two zones for the registered drones.
+        client.post(f"/api/lakes/{LAKE_ID}/simulation/stop", headers=headers)
+        assert client.post(f"/api/lakes/{LAKE_ID}/simulation/start", headers=headers).json()["simulated_drones"] == 4 + 1
+        assert len({drone.assigned_zone for drone in runtime.engine.drones if drone.assigned_zone}) == 4
     finally:
         runtime.zones = original
         runtime.engine.set_fleet([], original)

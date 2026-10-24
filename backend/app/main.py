@@ -546,7 +546,12 @@ def start_simulation(lake_id: str, authorization: str | None = Header(default=No
     authorize_lake(lake_id, authorization, Permission.CHANGE_SIMULATED_CIRCULATION)
     runtime = get_runtime(lake_id)
     if not runtime.engine.drones:
-        runtime.engine.set_fleet(simulated_fleet(runtime))
+        try:
+            real = len(get_device_repository().real_on_lake(lake_id))
+        except DeviceRepositoryError as exc:
+            raise HTTPException(status_code=503, detail="Registered drones are unavailable") from exc
+        # Zones beyond the simulated fleet stay free for the lake's registered drones.
+        runtime.engine.set_fleet(simulated_fleet(runtime, max(1, len(runtime.zones) - real)))
     return _simulation_status(runtime)
 
 
