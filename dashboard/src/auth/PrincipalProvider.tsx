@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { apiRequest } from "../lib/apiClient";
 import { supabase, type SupabaseLike } from "../lib/supabase";
 import type { Principal } from "../lib/types";
@@ -10,13 +10,17 @@ export function PrincipalProvider({ children, client = supabase, request = apiRe
   const [principal, setPrincipal] = useState<Principal | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const current = useRef<Principal | null>(null);
   const refresh = useCallback(async () => {
-    setLoading(true);
+    // Supabase re-emits auth events on tab focus and token refresh; only show loading when there is no
+    // principal yet, so gated pages are not unmounted and their in-progress state is kept.
+    if (!current.current) setLoading(true);
     setError(null);
     const { data } = await client.auth.getSession();
-    if (!data.session) { setPrincipal(null); setLoading(false); return; }
-    try { setPrincipal(await request<Principal>("/api/me", undefined, client)); }
+    if (!data.session) { current.current = null; setPrincipal(null); setLoading(false); return; }
+    try { current.current = await request<Principal>("/api/me", undefined, client); setPrincipal(current.current); }
     catch (cause) {
+      current.current = null;
       setPrincipal(null);
       setError(cause instanceof TypeError
         ? "Could not reach the LakeSafe API. Check that the backend is running, then retry."
