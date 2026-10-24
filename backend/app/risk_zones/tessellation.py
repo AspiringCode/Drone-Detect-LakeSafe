@@ -71,7 +71,10 @@ def voronoi_cells(
             region = next(region for region in regions if region.contains(seed_point))
             clipped = region.intersection(boundary)
             cell = clipped if isinstance(clipped, Polygon) else next(
-                piece for piece in clipped.geoms if piece.contains(seed_point)
+                # Coverage seeds may lie on the shoreline; use the same
+                # numeric boundary tolerance as the detached-piece path.
+                piece for piece in clipped.geoms
+                if isinstance(piece, Polygon) and piece.buffer(1e-12).contains(seed_point)
             )
             cells.append((seed, cell))
         return cells

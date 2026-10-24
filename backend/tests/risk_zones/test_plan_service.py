@@ -4,7 +4,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 
 import pytest
-from shapely.geometry import Polygon
+from shapely.geometry import MultiPolygon, Polygon
 
 from app.models import LatLon, RiskPointProvenance
 from app.risk_zones.connectors.base import NormalizedRiskPoint
@@ -38,6 +38,17 @@ def test_no_hotspots_creates_one_labeled_fallback() -> None:
 
     assert [cell.kind for cell in plan.cells] == ["fallback"]
     assert plan.activity_data_unavailable is True
+
+
+def test_database_multipolygon_preserves_islands_in_the_candidate() -> None:
+    boundary = Polygon(SHORELINE.exterior.coords, holes=[[
+        (-122.0995,47.5705),(-122.099,47.5705),(-122.099,47.571),(-122.0995,47.571),(-122.0995,47.5705),
+    ]])
+    plan = build_candidate(_snapshot(), MultiPolygon([boundary]), patrol_capacity=0, reserve=0, prior_plan_id=None)
+    cell = plan.cells[0]
+    result = Polygon([(p.lon,p.lat) for p in cell.polygon], [[(p.lon,p.lat) for p in ring] for ring in cell.holes])
+    assert len(cell.holes) == 1
+    assert result.symmetric_difference(boundary).area == pytest.approx(0, abs=1e-12)
 
 
 def test_supported_hotspots_are_preserved_before_coverage_capacity() -> None:

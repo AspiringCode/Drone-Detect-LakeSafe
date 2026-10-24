@@ -7,7 +7,7 @@ from dataclasses import replace
 from uuid import uuid4
 
 from pyproj import CRS, Transformer
-from shapely.geometry import Point, Polygon
+from shapely.geometry import MultiPolygon, Point, Polygon
 from shapely.ops import nearest_points, transform
 
 from app.models import LatLon, RiskPointProvenance, ZonePlanCandidate, ZonePlanCell
@@ -142,7 +142,7 @@ def _cell(
 
 
 def build_candidate(
-    snapshot, shoreline: Polygon, patrol_capacity: int, reserve: int,
+    snapshot, shoreline: Polygon | MultiPolygon, patrol_capacity: int, reserve: int,
     prior_plan_id: str | None, reassign_detached_pieces: bool = False,
 ) -> ZonePlanCandidate:
     """Create a fully validated candidate without changing the active-plan pointer.
@@ -155,6 +155,14 @@ def build_candidate(
     if patrol_capacity < 0 or reserve < 0:
         raise ValueError("patrol capacity and reserve must be non-negative")
     if not shoreline.is_valid or shoreline.is_empty:
+        raise RiskDataUnavailable("invalid_shoreline")
+    if isinstance(shoreline, MultiPolygon):
+        if len(shoreline.geoms) != 1:
+            raise RiskDataUnavailable("disconnected_shoreline_requires_review")
+        # PostGIS stores all lake boundaries as MultiPolygon. Unwrap the
+        # single component without rebuilding its exterior or losing islands.
+        shoreline = shoreline.geoms[0]
+    if not isinstance(shoreline, Polygon):
         raise RiskDataUnavailable("invalid_shoreline")
     mean_lat = shoreline.centroid.y
     projected = _project_boundary(shoreline, mean_lat)

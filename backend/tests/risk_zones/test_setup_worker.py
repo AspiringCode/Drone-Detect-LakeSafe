@@ -6,7 +6,8 @@ from datetime import datetime, timezone
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 import pytest
-from shapely.geometry import Polygon
+from shapely.geometry import MultiPolygon, Polygon
+from shapely import wkt
 
 from app.risk_zones.setup_worker import (
     RiskPlanSetupService, RiskRefreshWorker, cancel_worker_task, start_worker_task,
@@ -171,6 +172,34 @@ def test_production_setup_service_persists_and_activates_explicit_fallback_plan(
     assert repository.persisted_snapshot is not None
     assert repository.persisted_candidate.activity_data_unavailable is True
     assert repository.active_id == result.plan_id
+
+
+def test_setup_service_accepts_database_single_part_multipolygon() -> None:
+    repository = ProductionShapeRepository()
+    original = repository.rebuild_context
+    def context(lake_id):
+        value = original(lake_id)
+        value["shoreline_wkt"] = MultiPolygon([wkt.loads(value["shoreline_wkt"])]).wkt
+        return value
+    repository.rebuild_context = context
+    result = RiskPlanSetupService(repository).rebuild_lake("lake-1")
+    assert result.status == "active"
+    assert repository.persisted_candidate is not None
+
+
+def test_setup_service_does_not_drop_disconnected_water_components() -> None:
+    from app.risk_zones.plan_builder import RiskDataUnavailable
+    repository = ProductionShapeRepository()
+    original = repository.rebuild_context
+    def context(lake_id):
+        value = original(lake_id)
+        value["shoreline_wkt"] = MultiPolygon([wkt.loads(value["shoreline_wkt"]), Polygon([(-122.2,47.5),(-122.19,47.5),(-122.19,47.51),(-122.2,47.5)])]).wkt
+        return value
+    repository.rebuild_context = context
+    with pytest.raises(RiskDataUnavailable, match="disconnected_shoreline_requires_review"):
+        RiskPlanSetupService(repository).rebuild_lake("lake-1")
+    assert repository.persisted_candidate is None
+    assert repository.active_id is None
 
 
 def test_setup_service_uses_proxy_configuration_and_latest_observation_for_freshness() -> None:

@@ -18,7 +18,7 @@ class SupabaseDeviceRepository(DeviceAuthRepository):
         if client is None:
             if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
                 raise DeviceRepositoryError("Device gateway is unavailable")
-            from supabase import create_client
+            from app.supabase_transport import create_server_client as create_client
             client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
         self._client = client
 

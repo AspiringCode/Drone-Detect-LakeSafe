@@ -18,7 +18,7 @@ from supabase import create_client
 from app.auth import verify_supabase_jwt
 from app.access.policy import Permission, require_station_access
 from app.access.principal import Principal, _bearer_token, principal_from_claims
-from app.access.repository import get_access_repository
+from app.access.repository import ACCESS_REPOSITORY_ERRORS, get_access_repository
 from app.config import CORS_ALLOWED_ORIGINS, SUPABASE_KEY, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL
 from app.coordination.engine import SimulationEngine
 from app.detection.detector import ThermalDetector
@@ -335,7 +335,7 @@ def get_current_principal(authorization: str | None = Header(default=None)) -> P
         return principal_from_claims(
             verify_supabase_jwt(_bearer_token(authorization)), get_access_repository()
         )
-    except RuntimeError as exc:
+    except ACCESS_REPOSITORY_ERRORS as exc:
         raise HTTPException(status_code=503, detail="Authorization service is unavailable") from exc
 
 
@@ -347,7 +347,7 @@ def require_lake_permission(
     get_runtime(lake_id)
     try:
         station_id = get_access_repository().lake_station_id(lake_id)
-    except RuntimeError as exc:
+    except ACCESS_REPOSITORY_ERRORS as exc:
         raise HTTPException(status_code=503, detail="Authorization service is unavailable") from exc
     if station_id is None:
         raise HTTPException(status_code=404, detail="Lake not found")
@@ -379,7 +379,7 @@ def authorize_operational_websocket(lake_id: str, token: str) -> Principal:
         principal = principal_from_claims(verify_supabase_jwt(token), get_access_repository())
         require_lake_permission(lake_id, principal, Permission.READ_OPERATIONS)
         return principal
-    except RuntimeError as exc:
+    except ACCESS_REPOSITORY_ERRORS as exc:
         raise HTTPException(status_code=503, detail="Authorization service is unavailable") from exc
 
 

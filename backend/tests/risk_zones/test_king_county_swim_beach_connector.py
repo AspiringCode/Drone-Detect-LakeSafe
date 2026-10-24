@@ -116,6 +116,17 @@ def test_rejects_observations_older_than_since_and_accepts_an_empty_season() -> 
     assert result.rows == ()
 
 
+@pytest.mark.parametrize("missing", ["hightoday", "watertempc", "watertempf"])
+def test_missing_optional_measurement_does_not_discard_a_published_observation(missing) -> None:
+    observation = _observation("0615SB", "2026-07-03")
+    observation.pop(missing)
+    result = KingCountySwimBeachProxyConnector(("0615SB",)).fetch("POLYGON EMPTY", SINCE, Client([observation], [_site("0615SB")]))
+    assert len(result.rows) == 1
+    assert result.rows[0].category == "access_environment_proxy"
+    assert result.rows[0].source_payload["observation"] == observation
+    assert missing not in result.rows[0].source_payload["observation"]
+
+
 def test_client_exceptions_propagate_without_a_fixture_fallback() -> None:
     class FailingClient:
         def get(self, *_: object, **__: object):

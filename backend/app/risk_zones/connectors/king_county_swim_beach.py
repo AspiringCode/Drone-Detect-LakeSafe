@@ -19,10 +19,12 @@ class KingCountySwimBeachProxyConnector(SocrataConnector):
 
     domain = "data.kingcounty.gov"
     connector_key = "king_county_swim_beach_proxy"
-    schema_version = "1"
+    schema_version = "2"
     attribution = "King County Open Data — Freshwater Swim Beach Data and Water Quality Monitoring Sites"
     observations_required_fields = frozenset(
-        {"beach", "locator", "date", "watertempc", "watertempf", "hightoday"}
+        # Socrata omits null measurement keys. This proxy uses observation
+        # presence, not temperatures or sample values; never invent those.
+        {"beach", "locator", "date"}
     )
     sites_required_fields = frozenset({"locator", "site", "latitude", "longitude", "status", "area"})
     page_size = 500

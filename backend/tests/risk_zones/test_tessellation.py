@@ -22,6 +22,16 @@ from app.risk_zones.tessellation import (
 )
 
 
+def test_concave_clipped_region_can_assign_a_seed_on_its_shoreline() -> None:
+    boundary = Polygon([(0,0),(4,0),(4,4),(3,4),(3,1),(1,1),(1,4),(0,4),(0,0)])
+    seeds = [LatLon(3,0), LatLon(0,2)]
+    cells = voronoi_cells(seeds, boundary, mean_lat=0)
+    assert len(cells) == 2
+    for seed, cell in cells:
+        assert cell.covers(Point(seed.lon, seed.lat))
+        assert cell.difference(boundary).area == pytest.approx(0)
+
+
 def test_project_scales_longitude_by_mean_latitude_cosine() -> None:
     point = LatLon(47.595, -122.084)
 
