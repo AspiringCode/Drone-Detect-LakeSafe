@@ -55,7 +55,7 @@ class SupabaseDeviceRepository(DeviceAuthRepository):
             credential = row.pop("drone_credentials", None) or {}
             if isinstance(credential, list):  # one-to-one, but PostgREST may still wrap it
                 credential = credential[0] if credential else {}
-            drones.append({**row, "manufacturer": credential.get("manufacturer"), "serial": credential.get("serial")})
+            drones.append({**row, "manufacturer": credential.get("manufacturer"), "serial": credential.get("serial"), "credential_state": credential.get("credential_state")})
         return drones
 
     def attach_real_to_lake(self, station_id: str, drone_id: str, lake_id: str | None) -> dict:
