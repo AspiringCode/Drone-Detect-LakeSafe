@@ -50,14 +50,50 @@ def temperature_c(frame: np.ndarray) -> np.ndarray:
     return (bottom[..., 0] + bottom[..., 1] * 256.0) / 64.0 - 273.15
 
 
+def palette_bgr(frame: np.ndarray) -> np.ndarray:
+    """The P2 Pro's own colour image (top half) as BGR, from either a raw YUYV frame or an OpenCV-converted one."""
+    if frame.ndim == 3 and frame.shape[-1] == 3:
+        return frame[: frame.shape[0] // 2]
+    raw = np.asarray(frame, dtype=np.uint8).reshape(-1, P2PRO_WIDTH, 2)
+    return cv2.cvtColor(np.ascontiguousarray(raw[: raw.shape[0] // 2]), cv2.COLOR_YUV2BGR_YUY2)
+
+
+class ThermalRecorder:
+    """Writes the thermal view, upscaled, with confirmed detections boxed and a UTC clock for syncing with the Pi camera."""
+
+    def __init__(self, path: Path, fps: float = 25.0, scale: int = 3) -> None:
+        self.path, self.fps, self.scale = path, fps, scale
+        self._writer: cv2.VideoWriter | None = None
+
+    def write(self, frame: np.ndarray, confirmed: list[Detection]) -> None:
+        image = cv2.resize(palette_bgr(frame), None, fx=self.scale, fy=self.scale, interpolation=cv2.INTER_NEAREST)
+        for d in confirmed:
+            x, y, w, h = (int(v * self.scale) for v in d.bbox)
+            cv2.rectangle(image, (x, y), (x + w, y + h), (0, 0, 255), 2)
+            cv2.putText(image, f"person? {d.confidence:.2f}", (x, max(12, y - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+        stamp = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime())
+        cv2.putText(image, stamp, (8, image.shape[0] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        if self._writer is None:
+            # MJPG in AVI: cheap on a Pi Zero, and a file cut off by a battery pull still plays.
+            self._writer = cv2.VideoWriter(str(self.path), cv2.VideoWriter_fourcc(*"MJPG"), self.fps, image.shape[1::-1])
+        self._writer.write(image)
+
+    def close(self) -> None:
+        if self._writer is not None:
+            self._writer.release()
+
+
 def run(frames: Iterable[np.ndarray], detector: ThermalDetector | HotSpotDetector, persistence: TemporalPersistenceFilter,
         send: Callable[[Detection], bool], *, cooldown_s: float = COOLDOWN_SECONDS,
         clock: Callable[[], float] = time.monotonic,
-        prepare: Callable[[np.ndarray], np.ndarray] = thermal_frame) -> None:
+        prepare: Callable[[np.ndarray], np.ndarray] = thermal_frame,
+        on_frame: Callable[[np.ndarray, list[Detection]], None] | None = None) -> None:
     """Send the strongest confirmed detection, at most once per cooldown so one person in view is one alert."""
     last_sent: float | None = None
     for index, frame in enumerate(frames):
         confirmed = persistence.update(detector.detect(prepare(frame), index))
+        if on_frame is not None:
+            on_frame(frame, confirmed)
         if not confirmed or (last_sent is not None and clock() - last_sent < cooldown_s):
             continue
         if send(max(confirmed, key=lambda d: d.confidence)):
@@ -101,6 +137,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--model", help="YOLO weights; omit (or pass empty) for the model-free hot-spot detector")
     parser.add_argument("--min-c", type=float, default=24.0, help="hot-spot: coldest temperature (C) that can be a person")
     parser.add_argument("--margin-c", type=float, default=5.0, help="hot-spot: degrees C above the scene median")
+    parser.add_argument("--record", help="folder to save the boxed thermal view in, for demo footage; one file per run")
     where = parser.add_mutually_exclusive_group(required=True)
     where.add_argument("--position-file", help="written by mavlink_bridge.py --position-file; the live position at detection time")
     where.add_argument("--lat", type=float, help="bench testing only, with --lon: a fixed position")
@@ -130,11 +167,21 @@ def main(argv: list[str] | None = None) -> int:
         print(status, text, flush=True)
         return True
 
-    if args.model:
-        run(_camera_frames(args.camera, raw=False), ThermalDetector(args.model, source="real"), TemporalPersistenceFilter(), send)
-    else:
-        run(_camera_frames(args.camera, raw=True), HotSpotDetector(args.min_c, args.margin_c), TemporalPersistenceFilter(), send,
-            prepare=temperature_c)
+    recorder = None
+    if args.record:
+        Path(args.record).mkdir(parents=True, exist_ok=True)
+        recorder = ThermalRecorder(Path(args.record) / time.strftime("thermal_%Y%m%dT%H%M%SZ.avi", time.gmtime()))
+    on_frame = recorder.write if recorder else None
+    try:
+        if args.model:
+            run(_camera_frames(args.camera, raw=False), ThermalDetector(args.model, source="real"), TemporalPersistenceFilter(), send,
+                on_frame=on_frame)
+        else:
+            run(_camera_frames(args.camera, raw=True), HotSpotDetector(args.min_c, args.margin_c), TemporalPersistenceFilter(), send,
+                prepare=temperature_c, on_frame=on_frame)
+    finally:
+        if recorder:
+            recorder.close()
     return 0
 
 

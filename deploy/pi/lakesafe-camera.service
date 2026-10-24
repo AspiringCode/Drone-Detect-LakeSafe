@@ -1,0 +1,17 @@
+[Unit]
+Description=LakeSafe visible-light camera recorder (Pi CSI camera -> timestamped .ts segments)
+# Wait for NTP so the burned-in UTC clock matches the thermal recording's.
+Wants=systemd-time-wait-sync.service
+After=time-sync.target
+
+[Service]
+User=pi
+EnvironmentFile=/etc/lakesafe/drone.env
+WorkingDirectory=/home/pi/Drone-Detect-LakeSafe/backend
+ExecStart=/home/pi/Drone-Detect-LakeSafe/backend/.venv/bin/python -m app.devices.pi_camera_record \
+  --out ${LAKESAFE_RECORD} $LAKESAFE_CAMERA_ARGS
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

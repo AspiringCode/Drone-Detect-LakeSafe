@@ -221,3 +221,28 @@ def test_hot_spot_detector_alerts_on_a_swimmer_but_not_on_cold_choppy_water():
     drone_detect.run((_raw_p2pro(water()) for _ in range(10)), HotSpotDetector(), TemporalPersistenceFilter(n_consecutive=3),
                      lambda d: quiet.append(d) or True, clock=lambda: 0.0, prepare=drone_detect.temperature_c)
     assert quiet == []
+
+
+def test_thermal_recorder_saves_the_boxed_palette_view_of_raw_frames(tmp_path):
+    import cv2
+    from app.detection.hotspot import HotSpotDetector
+
+    temps = np.full((192, 256), 12.0)
+    temps[80:86, 100:106] = 31.0  # a swimmer, confirmed from the third frame
+    path = tmp_path / "thermal.avi"
+    recorder, seen = drone_detect.ThermalRecorder(path), []
+    drone_detect.run([_raw_p2pro(temps)] * 4, HotSpotDetector(), TemporalPersistenceFilter(n_consecutive=3),
+                     lambda d: True, prepare=drone_detect.temperature_c,
+                     on_frame=lambda f, c: seen.append(len(c)) or recorder.write(f, c))
+    recorder.close()
+    assert drone_detect.palette_bgr(_raw_p2pro(temps)).shape == (192, 256, 3) and seen == [0, 0, 1, 1]
+    video = cv2.VideoCapture(str(path))
+    assert int(video.get(cv2.CAP_PROP_FRAME_COUNT)) == 4 and int(video.get(cv2.CAP_PROP_FRAME_WIDTH)) == 768
+    video.release()
+
+
+def test_visible_recording_segments_are_named_by_utc_start():
+    from pathlib import Path
+    from app.devices.pi_camera_record import segment_path
+
+    assert segment_path(Path("f"), now=0).name == "visible_19700101T000000Z.ts"
