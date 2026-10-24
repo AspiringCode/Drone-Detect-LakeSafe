@@ -185,3 +185,39 @@ def test_newest_real_alert_rides_the_operations_frame(monkeypatch):
     live_alerts.record(runtime.lake_id, alert)
     frame = main.current_state(runtime)
     assert frame["latest_alert"]["alert_id"] == alert.alert_id and frame["latest_alert"]["source"] == "real"
+
+
+def _raw_p2pro(temps_c: np.ndarray) -> np.ndarray:
+    """Encode a 192x256 temperature frame the way the P2 Pro sends it: palette half, then kelvin x 64 little-endian."""
+    counts = np.round((temps_c + 273.15) * 64).astype(np.uint16)
+    bottom = np.stack([counts & 0xFF, counts >> 8], axis=-1).astype(np.uint8)
+    return np.concatenate([np.zeros_like(bottom), bottom]).reshape(1, -1)  # OpenCV hands raw YUYV back flat
+
+
+def test_temperature_c_decodes_the_raw_bottom_half():
+    temps = np.full((192, 256), 12.0)
+    temps[50, 60] = 33.5
+    out = drone_detect.temperature_c(_raw_p2pro(temps))
+    assert out.shape == (192, 256) and abs(out[0, 0] - 12.0) < 0.02 and abs(out[50, 60] - 33.5) < 0.02
+
+
+def test_hot_spot_detector_alerts_on_a_swimmer_but_not_on_cold_choppy_water():
+    from app.detection.hotspot import HotSpotDetector
+
+    rng = np.random.default_rng(0)
+    water = lambda: 12.0 + rng.normal(0, 1.0, (192, 256))  # noisy 12 C lake
+
+    def with_swimmer(i):
+        frame = water()
+        frame[80:86, 100 + i:106 + i] = 31.0  # a head drifting one pixel per frame
+        return frame
+
+    sent = []
+    drone_detect.run((_raw_p2pro(with_swimmer(i)) for i in range(4)), HotSpotDetector(), TemporalPersistenceFilter(n_consecutive=3),
+                     lambda d: sent.append(d) or True, clock=lambda: 0.0, prepare=drone_detect.temperature_c)
+    assert len(sent) == 1 and sent[0].source == "real" and sent[0].bbox == (102.0, 80.0, 6.0, 6.0) and abs(sent[0].confidence - 0.85) < 0.01  # 7 C over the 24 C floor
+
+    quiet = []
+    drone_detect.run((_raw_p2pro(water()) for _ in range(10)), HotSpotDetector(), TemporalPersistenceFilter(n_consecutive=3),
+                     lambda d: quiet.append(d) or True, clock=lambda: 0.0, prepare=drone_detect.temperature_c)
+    assert quiet == []
