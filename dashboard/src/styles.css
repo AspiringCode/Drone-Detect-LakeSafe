@@ -174,7 +174,7 @@ legend { padding: 0 0.4rem; font-weight: 700; }
 }
 .app-brand { display: inline-flex; align-items: center; gap: 0.5rem; width: fit-content; color: var(--text); text-decoration: none; }
 .app-brand__name { font-size: 1.2rem; font-weight: 750; letter-spacing: -0.04em; }
-.app-brand__mark { width: 0.72rem; height: 0.72rem; border: 2px solid var(--primary); border-radius: 50% 42% 55% 46%; transform: rotate(-18deg); }
+.app-brand__wave { flex: none; font-size: 1.05rem; line-height: 1; }
 .app-nav { align-self: stretch; display: flex; align-items: stretch; gap: 0.35rem; }
 .app-nav__item { position: relative; display: grid; place-items: center; padding: 0 0.85rem; color: var(--text-muted); text-decoration: none; font-size: 0.88rem; font-weight: 650; }
 .app-nav__item.is-active { color: var(--primary-hover); }

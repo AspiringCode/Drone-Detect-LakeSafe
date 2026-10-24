@@ -56,7 +56,7 @@ export function AppHeader({ active, contextLabel, showStationPicker = false, cli
     <header className="app-header">
       <Link className="app-brand" to="/lakes" aria-label="LakeSafe managed lakes">
         <span className="app-brand__name">LakeSafe</span>
-        <span className="app-brand__mark" aria-hidden="true" />
+        <span className="app-brand__wave" aria-hidden="true">🌊</span>
       </Link>
       <nav className="app-nav" aria-label="Primary navigation">
         <Link className={navClass("lakes")} to="/lakes" aria-current={active === "lakes" ? "page" : undefined}>Lakes</Link>

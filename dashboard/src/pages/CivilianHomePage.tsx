@@ -42,7 +42,7 @@ export function CivilianHomePage({ fetcher = fetch }: { fetcher?: PublicFetcher 
   }, [fetcher, attempt, selectedLakeId]);
   const lake = lakes.find((item) => item.lake_id === selectedLakeId) ?? lakes[0];
   return <main className="civilian-page">
-    <header className="civilian-header"><Link className="app-brand" to={principal ? "/lakes" : "/"}><span className="app-brand__name">LakeSafe</span><span className="app-brand__mark" /></Link><nav>{principal ? <Link to="/profile">Profile settings</Link> : <><Link to="/login">Sign in</Link><Link className="button-link" to="/signup">Create account</Link></>}</nav></header>
+    <header className="civilian-header"><Link className="app-brand" to={principal ? "/lakes" : "/"}><span className="app-brand__name">LakeSafe</span><span className="app-brand__wave" aria-hidden="true">🌊</span></Link><nav>{principal ? <Link to="/profile">Profile settings</Link> : <><Link to="/login">Sign in</Link><Link className="button-link" to="/signup">Create account</Link></>}</nav></header>
     <section className="civilian-hero"><h1>Your lake, at a glance</h1><p>Safety notices and published patrol activity for your next visit.</p></section>
     {lakes.length > 0 && <section className="civilian-content civilian-lake-selector"><div className="public-lake-choices" role="group" aria-label="Choose a lake">{lakes.map((item) => <button type="button" className="button-secondary" aria-pressed={lake?.lake_id === item.lake_id} key={item.lake_id} onClick={() => { if (item.lake_id !== lake?.lake_id) { setLoading(true); setError(""); setSelectedLakeId(item.lake_id); } }}>{item.name}</button>)}</div></section>}
     {(loading || error || !lake) && <section className="civilian-content" aria-label="Lake updates" aria-busy={loading}>
