@@ -32,7 +32,8 @@ describe("LakeLiveView", () => {
     view(lakeClient({ name: "Canonical Lake", centroid_lat: 47.5, centroid_lon: -122.1, station_id: "station" }), member(["station.read", "autonomy.manage", "alert.manage"]), fetcher, connectOperational);
     expect(await screen.findByText(/Start a simulation, or assign a registered drone/)).toBeVisible();
     expect(screen.queryByRole("button", { name: "Add simulated drone" })).not.toBeInTheDocument();
-    fireEvent.click(await screen.findByRole("button", { name: "Start simulation" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Start simulation" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Start simulation" }));
     await waitFor(() => expect(fetcher).toHaveBeenCalledWith(expect.stringContaining("/api/lakes/lake-1/simulation/start"), expect.objectContaining({ method: "POST" })));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();  // no real drones, so nothing to ask
     act(() => push({ drones: [sim("lake-1-d0", "cell-0")], conflicts: [], t: 1, simulation_running: true }));
@@ -58,7 +59,8 @@ describe("LakeLiveView", () => {
     });
     view(lakeClient({ name: "Canonical Lake", centroid_lat: 47.5, centroid_lon: -122.1, station_id: "station" }), member(["station.read", "autonomy.manage"]), fetcher);
     expect(await screen.findByText("cell-1")).toBeVisible();  // the real drone's own zone
-    fireEvent.click(await screen.findByRole("button", { name: "Start simulation" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Start simulation" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Start simulation" }));
     expect(screen.getByRole("dialog", { name: "Change real drones’ flight paths?" })).toBeVisible();
     expect(fetcher).not.toHaveBeenCalledWith(expect.stringContaining("/simulation/start"), expect.anything());
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));

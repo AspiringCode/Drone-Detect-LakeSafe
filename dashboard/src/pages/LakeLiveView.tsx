@@ -42,6 +42,8 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
   const [simulationBusy, setSimulationBusy] = useState(false);
   const [simulationError, setSimulationError] = useState<string | null>(null);
   const [askAboutRealDrones, setAskAboutRealDrones] = useState(false);
+  // Start waits for this so the real-drone question is never skipped by an early click.
+  const [registeredChecked, setRegisteredChecked] = useState(false);
   const [operationsDataError, setOperationsDataError] = useState<string | null>(null);
   const [realSafety, setRealSafety] = useState<RealFleetSafetyStatus | null>(null);
   const [realSafetyBusy, setRealSafetyBusy] = useState(false);
@@ -102,14 +104,13 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
   }, [client, lakeId]);
 
   useEffect(() => {
+    setRegisteredChecked(false);
     if (!canReadOperations || !lakeStationId) { setRegistered([]); setRealSafety(null); setOperationsDataError(null); return; }
     let active = true;
-    void Promise.allSettled([loadRegisteredDrones(lakeId, client, fetcher), loadRealFleetSafetyStatus(lakeStationId, lakeId, client, fetcher)]).then(([registeredResult, realSafetyResult]) => {
-      if (!active) return;
-      if (registeredResult.status === "fulfilled") setRegistered(registeredResult.value);
-      else setOperationsDataError("Registered drones could not be loaded. Live telemetry may still be available.");
-      if (realSafetyResult.status === "fulfilled") setRealSafety(realSafetyResult.value);
-    });
+    void loadRegisteredDrones(lakeId, client, fetcher).then((drones) => { if (active) setRegistered(drones); }, () => {
+      if (active) setOperationsDataError("Registered drones could not be loaded. Live telemetry may still be available.");
+    }).finally(() => { if (active) setRegisteredChecked(true); });
+    void loadRealFleetSafetyStatus(lakeStationId, lakeId, client, fetcher).then((status) => { if (active) setRealSafety(status); }, () => {});
     return () => { active = false; };
   }, [canReadOperations, lakeStationId, lakeId, client, fetcher]);
 
@@ -178,7 +179,7 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
                 {canManageAlerts && <button className="button-secondary" onClick={() => void demo()}>Simulate detection</button>}
                 <button className="button-secondary" disabled={simulationBusy} onClick={() => void simulate("simulation/stop")}>Stop simulation</button>
               </> : <>
-                <button className="button-secondary" disabled={simulationBusy} onClick={start}>Start simulation</button>
+                <button className="button-secondary" disabled={simulationBusy || !registeredChecked} onClick={start}>Start simulation</button>
                 {registered.length > 0 && <button className="button-secondary" disabled={simulationBusy} onClick={() => void simulate("zones/regenerate")}>Regenerate zones</button>}
               </>}
             </div>}
