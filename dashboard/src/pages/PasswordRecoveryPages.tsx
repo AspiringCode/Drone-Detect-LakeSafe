@@ -23,7 +23,7 @@ export function ForgotPasswordPage({ client = supabase }: { client?: SupabaseLik
     } catch { setError("Could not send the reset link. Please try again."); }
     finally { pending.current = false; setBusy(false); }
   }
-  return <main className="auth-page"><section className="auth-card"><h1>Reset your password</h1><p>We’ll email a link to choose a new password. Your authenticator will still be required.</p><form onSubmit={submit}><label>Email<input name="email" type="email" autoComplete="email" required /></label>{error && <p className="form-error" role="alert">{error}</p>}{sent && <p role="status">If an account exists for this email, a reset link is on its way. Check your inbox and spam folder.</p>}<button disabled={busy}>{busy ? "Sending…" : "Send reset link"}</button></form><p><Link to={authDestination("/login", returnTo)}>Back to sign in</Link></p></section></main>;
+  return <main className="auth-page"><section className="auth-card"><h1>Reset your password</h1><p>We’ll email a link to choose a new password. If you use an authenticator, you’ll still need it.</p><form onSubmit={submit}><label>Email<input name="email" type="email" autoComplete="email" required /></label>{error && <p className="form-error" role="alert">{error}</p>}{sent && <p role="status">If an account exists for this email, a reset link is on its way. Check your inbox and spam folder.</p>}<button disabled={busy}>{busy ? "Sending…" : "Send reset link"}</button></form><p><Link to={authDestination("/login", returnTo)}>Back to sign in</Link></p></section></main>;
 }
 
 export function ResetPasswordPage({ client = supabase }: { client?: SupabaseLike }) {
