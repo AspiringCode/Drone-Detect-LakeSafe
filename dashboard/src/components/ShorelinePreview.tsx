@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import type { Polygon, MultiPolygon } from "geojson";
 
 export function ShorelinePreview({ geometry, onFailure }: { geometry: Polygon | MultiPolygon; onFailure?: () => void }) {
