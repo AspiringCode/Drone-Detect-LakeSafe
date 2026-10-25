@@ -84,7 +84,7 @@ def create_lake_setup(value: LakeSetupRequest, request: Request, principal: Prin
         require_recent_mfa(principal, timedelta(minutes=10))
     require_rate_limit("lake.create", principal, request, station_id=source)
     try:
-        candidate = selected_lake(value.candidate_id)
+        candidate = selected_lake(value.candidate_id, value.component_index)
     except ShorelineLookupError as exc:
         raise HTTPException(503, str(exc)) from exc
     try:

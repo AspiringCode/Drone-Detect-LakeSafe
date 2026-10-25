@@ -56,16 +56,25 @@ def _official_features(where: str, **parameters) -> list[dict]:
     return payload["features"]
 
 
-def _candidate(feature: dict) -> dict:
+def _candidate(feature: dict, component_index: int = 0) -> dict:
     properties = feature.get("attributes") or feature.get("properties") or {}
     if properties.get("FEAT_TYPE") not in {"Lake or pond", "Impoundment"} or properties.get("WATER") != "Water":
         raise ShorelineLookupError("Source feature is not a lake")
     geometry = esri_shoreline(feature.get("geometry") or {})
-    polygon = shape(geometry)
+    parts = sorted(shape(geometry).geoms, key=lambda part: (-part.area, part.bounds))
+    if not 0 <= component_index < len(parts):
+        raise ShorelineLookupError("This shoreline area is no longer available")
+    polygon = parts[component_index]
+    geometry = {"type": "MultiPolygon", "coordinates": [geometry_part(polygon)]}
     point = polygon.representative_point()
-    return {"candidate_id": int(properties["OBJECTID"]), "name": properties["NAME"],
+    return {"candidate_id": int(properties["OBJECTID"]), "component_index": component_index,
+            "component_count": len(parts), "area_label": ("Lake shoreline" if len(parts) == 1 else "Main waterbody" if component_index == 0 else f"Separate waterbody {component_index + 1}"), "name": properties["NAME"],
             "shoreline": geometry, "centroid_lat": point.y, "centroid_lon": point.x,
             "bounds": list(polygon.bounds), "source": "King County GIS"}
+
+
+def geometry_part(polygon):
+    return _lists([list(polygon.exterior.coords), *[list(ring.coords) for ring in polygon.interiors]])
 
 
 def search_lakes(query: str) -> list[dict]:
@@ -78,20 +87,22 @@ def search_lakes(query: str) -> list[dict]:
         candidates = []
         for feature in features[:8]:
             try:
-                candidates.append(_candidate(feature))
+                first = _candidate(feature)
+                candidates.append(first)
+                candidates.extend(_candidate(feature, index) for index in range(1, min(first["component_count"], 4)))
             except (ValueError, KeyError, TypeError):
                 continue
-        return candidates
+        return candidates[:8]
     except (httpx.HTTPError, ValueError, TypeError, AttributeError, KeyError) as exc:
         raise ShorelineLookupError("Lake search is unavailable. Try again shortly.") from exc
 
 
-def selected_lake(candidate_id: int) -> dict:
+def selected_lake(candidate_id: int, component_index: int = 0) -> dict:
     try:
         features = _official_features(f"OBJECTID = {int(candidate_id)} AND WATER = 'Water'")
         if len(features) != 1:
             raise ShorelineLookupError("Lake selection is no longer available. Search again.")
-        return _candidate(features[0])
+        return _candidate(features[0], component_index)
     except (httpx.HTTPError, ValueError, TypeError, AttributeError, KeyError) as exc:
         raise ShorelineLookupError("Lake selection could not be verified. Search again.") from exc
 

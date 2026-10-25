@@ -19,7 +19,7 @@ def client(monkeypatch, role=StationRole.STATION_ADMIN, recent=True):
         calls.append((source,target,name,lake))
         return {"lake_id":lake.lake_id,"station_id":target or "new-station","station_created":target is None}
     monkeypatch.setattr(routes,"get_workflow_repository",lambda:SimpleNamespace(create_lake_workspace=create))
-    monkeypatch.setattr(routes,"selected_lake",lambda candidate_id:{"name":"Lake Washington","centroid_lat":47.64,"centroid_lon":-122.258,"shoreline":{"type":"MultiPolygon","coordinates":[]}})
+    monkeypatch.setattr(routes,"selected_lake",lambda candidate_id,component_index:{"name":"Lake Washington","centroid_lat":47.64,"centroid_lon":-122.258,"shoreline":{"type":"MultiPolygon","coordinates":[]}})
     monkeypatch.setattr(routes,"search_lakes",lambda query:[{"candidate_id":13645,"name":"Lake Washington"}])
     return TestClient(app),calls
 

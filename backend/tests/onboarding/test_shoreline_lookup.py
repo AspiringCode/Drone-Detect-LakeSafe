@@ -89,3 +89,17 @@ def test_name_search_uses_official_ids_and_keeps_duplicate_names(monkeypatch):
 
 def test_name_search_rejects_sql_wildcards():
     with pytest.raises(ShorelineLookupError): shoreline_lookup.search_lakes("%'; DROP")
+
+
+def test_disconnected_official_water_areas_are_explicit_separate_choices():
+    from shapely.geometry import shape
+    large = [[0,0],[0,5],[5,5],[5,0],[0,0]]
+    small = [[10,0],[10,1],[11,1],[11,0],[10,0]]
+    value = {"attributes":{"OBJECTID":1,"NAME":"Lake Washington","FEAT_TYPE":"Lake or pond","WATER":"Water"},"geometry":{"rings":[small,large]}}
+    main = shoreline_lookup._candidate(value)
+    detached = shoreline_lookup._candidate(value,1)
+    assert main["area_label"] == "Main waterbody" and main["component_count"] == 2
+    assert detached["area_label"] == "Separate waterbody 2"
+    assert len(shape(main["shoreline"]).geoms) == 1 and shape(main["shoreline"]).area == 25
+    assert shape(detached["shoreline"]).area == 1
+    with pytest.raises(ShorelineLookupError): shoreline_lookup._candidate(value,2)

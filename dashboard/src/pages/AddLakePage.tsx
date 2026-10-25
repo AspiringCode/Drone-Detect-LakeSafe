@@ -9,7 +9,7 @@ import { apiRequest } from "../lib/apiClient";
 import { supabase } from "../lib/supabase";
 import "./website-touchups.css";
 
-type Candidate = { candidate_id: number; name: string; shoreline: Polygon | MultiPolygon; source: string };
+type Candidate = { candidate_id: number; component_index: number; area_label: string; name: string; shoreline: Polygon | MultiPolygon; source: string };
 export function AddLakePage() {
   const { stationId = "" } = useParams();
   const navigate = useNavigate();
@@ -51,7 +51,7 @@ export function AddLakePage() {
     try {
       const result = await apiRequest<{ lake_id: string; station_id: string }>("/api/lake-setups", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ candidate_id: selected.candidate_id, ...(mode === "new" ? { new_station_name: stationName.trim() } : { station_id: destination }) }),
+        body: JSON.stringify({ candidate_id: selected.candidate_id, component_index: selected.component_index, ...(mode === "new" ? { new_station_name: stationName.trim() } : { station_id: destination }) }),
       }, supabase);
       setCreated(result);
       try { await context?.refresh(); }
@@ -65,9 +65,9 @@ export function AddLakePage() {
     <section className="touch-panel"><h2>Find your lake</h2><p>Search by name. Shoreline search currently covers King County, Washington.</p>
       <form onSubmit={event => void search(event)}><label>Lake name<input name="name" value={query} minLength={2} maxLength={100} required disabled={busy || Boolean(created)} placeholder="e.g. Lake Washington" onChange={event => { setQuery(event.target.value); setSelected(null); setCandidates([]); setSearched(false); }}/></label><button disabled={busy || Boolean(created)}>{busy ? "Working..." : "Search lakes"}</button></form>
       {searched && !candidates.length && <p role="status">No matching shoreline was found. Try another part of the name, or check that the lake is in King County.</p>}
-      {!!candidates.length && <fieldset className="lake-search-results" disabled={busy || Boolean(created)}><legend>Select a shoreline to review</legend>{candidates.map(candidate => <label className="choice" key={candidate.candidate_id}><input type="radio" name="candidate" checked={selected?.candidate_id === candidate.candidate_id} onChange={() => { setSelected(candidate); setStationName(`${candidate.name} station`); setError(""); }}/><span><strong>{candidate.name}</strong><span className="field-help"> {candidate.source}</span></span></label>)}</fieldset>}
+      {!!candidates.length && <fieldset className="lake-search-results" disabled={busy || Boolean(created)}><legend>Select a shoreline to review</legend>{candidates.map(candidate => <label className="choice" key={`${candidate.candidate_id}-${candidate.component_index}`}><input type="radio" name="candidate" checked={selected?.candidate_id === candidate.candidate_id && selected?.component_index === candidate.component_index} onChange={() => { setSelected(candidate); setStationName(`${candidate.name} station`); setError(""); }}/><span><strong>{candidate.name}</strong><span className="field-help"> {candidate.source} - {candidate.area_label}</span></span></label>)}</fieldset>}
     </section>
-    {selected && <div className="workflow-grid lake-setup-review"><section className="touch-panel"><h2>Review {selected.name}</h2><ShorelinePreview geometry={selected.shoreline} onFailure={previewFailed}/><p className="field-help">Check the shoreline before adding it. Coverage planning starts after creation.</p></section>
+    {selected && <div className="workflow-grid lake-setup-review"><section className="touch-panel"><h2>Review {selected.name}</h2><ShorelinePreview geometry={selected.shoreline} onFailure={previewFailed}/><p className="field-help">{selected.area_label}. Disconnected water areas are listed separately.</p><p className="field-help">Check the shoreline before adding it. Coverage planning starts after creation.</p></section>
       <section className="touch-panel"><h2>Choose a station</h2><form onSubmit={event => void create(event)}><fieldset disabled={busy || Boolean(created)}><legend>Where should this lake belong?</legend><label className="choice"><input type="radio" name="destination" checked={mode === "existing"} onChange={() => setMode("existing")}/>Existing station</label><label className="choice"><input type="radio" name="destination" checked={mode === "new"} onChange={() => setMode("new")}/>New station for this lake</label>
       {mode === "existing" ? <label>Station<select value={destination} onChange={event => setDestination(event.target.value)} required>{admins.map(item => <option key={item.station_id} value={item.station_id}>{item.station_name}</option>)}</select></label> : <><label>New station name<input value={stationName} onChange={event => setStationName(event.target.value)} minLength={2} maxLength={160} required/></label><p className="field-help">You will be the administrator of the new station. Other members must be invited or approved.</p></>}
       <p className="field-help">This creates an operational workspace. It does not publish a public lake page.</p><button disabled={busy || Boolean(created)}>{busy ? "Creating..." : mode === "new" ? "Create station and add lake" : "Add lake to station"}</button></fieldset></form></section></div>}

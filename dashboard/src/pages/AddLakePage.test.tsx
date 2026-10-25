@@ -7,7 +7,7 @@ vi.mock("../lib/apiClient", () => ({ apiRequest: state.request }));
 vi.mock("../auth/PrincipalProvider", () => ({ useOptionalPrincipal: () => ({ principal: state.principal, refresh: state.refresh }) }));
 vi.mock("../components/AppHeader", () => ({ AppHeader: () => <header/> }));
 vi.mock("../components/ShorelinePreview", () => ({ ShorelinePreview: ({onFailure}: {onFailure:()=>void}) => <div role="img" aria-label="Shoreline preview"><button type="button" onClick={onFailure}>Drawing failure</button></div> }));
-const candidate = {candidate_id:13645,name:"Lake Washington",source:"King County GIS",shoreline:{type:"Polygon",coordinates:[]}};
+const candidate = {candidate_id:13645,component_index:0,area_label:"Main waterbody",name:"Lake Washington",source:"King County GIS",shoreline:{type:"Polygon",coordinates:[]}};
 function page() {
   render(<MemoryRouter initialEntries={["/lakes/new"]}><Routes><Route path="/lakes/new" element={<AddLakePage/>}/><Route path="/lakes/:id" element={<p>Opened lake</p>}/></Routes></MemoryRouter>);
   fireEvent.change(screen.getByLabelText("Lake name"),{target:{value:"Washington"}});
@@ -37,7 +37,7 @@ it("creates in an existing station using only the verified candidate ID",async()
   state.request.mockResolvedValueOnce({candidates:[candidate]}).mockResolvedValueOnce({lake_id:"lake-created",station_id:"station-1"});page();await selectLake();
   fireEvent.click(screen.getByRole("button",{name:"Add lake to station"}));
   expect(await screen.findByText("Opened lake")).toBeVisible();
-  expect(JSON.parse(state.request.mock.calls[1][1].body)).toEqual({candidate_id:13645,station_id:"station-1"});
+  expect(JSON.parse(state.request.mock.calls[1][1].body)).toEqual({candidate_id:13645,component_index:0,station_id:"station-1"});
 });
 it("offers a separate station and refreshes its new administrator membership",async()=>{
   state.request.mockResolvedValueOnce({candidates:[candidate]}).mockResolvedValueOnce({lake_id:"lake-created",station_id:"station-new"});
@@ -46,5 +46,5 @@ it("offers a separate station and refreshes its new administrator membership",as
   fireEvent.change(screen.getByLabelText("New station name"),{target:{value:"Washington station"}});
   fireEvent.click(screen.getByRole("button",{name:"Create station and add lake"}));
   expect(await screen.findByText("Opened lake")).toBeVisible();
-  expect(JSON.parse(state.request.mock.calls[1][1].body)).toEqual({candidate_id:13645,new_station_name:"Washington station"});
+  expect(JSON.parse(state.request.mock.calls[1][1].body)).toEqual({candidate_id:13645,component_index:0,new_station_name:"Washington station"});
 });

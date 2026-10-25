@@ -7,6 +7,7 @@ from uuid import UUID
 class LakeSetupRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     candidate_id: int = Field(gt=0)
+    component_index: int = Field(default=0, ge=0, le=100)
     station_id: UUID | None = None
     new_station_name: str | None = Field(default=None, min_length=2, max_length=160)
 
