@@ -68,7 +68,7 @@ describe("Phase 2 persona controls", () => {
   });
 
   it("shows station administration controls only for an active station administrator", async () => {
-    request.mockResolvedValueOnce({ requests: [] });
+    request.mockImplementation(async (path: string) => path.endsWith("/members") ? {members:[]} : {requests:[]});
     workspace({ ...verifiedUnassigned, memberships: [{ station_id: "station-1", station_name: "Station One", status: "active", roles: ["station_admin"], capabilities: ["member.manage", "lake.create"] }] }, <StationAdminPage />, "/stations/station-1/admin");
     expect((await screen.findAllByRole("heading", { name: "Station One" }))[0].tagName).toBe("H1");
     expect(screen.getByRole("link", { name: /add lake/i })).toHaveAttribute("href", "/stations/station-1/lakes/new");

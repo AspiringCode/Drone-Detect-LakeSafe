@@ -66,7 +66,8 @@ describe("operations data pages", () => {
     expect(await screen.findByRole("heading", { name: "Operational reports" })).toBeInTheDocument();
     expect(await screen.findAllByText("1", { selector: ".report-metric__value" })).toHaveLength(3);
     expect(screen.getByText("Total alerts")).toBeInTheDocument();
-    expect(screen.getByText("Confirmed responses")).toBeInTheDocument();
+    expect(screen.getByText("Confirmed detections")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Refresh reports" })).toBeVisible();
     expect(screen.getByText("820 ms")).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "Incident records" })).toHaveTextContent("Lake Sammamish");
     expect(screen.getByText(/current available records, not a historical reporting period/i)).toBeInTheDocument();

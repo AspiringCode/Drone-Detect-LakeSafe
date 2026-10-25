@@ -49,3 +49,21 @@ class JoinDecisionInput(BaseModel):
         if not value or any(role not in supported for role in value):
             raise ValueError("Unsupported station role")
         return tuple(sorted(set(value)))
+
+
+class MemberChangeInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    roles: tuple[str, ...]
+    status: str = "active"
+
+    @field_validator("roles")
+    @classmethod
+    def valid_roles(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        return JoinDecisionInput.valid_roles(value)
+
+    @field_validator("status")
+    @classmethod
+    def valid_status(cls, value: str) -> str:
+        if value not in {"active", "suspended", "revoked"}:
+            raise ValueError("Unsupported membership status")
+        return value

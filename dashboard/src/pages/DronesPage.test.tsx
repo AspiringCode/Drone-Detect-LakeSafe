@@ -42,7 +42,10 @@ describe("DronesPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Place test marker" }));
     await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("/api/stations/st-1/inventory/d-1/test-position", expect.objectContaining({ body: JSON.stringify({ lat: 47.592, lon: -122.032 }) }), client));
     fireEvent.click(screen.getByRole("button", { name: "Send patrol" }));
-    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("/api/stations/st-1/inventory/d-1/patrol", expect.objectContaining({ method: "POST" }), client));
+    expect(await screen.findByRole("dialog", { name: "Review patrol mission" })).toBeInTheDocument();
+    expect(apiRequest).not.toHaveBeenCalledWith("/api/stations/st-1/inventory/d-1/patrol", expect.anything(), client);
+    fireEvent.click(screen.getByRole("button", { name: "Close mission review" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("keeps setup instructions off the registry", async () => {
@@ -99,16 +102,25 @@ describe("DronesPage", () => {
   });
 
   it("keeps the registry visible when an action fails and confirms before retiring", async () => {
-    apiRequest.mockImplementation((path: string) => path.endsWith("/patrol") ? Promise.reject(new Error("The drone's credential is not active")) : Promise.resolve({ drones: [drone] }));
-    const confirm = vi.fn().mockReturnValue(false);
-    vi.stubGlobal("confirm", confirm);
+    apiRequest.mockImplementation((path: string) => path.endsWith("/test-position") ? Promise.reject(new Error("The drone's credential is not active")) : Promise.resolve({ drones: [drone] }));
     page();
-    fireEvent.click(await screen.findByRole("button", { name: "Send patrol" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Place test marker" }));
     expect(await screen.findByText("The drone's credential is not active")).toBeInTheDocument();
     expect(screen.getByLabelText("Lake for SN-1")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Retire" }));
-    expect(confirm).toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "Retire drone" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(apiRequest).not.toHaveBeenCalledWith(expect.stringContaining("/retire"), expect.anything(), client);
+  });
+
+  it("refreshes a newly connected drone without navigating away", async () => {
+    let connected = false;
+    apiRequest.mockImplementation(() => Promise.resolve({ drones: [{ ...drone, last_heartbeat_at: connected ? new Date().toISOString() : null }] }));
+    page();
+    await screen.findByText(/Awaiting first heartbeat/);
+    connected = true;
+    fireEvent.click(screen.getByRole("button", { name: "Refresh fleet" }));
+    expect(await screen.findByText(/connected · healthy · 90%/)).toBeInTheDocument();
   });
 
   it("downloads a Mission Planner file for a chosen zone and explicit home", async () => {

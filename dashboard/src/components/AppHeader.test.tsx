@@ -60,13 +60,13 @@ describe("AppHeader", () => {
     expect(screen.getByRole("combobox", { name: "Active station" })).toBeInTheDocument();
   });
 
-  it("signs the operator out and returns to login", async () => {
+  it("signs the operator out and returns to public home", async () => {
     const fakeClient = client();
     render(
       <MemoryRouter initialEntries={["/lakes"]}>
         <Routes>
           <Route path="/lakes" element={<AppHeader active="lakes" client={fakeClient as never} />} />
-          <Route path="/login" element={<p>Signed out</p>} />
+          <Route path="/" element={<p>Signed out</p>} />
         </Routes>
       </MemoryRouter>,
     );

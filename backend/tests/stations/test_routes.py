@@ -105,9 +105,9 @@ def test_station_search_rejects_unimplemented_state_filter():
 @pytest.mark.parametrize(("roles", "expected"), [
     (frozenset({StationRole.VIEWER}), {"station.read"}),
     (frozenset({StationRole.DISPATCHER}), {"station.read", "alert.manage"}),
-    (frozenset({StationRole.SAFETY_SUPERVISOR}), {"station.read", "autonomy.manage"}),
+    (frozenset({StationRole.SAFETY_SUPERVISOR}), {"station.read", "autonomy.manage", "fleet_safety.manage"}),
     (frozenset({StationRole.STATION_ADMIN}), {"station.read", "alert.manage", "lake.create", "inventory.manage", "autonomy.manage", "member.manage"}),
-    (frozenset({StationRole.DISPATCHER, StationRole.SAFETY_SUPERVISOR}), {"station.read", "alert.manage", "autonomy.manage"}),
+    (frozenset({StationRole.DISPATCHER, StationRole.SAFETY_SUPERVISOR}), {"station.read", "alert.manage", "autonomy.manage", "fleet_safety.manage"}),
 ])
 def test_me_capabilities_mirror_additive_policy_roles(monkeypatch, roles, expected):
     principal = Principal("user-1", "officer@example.gov", "aal2", "officer", "verified", (

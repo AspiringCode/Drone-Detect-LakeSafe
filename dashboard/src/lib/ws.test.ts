@@ -14,7 +14,7 @@ class FakeWebSocket {
 describe("connectPositions", () => {
   it("parses incoming JSON state and calls onState", () => {
     let created: FakeWebSocket | null = null;
-    const Ctor = vi.fn((url: string) => {
+    const Ctor = vi.fn(function (url: string) {
       created = new FakeWebSocket(url);
       return created;
     });
@@ -44,7 +44,7 @@ describe("connectPositions", () => {
 
   it("returns an unsubscribe function that closes the socket", () => {
     let created: FakeWebSocket | null = null;
-    const Ctor = vi.fn((url: string) => {
+    const Ctor = vi.fn(function (url: string) {
       created = new FakeWebSocket(url);
       return created;
     });
@@ -63,7 +63,7 @@ describe("connectPositions", () => {
 describe("connectOperationalPositions", () => {
   type Socket = FakeWebSocket & { onclose: (() => void) | null; onopen: (() => void) | null };
   const sockets: Socket[] = [];
-  const Ctor = vi.fn((url: string, protocols: string) => { const socket = new FakeWebSocket(url, protocols) as Socket; sockets.push(socket); return socket; }) as unknown as typeof WebSocket;
+  const Ctor = vi.fn(function (url: string, protocols: string) { const socket = new FakeWebSocket(url, protocols) as Socket; sockets.push(socket); return socket; }) as unknown as typeof WebSocket;
 
   it("sends its bearer token only through the WebSocket subprotocol", async () => {
     sockets.length = 0;

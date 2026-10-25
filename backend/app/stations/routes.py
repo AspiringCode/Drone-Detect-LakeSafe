@@ -6,12 +6,12 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
-from app.access.policy import Permission, require_station_access
+from app.access.policy import Permission, require_station_access, require_recent_mfa
 from app.access.principal import Principal, get_principal
 from app.stations.models import InvitationCreate, JoinRequestCreate, JoinReviewCreate, StationRequestCreate
 from app.stations.repository import WorkflowConflict, get_workflow_repository
 from app.rate_limits import require_rate_limit
-from app.stations.schemas import InvitationAcceptInput, InvitationInput, JoinDecisionInput, StationRequestInput
+from app.stations.schemas import InvitationAcceptInput, InvitationInput, JoinDecisionInput, StationRequestInput, MemberChangeInput
 
 router = APIRouter(prefix="/api", tags=["stations"])
 
@@ -25,7 +25,7 @@ def _capabilities(membership) -> list[str]:
     role_capabilities = {
         "viewer": {"station.read"},
         "dispatcher": {"station.read", "alert.manage"},
-        "safety_supervisor": {"station.read", "autonomy.manage"},
+        "safety_supervisor": {"station.read", "autonomy.manage", "fleet_safety.manage"},
         "station_admin": {"station.read", "alert.manage", "lake.create", "inventory.manage", "autonomy.manage", "member.manage"},
     }
     values = set()
@@ -70,6 +70,30 @@ def create_station_request(value: StationRequestInput, principal: Principal = De
 def my_station_requests(principal: Principal = Depends(get_principal)) -> dict:
     _require_verified(principal)
     return {"requests": [item.__dict__ for item in get_workflow_repository().list_station_requests_for_user(principal.user_id)]}
+
+
+@router.get("/station-join-requests/mine")
+def my_join_requests(principal: Principal = Depends(get_principal)) -> dict:
+    _require_verified(principal)
+    return {"requests": get_workflow_repository().list_my_join_requests(principal.user_id)}
+
+
+@router.get("/stations/{station_id}/members")
+def list_members(station_id: str, principal: Principal = Depends(get_principal)) -> dict:
+    require_station_access(principal, station_id, Permission.MANAGE_MEMBERS)
+    return {"members": get_workflow_repository().list_members(station_id)}
+
+
+@router.patch("/stations/{station_id}/members/{membership_id}")
+def change_member(station_id: str, membership_id: str, value: MemberChangeInput, request: Request, principal: Principal = Depends(get_principal)) -> dict:
+    require_station_access(principal, station_id, Permission.MANAGE_MEMBERS)
+    if not principal.judge_demo_access:
+        require_recent_mfa(principal, timedelta(minutes=10))
+    require_rate_limit("station.member.change", principal, request, station_id=station_id)
+    try:
+        return get_workflow_repository().change_member(station_id, membership_id, principal.user_id, value.roles, value.status)
+    except WorkflowConflict as exc:
+        raise HTTPException(409, "Membership could not be changed. Keep an active station administrator and retry.") from exc
 
 
 @router.post("/stations/{station_id}/join-requests", status_code=status.HTTP_201_CREATED)

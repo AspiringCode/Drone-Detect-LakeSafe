@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+from threading import RLock
 from contextlib import asynccontextmanager
 from pathlib import Path
 from time import monotonic
 from uuid import uuid4
 from dataclasses import asdict, dataclass, field, is_dataclass, replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Callable, Literal
 
 import httpx
@@ -17,7 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from supabase import create_client
 
 from app.auth import verify_supabase_jwt
-from app.access.policy import Permission, require_station_access
+from app.access.policy import Permission, require_recent_mfa, require_station_access
 from app.access.principal import Principal, _bearer_token, principal_from_claims
 from app.access.repository import ACCESS_REPOSITORY_ERRORS, get_access_repository
 from app.config import CORS_ALLOWED_ORIGINS, SUPABASE_KEY, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL
@@ -28,6 +29,8 @@ from app.models import (
     Detection, Drone, DroneStatus, LatLon, RiskPointProvenance, RiskZone,
 )
 from app.pipeline.alerts import AlertRepository, InMemoryBackend, assemble_alert
+from app.pipeline.alert_review import AlertReviewUnavailable, get_alert_review_repository
+from app.lakes.runtime_repository import get_lake_runtime_repository, zones_from_plan
 from app.pipeline.ws import ConnectionHub, tick_loop
 from app.risk_zones.heatmap import zones_to_geojson
 from app.lakes.catalog import SUPPORTED_LAKE_IDS, load_reviewed_lake
@@ -64,6 +67,7 @@ WS_REVALIDATION_CLOCK = monotonic
 async def _lifespan(application: FastAPI):
     # One lifespan owns every long-running task. This avoids duplicated loops
     # under TestClient and makes shutdown cancellation deterministic.
+    application.state.runtime_loop = asyncio.get_running_loop()
     application.state.tick_tasks = {
         lake_id: asyncio.create_task(
             tick_loop(runtime.engine, runtime.hub, _jsonable, interval=TICK_INTERVAL_S,
@@ -98,6 +102,7 @@ async def _lifespan(application: FastAPI):
             except asyncio.CancelledError:
                 pass
         application.state.tick_tasks = {}
+        application.state.runtime_loop = None
         device_task = getattr(application.state, "device_heartbeat_task", None)
         if device_task is not None:
             device_task.cancel()
@@ -158,6 +163,7 @@ class LakeRuntime:
     real_assignments: dict[str, str] = field(default_factory=dict)
     # Set while a simulation runs with real drones left unaffected: the layout they keep flying.
     real_zones: list | None = None
+    reviewed_alerts: dict[str, str] = field(default_factory=dict)
 
 
 DEFAULT_PATROL_DRONES = 4
@@ -359,11 +365,69 @@ def _jsonable(value):
     return value
 
 
+def stored_plan_zones(zones: list[RiskZone], patrol_drones: int) -> list[RiskZone]:
+    # An active plan is immutable. A different capacity needs a new validated
+    # plan from the setup worker; never pretend the existing layout was rebuilt.
+    if patrol_drones != len(zones):
+        raise RiskDataUnavailable("stored_plan_capacity_changed")
+    return list(zones)
+
+
+_runtime_lock = RLock()
+
+
+def _start_runtime_tick(runtime: LakeRuntime) -> None:
+    tasks = getattr(app.state, "tick_tasks", {})
+    task = tasks.get(runtime.lake_id)
+    if task is None or task.done():
+        tasks[runtime.lake_id] = asyncio.create_task(tick_loop(
+            runtime.engine, runtime.hub, _jsonable, interval=TICK_INTERVAL_S,
+            decorate=lambda state: live_state(runtime, state),
+        ))
+        app.state.tick_tasks = tasks
+
+
 def get_runtime(lake_id: str) -> LakeRuntime:
-    runtime = lake_runtimes.get(lake_id)
-    if runtime is None:
-        raise HTTPException(status_code=404, detail="Lake runtime not found")
-    return runtime
+    with _runtime_lock:
+        runtime = lake_runtimes.get(lake_id)
+        if runtime is not None:
+            return runtime
+        try:
+            context = get_lake_runtime_repository().runtime_context(lake_id)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=404, detail="Lake runtime not found") from exc
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="Lake setup service is unavailable") from exc
+        if context is None:
+            raise HTTPException(status_code=404, detail="Lake runtime not found")
+        if not context.get("plan_id"):
+            raise HTTPException(status_code=409, detail={
+                "message": "Lake setup is not ready", "setup_status": context.get("setup_status", "queued"),
+            })
+        try:
+            zones = zones_from_plan(context)
+        except (ValueError, KeyError, TypeError) as exc:
+            raise HTTPException(status_code=409, detail={"message": "Stored lake plan is invalid", "setup_status": "failed"}) from exc
+        backend = InMemoryBackend()
+        # This point initializes simulation only; physical missions require an
+        # explicitly reviewed launch/home coordinate in the mission workflow.
+        simulation_origin = zones[0].seed or zones[0].centroid
+        runtime = LakeRuntime(
+            lake_id, context["name"], zones,
+            SimulationEngine([], zones, shore_stations=[simulation_origin]),
+            AlertRepository(backend), backend, ConnectionHub(), ConnectionHub(), simulation_origin,
+            zone_builder=lambda patrol_drones: stored_plan_zones(zones, patrol_drones),
+        )
+        lake_runtimes[lake_id] = runtime
+        loop = getattr(app.state, "runtime_loop", None)
+        if loop is not None and loop.is_running():
+            loop.call_soon_threadsafe(_start_runtime_tick, runtime)
+        try:
+            for alert in get_device_repository().active_real_alerts(lake_id):
+                runtime.alerts.save(alert)
+        except DeviceRepositoryError:
+            pass
+        return runtime
 
 
 def get_current_principal(authorization: str | None = Header(default=None)) -> Principal:
@@ -379,9 +443,6 @@ def get_current_principal(authorization: str | None = Header(default=None)) -> P
 def require_lake_permission(
     lake_id: str, principal: Principal, permission: Permission
 ) -> None:
-    # Check the in-memory demo lake first so unknown and cross-station IDs use
-    # the same response and do not disclose station ownership.
-    get_runtime(lake_id)
     try:
         station_id = get_access_repository().lake_station_id(lake_id)
     except ACCESS_REPOSITORY_ERRORS as exc:
@@ -403,11 +464,14 @@ def require_lake_permission(
 def authorize_lake(
     lake_id: str, authorization: str | None, permission: Permission
 ) -> Principal:
-    # Resolve the resource before authentication so an unknown lake and a lake
-    # outside the caller's station are indistinguishable.
-    get_runtime(lake_id)
+    try:
+        if get_access_repository().lake_station_id(lake_id) is None:
+            raise HTTPException(status_code=404, detail="Lake not found")
+    except ACCESS_REPOSITORY_ERRORS as exc:
+        raise HTTPException(status_code=503, detail="Authorization service is unavailable") from exc
     return_principal = get_current_principal(authorization)
     require_lake_permission(lake_id, return_principal, permission)
+    get_runtime(lake_id)
     return return_principal
 
 
@@ -439,7 +503,7 @@ def _drain_real_alerts(runtime: LakeRuntime) -> list:
 def live_state(runtime: LakeRuntime, state: dict) -> dict:
     """Operations-only frame: simulation plus real drones, and the newest alert so a drone detection shows without a reload."""
     alerts = _drain_real_alerts(runtime)
-    return {**live_positions.with_real_drones(runtime.lake_id, state), "latest_alert": alerts[-1] if alerts else None,
+    return {**live_positions.with_real_drones(runtime.lake_id, state), "latest_alert": {**_jsonable(alerts[-1]), "reviewed_at": runtime.reviewed_alerts.get(alerts[-1].alert_id)} if alerts else None,
             "simulation_running": bool(runtime.engine.drones)}
 
 
@@ -517,6 +581,27 @@ def create_organization(
     raise HTTPException(status_code=410, detail="Use the verified station workflow")
 
 
+@app.get("/api/lakes/{lake_id}/setup-status")
+def get_lake_setup_status(lake_id: str, authorization: str | None = Header(default=None)):
+    principal = get_current_principal(authorization)
+    require_lake_permission(lake_id, principal, Permission.READ_OPERATIONS)
+    if lake_id in SUPPORTED_LAKE_IDS or lake_id == "test-drone-field":
+        return {"lake_id": lake_id, "setup_status": "ready"}
+    try:
+        context = get_lake_runtime_repository().runtime_context(lake_id)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Lake setup status is unavailable") from exc
+    if context is None:
+        raise HTTPException(status_code=404, detail="Lake not found")
+    if context["setup_status"] == "ready":
+        try:
+            zones_from_plan(context)
+        except (ValueError, KeyError, TypeError):
+            return {"lake_id": lake_id, "setup_status": "failed", "plan_id": context.get("plan_id")}
+    return {"lake_id": lake_id, "setup_status": context["setup_status"],
+            "refresh_status": context.get("refresh_status"), "plan_id": context.get("plan_id")}
+
+
 @app.get("/api/lakes/{lake_id}/riskmap")
 def get_riskmap(lake_id: str, authorization: str | None = Header(default=None)):
     authorize_lake(lake_id, authorization, Permission.READ_OPERATIONS)
@@ -532,7 +617,14 @@ def get_drones(lake_id: str, authorization: str | None = Header(default=None)):
 @app.get("/api/lakes/{lake_id}/alerts")
 def get_alerts(lake_id: str, authorization: str | None = Header(default=None)):
     authorize_lake(lake_id, authorization, Permission.READ_OPERATIONS)
-    return _jsonable(_drain_real_alerts(get_runtime(lake_id)))
+    runtime = get_runtime(lake_id)
+    alerts = _drain_real_alerts(runtime)
+    if any(alert.source == "real" for alert in alerts):
+        try:
+            runtime.reviewed_alerts.update(get_alert_review_repository().reviewed_alerts(lake_id))
+        except AlertReviewUnavailable as exc:
+            raise HTTPException(status_code=503, detail="Alert review status is unavailable") from exc
+    return [{**_jsonable(alert), "reviewed_at": runtime.reviewed_alerts.get(alert.alert_id)} for alert in alerts]
 
 
 @app.post("/api/lakes/{lake_id}/demo/trigger")
@@ -586,12 +678,14 @@ class StartSimulationRequest(BaseModel):
 @app.post("/api/lakes/{lake_id}/simulation/start")
 def start_simulation(lake_id: str, value: StartSimulationRequest | None = None, authorization: str | None = Header(default=None)):
     """Start a session with one simulated drone; more are added one at a time."""
-    authorize_lake(lake_id, authorization, Permission.CHANGE_SIMULATED_CIRCULATION)
+    principal = authorize_lake(lake_id, authorization, Permission.CHANGE_SIMULATED_CIRCULATION)
     runtime = get_runtime(lake_id)
     if runtime.engine.drones:
         return _simulation_status(runtime)
     real = _real_drone_ids(lake_id)
     if real and (value or StartSimulationRequest()).real_drones == "replan":
+        require_lake_permission(lake_id, principal, Permission.CHANGE_FLEET_SAFETY)
+        require_recent_mfa(principal, timedelta(minutes=10))
         zones = _divide(runtime, 1 + len(real))
         runtime.zones, runtime.real_zones = zones, None
         runtime.engine.set_fleet(simulated_fleet(runtime, zones[:1]), zones[:1])
@@ -644,9 +738,12 @@ def registered_drones(lake_id: str, authorization: str | None = Header(default=N
 @app.post("/api/lakes/{lake_id}/zones/regenerate")
 def regenerate_zones(lake_id: str, authorization: str | None = Header(default=None)):
     """Re-divide the lake: one zone per simulated drone, plus one per real drone unless they are left unaffected."""
-    authorize_lake(lake_id, authorization, Permission.CHANGE_SIMULATED_CIRCULATION)
+    principal = authorize_lake(lake_id, authorization, Permission.CHANGE_SIMULATED_CIRCULATION)
     runtime = get_runtime(lake_id)
     real = [] if runtime.real_zones is not None else _real_drone_ids(lake_id)
+    if real:
+        require_lake_permission(lake_id, principal, Permission.CHANGE_FLEET_SAFETY)
+        require_recent_mfa(principal, timedelta(minutes=10))
     simulated = len(runtime.engine.drones)
     if simulated + len(real) == 0:
         raise HTTPException(status_code=409, detail="Start a simulation or assign a drone to this lake first")
@@ -662,16 +759,32 @@ def regenerate_zones(lake_id: str, authorization: str | None = Header(default=No
     return _simulation_status(runtime)
 
 
-@app.post("/api/lakes/{lake_id}/alerts/{alert_id}/escalate")
-def escalate_alert(lake_id: str, alert_id: str, authorization: str | None = Header(default=None)):
-    authorize_lake(lake_id, authorization, Permission.MANAGE_ALERTS)
-    return {"alert_id": alert_id, "escalated": True}
+@app.post("/api/lakes/{lake_id}/alerts/{alert_id}/escalate", deprecated=True)
+@app.post("/api/lakes/{lake_id}/alerts/{alert_id}/review")
+def review_alert(lake_id: str, alert_id: str, authorization: str | None = Header(default=None)):
+    principal = authorize_lake(lake_id, authorization, Permission.MANAGE_ALERTS)
+    runtime = get_runtime(lake_id)
+    _drain_real_alerts(runtime)
+    alert = runtime.alert_backend.get(alert_id)
+    if alert is not None and alert.source == "simulated":
+        already = alert_id in runtime.reviewed_alerts
+        timestamp = runtime.reviewed_alerts.setdefault(alert_id, datetime.now(timezone.utc).isoformat())
+        return {"alert_id": alert_id, "source": "simulated", "reviewed": True,
+                "reviewed_at": timestamp, "durable": False, "already_reviewed": already}
+    try:
+        result = get_alert_review_repository().review(lake_id, alert_id, principal.user_id)
+    except AlertReviewUnavailable as exc:
+        raise HTTPException(status_code=503, detail="Alert review could not be saved") from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="Alert not found")
+    runtime.reviewed_alerts[alert_id] = result["reviewed_at"]
+    return result
 
 
 @app.post("/api/lakes/{lake_id}/drones/deploy", status_code=201)
 def deploy_drone(lake_id: str, authorization: str | None = Header(default=None)):
-    runtime = get_runtime(lake_id)
     principal = authorize_lake(lake_id, authorization, Permission.MANAGE_INVENTORY)
+    runtime = get_runtime(lake_id)
     metadata = get_lake_deployment_metadata(lake_id)
     if metadata is None:
         raise HTTPException(status_code=404, detail="Lake not found")
@@ -706,8 +819,7 @@ async def public_positions_ws(websocket: WebSocket, lake_id: str):
 
 @app.websocket("/ws/operations/lakes/{lake_id}")
 async def operations_positions_ws(websocket: WebSocket, lake_id: str):
-    runtime = lake_runtimes.get(lake_id)
-    if runtime is None or websocket_has_url_credentials(websocket):
+    if websocket_has_url_credentials(websocket):
         await websocket.close(code=1008)
         return
     protocols = websocket.headers.get("sec-websocket-protocol", "").split(",")
@@ -717,6 +829,7 @@ async def operations_positions_ws(websocket: WebSocket, lake_id: str):
         return
     try:
         principal = authorize_operational_websocket(lake_id, token_protocol.removeprefix("bearer."))
+        runtime = get_runtime(lake_id)
     except (HTTPException, RuntimeError):
         await websocket.close(code=1008)
         return

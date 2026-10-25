@@ -27,7 +27,7 @@ export function RealFleetSafetyPanel({ capabilities, status, busy = false, error
 }) {
   const [reason, setReason] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
-  const canManage = capabilities.includes("autonomy.manage");
+  const canManage = capabilities.includes("fleet_safety.manage");
   const submit = (action: "enable" | "pause" | "return") => {
     const trimmed = reason.trim();
     if (!trimmed) { setValidationError("A safety reason is required."); return; }

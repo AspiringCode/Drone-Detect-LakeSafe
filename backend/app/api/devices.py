@@ -13,6 +13,7 @@ from app.devices.auth import DeviceAuthenticationError, verify_device_request
 from app.devices.heartbeat import HeartbeatService, Position
 from app.devices.acknowledgements import AcknowledgementService, AcknowledgementError
 from app.devices.repository import DeviceRepositoryError, get_device_repository
+from app.devices.patrol_repository import get_patrol_repository
 from app.models import Detection, Drone, DroneStatus, LatLon
 from app.pipeline.alerts import assemble_alert
 
@@ -53,7 +54,26 @@ async def heartbeat(
         HeartbeatService(repository).record(principal, payload)
     except (json.JSONDecodeError, ValidationError, DeviceRepositoryError, ValueError) as exc:
         raise HTTPException(status_code=422, detail="Heartbeat payload is invalid") from exc
-    return {"received_sequence": sequence, "commands": live_commands.pending(principal.drone_id)}
+    try:
+        patrols = get_patrol_repository().pending(principal)
+        commands = []
+        for command in patrols:
+            try:
+                from app.api.device_admin import MissionRequest, _assigned_drone, prepare_mission
+                drone = _assigned_drone(principal.station_id, principal.drone_id)
+                _, _, _, fingerprint = prepare_mission(principal.station_id, drone, MissionRequest(
+                    zone_id=command["zone_id"], home_lat=command["home"]["lat"],
+                    home_lon=command["home"]["lon"], altitude_m=command["altitude_m"],
+                ))
+                if fingerprint != command["mission_hash"]:
+                    raise ValueError("mission changed")
+            except (HTTPException, ValueError, KeyError, TypeError):
+                get_patrol_repository().reject(principal, command["command_id"], "Mission layout or drone assignment changed; review again")
+                continue
+            commands.append(command)
+    except DeviceRepositoryError as exc:
+        raise HTTPException(503, "Patrol delivery is unavailable") from exc
+    return {"received_sequence": sequence, "commands": [*live_commands.pending(principal.drone_id), *commands]}
 
 
 @router.post("/{drone_id}/detections", status_code=status.HTTP_202_ACCEPTED)
@@ -124,4 +144,42 @@ async def acknowledge_command(
     except (json.JSONDecodeError, KeyError, TypeError, ValidationError, ValueError, AcknowledgementError, DeviceRepositoryError) as exc:
         raise HTTPException(status_code=422, detail="Acknowledgement payload is invalid") from exc
     live_commands.discard(principal.drone_id, command_id)
+    return {"received_sequence": sequence}
+
+
+class PatrolAcknowledgement(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    command_id: str = Field(min_length=1, max_length=120)
+    status: str = Field(pattern=r"^(accepted|rejected)$")
+    detail: str | None = Field(default=None, max_length=500)
+
+
+@router.post("/{drone_id}/patrol-commands/{command_id}/acknowledgements", status_code=status.HTTP_202_ACCEPTED)
+async def acknowledge_patrol(
+    drone_id: str, command_id: str, request: Request,
+    x_device_timestamp: str | None = Header(default=None),
+    x_device_sequence: str | None = Header(default=None),
+    x_device_signature: str | None = Header(default=None),
+) -> dict:
+    raw_body = await request.body()
+    try:
+        if x_device_sequence is None or not x_device_sequence.isascii() or not x_device_sequence.isdecimal():
+            raise DeviceAuthenticationError()
+        sequence = int(x_device_sequence)
+        principal = verify_device_request(drone_id, x_device_timestamp, sequence, x_device_signature,
+            raw_body, get_device_repository(), claim_sequence=False)
+    except (DeviceAuthenticationError, DeviceRepositoryError, TypeError, ValueError) as exc:
+        raise HTTPException(401, "Device authentication failed") from exc
+    try:
+        value = PatrolAcknowledgement.model_validate_json(raw_body)
+    except ValidationError as exc:
+        raise HTTPException(422, "Patrol acknowledgement payload is invalid") from exc
+    if value.command_id != command_id:
+        raise HTTPException(422, "Signed command does not match the acknowledgement path")
+    try:
+        saved = get_patrol_repository().acknowledge(principal, command_id, value.status, value.detail)
+    except DeviceRepositoryError as exc:
+        raise HTTPException(503, "Patrol acknowledgement could not be saved") from exc
+    if not saved:
+        raise HTTPException(409, "Patrol acknowledgement is stale, expired or does not match the drone")
     return {"received_sequence": sequence}

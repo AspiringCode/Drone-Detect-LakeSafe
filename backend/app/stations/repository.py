@@ -34,6 +34,9 @@ class WorkflowRepository(Protocol):
     def list_station_requests_for_user(self, user_id: str) -> list[StationRequest]: ...
     def list_join_requests_for_station(self, station_id: str) -> list[JoinRequest]: ...
     def list_station_requests_for_review(self) -> list[dict]: ...
+    def list_members(self, station_id: str) -> list[dict]: ...
+    def change_member(self, station_id: str, membership_id: str, actor: str, roles: tuple[str, ...], status: str) -> dict: ...
+    def list_my_join_requests(self, user_id: str) -> list[dict]: ...
     def append_audit(self, value: AuditEventCreate) -> None: ...
 
 
@@ -146,6 +149,31 @@ class SupabaseWorkflowRepository:
         return self._client.table("station_requests").select(
             "station_request_id,requested_name,requested_address,status,created_at"
         ).eq("status", "pending").order("created_at").execute().data or []
+
+    def list_members(self, station_id: str) -> list[dict]:
+        rows = self._client.table("station_memberships").select(
+            "membership_id,user_id,status,station_membership_roles(role)"
+        ).eq("station_id", station_id).order("created_at").execute().data or []
+        user_ids = [row["user_id"] for row in rows]
+        profiles = self._client.table("profiles").select("user_id,display_name").in_("user_id", user_ids).execute().data if user_ids else []
+        names = {row["user_id"]: row.get("display_name") for row in profiles or []}
+        return [{"membership_id": row["membership_id"], "user_id": row["user_id"], "status": row["status"],
+                 "roles": sorted(item["role"] for item in row.get("station_membership_roles") or []),
+                 "display_name": names.get(row["user_id"])} for row in rows]
+
+    def change_member(self, station_id: str, membership_id: str, actor: str, roles: tuple[str, ...], status: str) -> dict:
+        try:
+            return self._rpc_one("change_station_membership", {"p_station_id": station_id, "p_membership_id": membership_id,
+                "p_actor_user_id": actor, "p_roles": list(roles), "p_status": status}, "Membership could not be changed")
+        except Exception as exc:
+            raise WorkflowConflict("Membership could not be changed") from exc
+
+    def list_my_join_requests(self, user_id: str) -> list[dict]:
+        rows = self._client.table("station_join_requests").select(
+            "station_join_request_id,station_id,status,stations(name)"
+        ).eq("user_id", user_id).order("created_at", desc=True).execute().data or []
+        return [{"station_join_request_id": row["station_join_request_id"], "station_id": row["station_id"],
+                 "station_name": (row.get("stations") or {}).get("name", "Station"), "status": row["status"]} for row in rows]
 
     def append_audit(self, value: AuditEventCreate) -> None:
         # This repository is constructed only from the service credential; the

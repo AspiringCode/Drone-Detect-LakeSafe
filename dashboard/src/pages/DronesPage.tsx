@@ -2,6 +2,8 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { AppHeader } from "../components/AppHeader";
 import { StationPicker } from "../components/StationPicker";
+import { AccessibleDialog } from "../components/AccessibleDialog";
+import { MissionWorkflow, PatrolProgress } from "../components/MissionWorkflow";
 import { useOptionalActiveStation } from "../hooks/useActiveStation";
 import { apiRequest } from "../lib/apiClient";
 import { supabase, type SupabaseLike } from "../lib/supabase";
@@ -23,7 +25,6 @@ export interface RealDrone {
   last_heartbeat_at?: string | null;
 }
 
-type PatrolZone = { zone_id: string; radius_m: number; is_proxy: boolean };
 
 const json = (body: unknown): RequestInit => ({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 const message = (value: unknown, fallback: string) => value instanceof Error ? value.message : fallback;
@@ -44,6 +45,9 @@ export function DronesPage({ client = supabase, setup = false }: { client?: Supa
   const [error, setError] = useState("");
   const [loadError, setLoadError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [checkedAt, setCheckedAt] = useState<string | null>(null);
+  const [patrolDrone, setPatrolDrone] = useState<RealDrone | null>(null);
+  const [retiring, setRetiring] = useState<RealDrone | null>(null);
   const [step, setStep] = useState("Register");
   const [selectedDrone, setSelectedDrone] = useState("");
   const requestGeneration = useRef(0);
@@ -51,7 +55,7 @@ export function DronesPage({ client = supabase, setup = false }: { client?: Supa
   const feedback = useRef<HTMLDivElement>(null);
   currentStation.current = stationId;
   // Feedback sits above the forms, so bring it into view after an action.
-  useEffect(() => { if (status || error) feedback.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" }); }, [status, error]);
+  useEffect(() => { if (status || error) feedback.current?.scrollIntoView?.({ block: "nearest", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" }); }, [status, error]);
 
   async function refresh() {
     if (!allowed) return;
@@ -66,14 +70,22 @@ export function DronesPage({ client = supabase, setup = false }: { client?: Supa
       if (generation !== requestGeneration.current || currentStation.current !== stationId) return;
       if (lakeRows.error) throw lakeRows.error;
       setDrones(inventory.drones);
+      setCheckedAt(new Date().toISOString());
       setLakes(((lakeRows.data ?? []) as Lake[]).filter((lake) => lake.station_id === stationId));
     } catch (value) { if (generation === requestGeneration.current && currentStation.current === stationId) setLoadError(message(value, "Drones could not be loaded.")); } finally { if (generation === requestGeneration.current && currentStation.current === stationId) setLoading(false); }
   }
   useEffect(() => { setRegistered(null); setSelectedDrone(""); setStep("Register"); setDrones([]); setLakes([]); setStatus(""); setError(""); setLoadError(""); void refresh(); return () => { requestGeneration.current++; }; }, [stationId, allowed]);
 
+  useEffect(() => {
+    setPatrolDrone(null); setRetiring(null); setCheckedAt(null);
+    const check = () => { if (document.visibilityState === "visible") void refresh(); };
+    const timer = window.setInterval(check, 15000);
+    window.addEventListener("focus", check);
+    return () => { window.clearInterval(timer); window.removeEventListener("focus", check); };
+  }, [stationId, allowed]);
   async function act(work: () => Promise<unknown>, done: string, fallback: string) {
     setError(""); setStatus(""); setBusy(true);
-    try { await work(); if (currentStation.current !== stationId) return; setStatus(done); await refresh(); } catch (value) { if (currentStation.current === stationId) setError(message(value, fallback)); } finally { setBusy(false); }
+    try { await work(); if (currentStation.current !== stationId) return false; setStatus(done); await refresh(); return true; } catch (value) { if (currentStation.current === stationId) setError(message(value, fallback)); return false; } finally { setBusy(false); }
   }
   async function register(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -92,28 +104,28 @@ export function DronesPage({ client = supabase, setup = false }: { client?: Supa
     if (!lake) return;
     void act(() => apiRequest(`/api/stations/${encodeURIComponent(stationId)}/inventory/${drone.inventory_id}/test-position`, json({ lat: lake.centroid_lat, lon: lake.centroid_lon }), client), `Test marker placed at the centre of ${lake.name} for 5 minutes.`, "Test marker could not be placed.");
   };
-  const patrol = (drone: RealDrone) => act(() => apiRequest(`/api/stations/${encodeURIComponent(stationId)}/inventory/${drone.inventory_id}/patrol`, json({}), client), "Patrol sent. The drone's Pi uploads it on its next heartbeat; on the ground it waits for the pilot to arm.", "Patrol could not be sent.");
-  const retire = (drone: RealDrone) => {
-    // Retiring revokes the device key, which cannot be undone from here.
-    if (!window.confirm(`Retire ${drone.serial ?? "this drone"}? Its device key is revoked and it can no longer send heartbeats.`)) return;
-    void act(() => apiRequest(`/api/stations/${encodeURIComponent(stationId)}/inventory/${drone.inventory_id}/retire`, { method: "POST" }, client), "Drone retired.", "Drone could not be retired.");
-  };
+  const retire = (drone: RealDrone) => { setError(""); setRetiring(drone); };
+  async function confirmRetirement() {
+    if (!retiring) return;
+    if (await act(() => apiRequest(`/api/stations/${encodeURIComponent(stationId)}/inventory/${retiring.inventory_id}/retire`, { method: "POST" }, client), "Drone retired.", "Drone could not be retired.")) setRetiring(null);
+  }
 
   if (!allowed) return <main className="app-page"><AppHeader active="drones" client={client}/><section className="workflow-shell"><h1>Drone registry is unavailable</h1><StationPicker page/><p>Choose a station where you are a station administrator.</p></section></main>;
   const lakeName = (id: string | null) => lakes.find((lake) => lake.lake_id === id)?.name ?? "Not assigned";
   const connectIds = [...new Set([...(registered ? [registered] : []), ...drones.map((drone) => drone.inventory_id)])];
   const connectId = connectIds.includes(selectedDrone) ? selectedDrone : connectIds[0] ?? "<drone-id>";
   const inventory = <section className="touch-panel" aria-label="Registered drones">
-        <h2>Registered drones</h2>
+        <div className="fleet-refresh"><h2>Registered drones</h2><button type="button" className="button-secondary" disabled={loading || busy} onClick={() => void refresh()}>{loading ? "Refreshing…" : "Refresh fleet"}</button></div>{checkedAt && <p className="field-help">Fleet checked {new Date(checkedAt).toLocaleTimeString()}. Updates every 15 seconds while visible.</p>}
         {loading && !drones.length ? <p className="field-help">Loading drones…</p> : loadError && !drones.length ? <p>Fleet information could not be loaded.</p> : !drones.length ? <div className="fleet-empty"><h3>No real drones are registered to this station yet.</h3><p>Register a drone, assign a lake, then connect its heartbeat.</p>{!setup && <Link className="button-link" to="/drones/setup">Register a drone</Link>}</div> : <ul className="station-results fleet-registry">{drones.map((drone) => <li key={drone.inventory_id} className={drone.inventory_id === registered ? "is-new" : undefined}>
           <div><strong>{drone.manufacturer ?? "Drone"} {drone.serial}</strong>{drone.inventory_id === registered && <> <span className="status-label">New</span></>}
             <p className="field-help">{drone.last_heartbeat_at ? `${drone.connectivity} · ${drone.health} · ${drone.battery_percent}% · last heartbeat ${seen(drone.last_heartbeat_at)}` : "Awaiting first heartbeat"} · {lakeName(drone.lake_id)}</p>
+            <PatrolProgress droneId={drone.inventory_id} stationId={stationId} client={client} refreshKey={checkedAt}/>
             <details><summary>Device details</summary><p className="field-help">Device ID: {drone.inventory_id}</p><p className="field-help">Inventory updated: {drone.updated_at && Number.isFinite(Date.parse(drone.updated_at)) ? new Date(drone.updated_at).toLocaleString() : "Not available"}</p></details>
-            {drone.lake_id && <MissionDownload drone={drone} stationId={stationId} client={client} />}
+            {drone.lake_id && <MissionWorkflow drone={drone} stationId={stationId} client={client} />}
           </div>
           <span>
             <label><span className="sr-only">Lake for {drone.serial}</span><select aria-label={`Lake for ${drone.serial}`} value={drone.lake_id ?? ""} disabled={busy} onChange={(event) => void assign(drone, event.target.value)}><option value="">Not assigned</option>{lakes.map((lake) => <option key={lake.lake_id} value={lake.lake_id}>{lake.name}</option>)}</select></label>
-            {drone.lake_id && <><button type="button" className="button-secondary" disabled={busy} title="Shows a SIMULATED marker at the lake centre for 5 minutes" onClick={() => placeTest(drone)}>Place test marker</button><button type="button" className="button-secondary" disabled={busy} onClick={() => void patrol(drone)}>Send patrol</button><Link className="button-link" to={`/lakes/${drone.lake_id}`}>Open map</Link></>}
+            {drone.lake_id && <><button type="button" className="button-secondary" disabled={busy} title="Shows a SIMULATED marker at the lake centre for 5 minutes" onClick={() => placeTest(drone)}>Place test marker</button><button type="button" className="button-secondary" disabled={busy} onClick={() => setPatrolDrone(drone)}>Send patrol</button><Link className="button-link" to={`/lakes/${drone.lake_id}`}>Open map</Link></>}
             <button type="button" className="button-secondary" disabled={busy} onClick={() => retire(drone)}>Retire</button>
           </span>
         </li>)}</ul>}
@@ -152,54 +164,12 @@ export function DronesPage({ client = supabase, setup = false }: { client?: Supa
         <p className="field-help">Send patrol uploads a loop of the lake’s patrol zone. Your RC transmitter always overrides it; on the ground the drone waits for the pilot to arm.</p>
       </section>}
     </>}
-  </section></main>;
+  </section>
+    {patrolDrone && <AccessibleDialog title="Review patrol mission" onClose={() => setPatrolDrone(null)}><MissionWorkflow drone={patrolDrone} stationId={stationId} client={client} send onQueued={() => { setPatrolDrone(null); setStatus("Patrol queued. Check the device upload status below."); void refresh(); }}/><button type="button" className="button-secondary" onClick={() => setPatrolDrone(null)}>Close mission review</button></AccessibleDialog>}
+    {retiring && <AccessibleDialog title="Retire drone" onClose={() => { if (!busy) setRetiring(null); }}><p>Retire {retiring.serial ?? "this drone"}? Its device key will be revoked and it will be removed from the active fleet. The audit history is retained.</p>{error && <p className="form-error" role="alert">{error}</p>}<div className="modal-actions"><button type="button" className="button-secondary" disabled={busy} onClick={() => setRetiring(null)}>Cancel</button><button type="button" disabled={busy} onClick={() => void confirmRetirement()}>{busy ? "Retiring…" : "Retire drone"}</button></div></AccessibleDialog>}
+  </main>;
 }
 
-function MissionDownload({ drone, stationId, client }: { drone: RealDrone; stationId: string; client: SupabaseLike }) {
-  const [zones, setZones] = useState<PatrolZone[] | null>(null);
-  const [assigned, setAssigned] = useState<string | null>(null);
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const base = `/api/stations/${encodeURIComponent(stationId)}/inventory/${drone.inventory_id}`;
-  async function loadZones(open: boolean) {
-    if (!open || zones) return;
-    setError("");
-    try {
-      const result = await apiRequest<{ zones: PatrolZone[]; assigned_zone_id?: string | null }>(`${base}/patrol-zones`, {}, client);
-      setAssigned(result.assigned_zone_id ?? null);
-      setZones(result.zones);
-    }
-    catch (value) { setError(message(value, "Patrol zones could not be loaded.")); }
-  }
-  async function download(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const zoneId = String(form.get("zone_id"));
-    setBusy(true); setError("");
-    try {
-      const text = await apiRequest<string>(`${base}/mission`, json({ zone_id: zoneId, home_lat: Number(form.get("home_lat")), home_lon: Number(form.get("home_lon")), altitude_m: Number(form.get("altitude_m")) }), client);
-      const link = document.createElement("a");
-      link.href = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
-      link.download = `${zoneId}.waypoints`;
-      link.click();
-      URL.revokeObjectURL(link.href);
-    } catch (value) { setError(message(value, "Mission file could not be prepared.")); }
-    finally { setBusy(false); }
-  }
-  return <details className="mission-download" onToggle={(event) => void loadZones(event.currentTarget.open)}>
-    <summary>Download mission</summary>
-    <p className="field-help">One loop of a patrol zone, then return to launch, as a Mission Planner <code>.waypoints</code> file. Zones are this lake’s runtime patrol zones, the same ones Send patrol uses, not the stored coverage plan. Nothing is sent to the drone: review the file in Mission Planner before any flight.</p>
-    {error && <p className="form-error" role="alert">{error}</p>}
-    {!zones ? !error && <p className="field-help">Loading patrol zones…</p> : !zones.length ? <p>No patrol zones are available for this lake.</p> : <form onSubmit={download} aria-busy={busy}>
-      <label>Patrol zone<select name="zone_id" required defaultValue={assigned ?? undefined}>{zones.map((zone) => <option key={zone.zone_id} value={zone.zone_id}>{zone.zone_id} · {zone.radius_m} m radius{zone.zone_id === assigned ? " · this drone’s zone" : ""}{zone.is_proxy ? " · proxy data" : ""}</option>)}</select></label>
-      <label>Home latitude<input name="home_lat" type="number" step="any" min={-90} max={90} required /></label>
-      <label>Home longitude<input name="home_lon" type="number" step="any" min={-180} max={180} required /></label>
-      <p className="field-help">Home is where the drone takes off and returns: the launch point on shore, within 5 km of the zone.</p>
-      <label>Altitude (m)<input name="altitude_m" type="number" step="any" min={5} max={120} defaultValue={30} required /></label>
-      <button disabled={busy}>{busy ? "Preparing file…" : "Download .waypoints"}</button>
-    </form>}
-  </details>;
-}
 
 function CommandBlock({ command }: { command: string }) {
   const [copied, setCopied] = useState(false);

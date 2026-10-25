@@ -11,11 +11,14 @@ Raspberry Pi on the flight controller's TELEM port:
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import argparse
 import json
 import os
 import sys
 import time
+import tempfile
+from pathlib import Path
 
 try:
     from app.devices import drone_link
@@ -121,19 +124,86 @@ def run_command(conn, sysid: int, state: dict, command: dict) -> tuple[str, str]
     return "rejected", f"unsupported command {kind!r}"
 
 
-def handle_reply(conn, sysid: int, state: dict, text: str, done: set[str]) -> list[tuple[dict, str, str]]:
-    """Run commands from a heartbeat reply once each; outbox commands repeat until acknowledged."""
+def handle_reply(conn, sysid: int, state: dict, text: str, done: dict | set, persist=None) -> list[tuple[dict, str, str]]:
+    """Upload once and replay cached outcomes until the signed acknowledgement arrives."""
     try:
         commands = json.loads(text).get("commands") or []
     except (ValueError, AttributeError):
         return []
     results = []
     for command in commands:
-        if command.get("command_id") in done:
+        command_id = command.get("command_id")
+        if not isinstance(command_id, str):
             continue
-        done.add(command["command_id"])
-        results.append((command, *run_command(conn, sysid, state, command)))
+        if isinstance(done, set):
+            # Compatibility for callers that only deduplicate unacknowledged
+            # one-shot actions; the running bridge uses persisted outcomes.
+            if command_id in done:
+                continue
+            done.add(command_id)
+            results.append((command, *run_command(conn, sysid, state, command)))
+            continue
+        if command_id not in done:
+            try:
+                expires = datetime.fromisoformat(command["expires_at"].replace("Z", "+00:00"))
+                valid = expires > datetime.now(timezone.utc)
+            except (KeyError, ValueError, TypeError):
+                valid = False
+            # Journal an uncertain result before touching the controller. A
+            # crash during upload must require operator review, not re-upload.
+            done[command_id] = {"status": "rejected", "detail": "Prior upload outcome is unknown; review the mission again", "expires_at": command.get("expires_at")}
+            if persist is not None:
+                persist()
+            outcome, detail = run_command(conn, sysid, state, command) if valid else ("rejected", "Command expired or has no valid expiry")
+            done[command_id] = {"status": outcome, "detail": detail, "expires_at": command.get("expires_at")}
+            if persist is not None:
+                persist()
+        cached = done[command_id]
+        results.append((command, cached["status"], cached["detail"]))
     return results
+
+
+def acknowledgement_request(drone_id: str, command: dict, outcome: str, detail: str):
+    if command.get("patrol_ack"):
+        return f"/api/devices/{drone_id}/patrol-commands/{command['command_id']}/acknowledgements", {
+            "command_id": command["command_id"], "status": outcome, "detail": detail,
+        }
+    return f"/api/devices/{drone_id}/commands/{command['command_id']}/acknowledgements", {
+        "plan_id": command.get("plan_id"), "desired_state_version": command.get("desired_state_version"),
+        "status": outcome, "detail": detail,
+    }
+
+
+def load_outcomes(path: str) -> dict:
+    try:
+        with open(path, encoding="utf-8") as handle:
+            value = json.load(handle)
+        return value if isinstance(value, dict) else {}
+    except FileNotFoundError:
+        return {}
+
+
+def default_outcome_file() -> str:
+    if os.name == "nt":
+        parent = Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local"))) / "LakeSafe"
+    else:
+        parent = Path(os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local" / "state"))) / "lakesafe"
+    return str(parent / "command-outcomes.json")
+
+
+def save_outcomes(path: str, outcomes: dict) -> None:
+    target = Path(path).expanduser()
+    target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(prefix=".command-outcomes-", dir=str(target.parent))
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(outcomes, handle)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, target)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
 
 
 def write_positions(path: str, positions: dict[str, dict], now: float) -> None:
@@ -160,13 +230,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--drone", type=parse_drone, action="append", required=True, metavar="SYSID=DRONE_ID=KEY_PATH")
     parser.add_argument("--interval", type=float, default=1.0)
     parser.add_argument("--position-file", help="also write each drone's latest fix here for drone_detect.py")
+    parser.add_argument("--outcome-file", default=default_outcome_file(), help="durable command upload outcomes; keep this file across bridge restarts")
     args = parser.parse_args(argv)
 
     from pymavlink import mavutil
 
     drones = {sysid: (drone_id, drone_link._load_key(key_path)) for sysid, drone_id, key_path in args.drone}
     states: dict[int, dict] = {sysid: {} for sysid in drones}
-    done: dict[int, set[str]] = {sysid: set() for sysid in drones}
+    outcomes = load_outcomes(args.outcome_file)
+    done = {sysid: outcomes.setdefault(drone_id, {}) for sysid, (drone_id, _) in drones.items()}
     conn = mavutil.mavlink_connection(args.mavlink, baud=args.baud)
     next_send = time.monotonic()
     while True:
@@ -193,17 +265,19 @@ def main(argv: list[str] | None = None) -> int:
             print(sysid, drone_id, body["health"], body["flight_status"], status, text, flush=True)
             if status != 202:
                 continue
-            for command, outcome, detail in handle_reply(conn, sysid, states[sysid], text, done[sysid]):
+            results = handle_reply(conn, sysid, states[sysid], text, done[sysid],
+                persist=lambda: save_outcomes(args.outcome_file, outcomes))
+            for command, outcome, detail in results:
                 print(sysid, drone_id, "command", command.get("command_type"), outcome, detail, flush=True)
                 if not command.get("ack"):
                     continue
                 try:
-                    drone_link.post(args.api, f"/api/devices/{drone_id}/commands/{command['command_id']}/acknowledgements", key, drone_id, {
-                        "plan_id": command.get("plan_id"), "desired_state_version": command.get("desired_state_version"),
-                        "status": outcome, "detail": detail,
-                    })
+                    path, acknowledgement = acknowledgement_request(drone_id, command, outcome, detail)
+                    ack_status, ack_text = drone_link.post(args.api, path, key, drone_id, acknowledgement)
+                    if ack_status != 202:
+                        print(sysid, drone_id, "ack pending", ack_status, ack_text, flush=True)
                 except OSError as exc:
-                    # The command stays in the mailbox, but `done` stops a re-run; the server expires it.
+                    # The cached result is sent again on the next heartbeat reply.
                     print(sysid, drone_id, "ack failed", exc, flush=True)
 
 

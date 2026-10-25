@@ -1,7 +1,7 @@
 export type Source = "real" | "simulated";
 
 export type Capability =
-  | "station.read" | "alert.manage" | "autonomy.manage"
+  | "station.read" | "alert.manage" | "autonomy.manage" | "fleet_safety.manage"
   | "lake.create" | "inventory.manage" | "member.manage";
 
 export interface StationMembership {
@@ -79,6 +79,7 @@ export interface Alert {
   detection_mode: string;
   drone_id: string;
   thermal_clip_ref: string | null;
+  reviewed_at?: string | null;
   confirmed: boolean;
   source: Source;
   latency_ms: number | null;

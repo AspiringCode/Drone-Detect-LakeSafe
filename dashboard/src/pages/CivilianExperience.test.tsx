@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import { CivilianHomePage } from "./CivilianHomePage";
 import { PrincipalProvider } from "../auth/PrincipalProvider";
@@ -14,6 +14,14 @@ const fetcher = async (url: string) => ({
 });
 
 describe("CivilianHomePage", () => {
+  it("restores a lake from its URL and preserves other query parameters on selection", async () => {
+    const Query = () => <output aria-label="Current query">{useLocation().search}</output>;
+    const catalog = async (url: string) => ({ok:true,json:async () => url.endsWith("/lakes") ? ["one","two"].map((id) => ({lake_id:id,name:`Lake ${id}`})) : []});
+    render(<MemoryRouter initialEntries={["/?lake=two&context=visit"]}><CivilianHomePage fetcher={catalog}/><Query/></MemoryRouter>);
+    expect(await screen.findByRole("button",{name:"Lake two"})).toHaveAttribute("aria-pressed","true");
+    fireEvent.click(screen.getByRole("button",{name:"Lake one"}));
+    expect(screen.getByLabelText("Current query")).toHaveTextContent("lake=one&context=visit");
+  });
   it("lets a signed-in civilian reach profile settings without showing sign-in actions", async () => {
     const client = { auth: {
       getSession: async () => ({ data: { session: { access_token: "civilian-session" } } }),
@@ -94,6 +102,8 @@ describe("CivilianHomePage", () => {
     offline = false;
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByText("Patrol presence")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Refresh lake updates" })).toBeVisible();
+    expect(screen.getByText(/Checked at/)).toBeVisible();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 

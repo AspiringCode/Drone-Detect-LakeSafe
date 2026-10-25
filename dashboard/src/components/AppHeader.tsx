@@ -26,6 +26,11 @@ export function AppHeader({ active, contextLabel, showStationPicker = false, cli
   const [signOutError, setSignOutError] = useState("");
 
   useEffect(() => {
+    const target = document.querySelector<HTMLElement>("main > section");
+    if (target && !target.id) { target.id = "main-content"; target.tabIndex = -1; }
+  }, []);
+
+  useEffect(() => {
     let current = true;
     if (typeof client.auth?.getUser === "function") {
       void client.auth.getUser().then(({ data }: { data: { user: any } }) => {
@@ -44,13 +49,17 @@ export function AppHeader({ active, contextLabel, showStationPicker = false, cli
     setSigningOut(false);
     if (error) return setSignOutError("Could not sign out. Please try again.");
     window.localStorage.removeItem("lakesafe-active-station");
-    navigate("/login", { replace: true });
+    navigate("/", { replace: true });
   }
 
   const navClass = (section: HeaderSection) => active === section ? "app-nav__item is-active" : "app-nav__item";
 
   return (
     <header className="app-header">
+      <a className="skip-link" href="#main-content" onClick={(event) => {
+        const target = document.querySelector<HTMLElement>("main > section");
+        if (target) { event.preventDefault(); target.id = "main-content"; target.tabIndex = -1; target.focus(); }
+      }}>Skip to main content</a>
       <Link className="app-brand" to="/lakes" aria-label="LakeSafe managed lakes">
         <span className="app-brand__name">LakeSafe</span>
         <WaveMark />
@@ -69,6 +78,7 @@ export function AppHeader({ active, contextLabel, showStationPicker = false, cli
         </button>
         {menuOpen && (
           <div className="account-menu">
+            <Link to="/">Public view</Link>
             <Link to="/profile">Profile settings</Link>
             <Link to="/station-access">Station access</Link>
             {activeContext?.station?.status === "active" && activeContext.station.capabilities.includes("member.manage") && <Link to={`/stations/${activeContext.station.station_id}/admin`}>Station administration</Link>}

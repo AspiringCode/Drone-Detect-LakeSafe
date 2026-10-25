@@ -1,5 +1,7 @@
 import base64
 import json
+import time
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -16,7 +18,7 @@ SUPPORTED_LAKE_IDS = ("lake-sammamish", "lake-pine", "lake-beaver")
 
 
 def _read_headers(monkeypatch):
-    monkeypatch.setattr("app.main.verify_supabase_jwt", lambda token: {"sub": "owner", "aal": "aal2"})
+    monkeypatch.setattr("app.main.verify_supabase_jwt", lambda token: {"sub": "owner", "aal": "aal2", "amr": [{"method": "totp", "timestamp": time.time()}]})
     return {"Authorization": "Bearer signed-token"}
 
 
@@ -35,6 +37,7 @@ class FakeAccessRepository:
 @pytest.fixture(autouse=True)
 def fake_access_repository(monkeypatch):
     monkeypatch.setattr("app.main.get_access_repository", lambda: FakeAccessRepository())
+    monkeypatch.setattr("app.main.get_alert_review_repository", lambda: SimpleNamespace(reviewed_alerts=lambda _: {}))
 
 
 @pytest.fixture

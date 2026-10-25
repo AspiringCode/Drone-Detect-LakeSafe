@@ -29,7 +29,7 @@ export function ReportsPage({ client = supabase, fetcher = fetch }: { client?: S
       <section className="data-shell reports-touchup">
         <header className="page-heading touch-heading"><div>
           <h1>Operational reports</h1>
-          <p>Current available records, not a historical reporting period.</p></div><Link to="/alerts">View current alerts</Link>
+          <p>Current available records, not a historical reporting period.</p></div><div className="fleet-refresh"><button className="button-secondary" disabled={loading} onClick={retry}>Refresh reports</button><Link to="/alerts">View current alerts</Link></div>
         </header>
         {loading && <p className="panel-empty" aria-live="polite">Calculating reports…</p>}
         {failed && !loading && <div className="touch-error" role="alert"><p>Could not calculate operational reports.</p><button className="button-secondary" onClick={retry}>Retry</button></div>}
@@ -37,7 +37,7 @@ export function ReportsPage({ client = supabase, fetcher = fetch }: { client?: S
           <p className="field-help">Checked {checkedAt}. Summary covers all available records below; filters apply to the incident list.</p>
           <section className="report-grid" aria-label="Alert report summary">
             <article className="report-metric"><span className="report-metric__value">{summary.total}</span><h2>Total alerts</h2><p>Available current records</p></article>
-            <article className="report-metric"><span className="report-metric__value">{summary.confirmed}</span><h2>Confirmed responses</h2><p>Operator-confirmed records</p></article>
+            <article className="report-metric"><span className="report-metric__value">{summary.confirmed}</span><h2>Confirmed detections</h2><p>Confirmed by a second drone</p></article>
             <article className="report-metric"><span className="report-metric__value">{summary.averageLatency}</span><h2>Average detection latency</h2><p>Recorded timing, not response duration</p></article>
             <article className="report-metric"><span className="report-metric__value">{summary.simulated}</span><h2>Simulated alerts</h2><p>Clearly labeled demo activity</p></article>
           </section>

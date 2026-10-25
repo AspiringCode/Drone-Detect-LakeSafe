@@ -2,7 +2,8 @@
 
 The drone only makes outbound requests, so it works behind a hotspot or phone
 NAT; nothing has to reach into it. Outbox commands stay until the drone's
-signed acknowledgement lands or they expire; patrols are handed out once.
+signed acknowledgement lands or they expire. Reviewed mission uploads use
+the separate durable patrol repository.
 shortcut: in-memory and single-worker like live_positions; move to the database if the API ever runs several workers.
 """
 

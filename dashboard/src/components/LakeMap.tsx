@@ -28,6 +28,7 @@ export function LakeMap({ lakeName, lakeCenter, riskmap, drones, stationLocation
   const mapRef = useRef<L.Map | null>(null);
   const riskLayerRef = useRef<L.GeoJSON | null>(null);
   const markersRef = useRef<Map<string, L.CircleMarker>>(new Map());
+  const fittedRef = useRef(false);
   const stationRef = useRef<L.CircleMarker | null>(null);
 
   useEffect(() => {
@@ -44,6 +45,7 @@ export function LakeMap({ lakeName, lakeCenter, riskmap, drones, stationLocation
   }, []);
 
   useEffect(() => {
+    fittedRef.current = false;
     mapRef.current?.setView([lakeCenter.lat, lakeCenter.lon], LAKE_ZOOM);
   }, [lakeCenter.lat, lakeCenter.lon]);
 
@@ -63,6 +65,8 @@ export function LakeMap({ lakeName, lakeCenter, riskmap, drones, stationLocation
     riskLayerRef.current = L.geoJSON(riskmap as GeoJSON.GeoJsonObject, {
       style: (feature) => riskZoneStyle(feature!.properties as RiskZone),
     }).addTo(map);
+    const bounds = riskLayerRef.current.getBounds();
+    if (!fittedRef.current && bounds.isValid()) { map.fitBounds(bounds, { padding: [24, 24] }); fittedRef.current = true; }
   }, [riskmap]);
 
   useEffect(() => {
@@ -92,5 +96,11 @@ export function LakeMap({ lakeName, lakeCenter, riskmap, drones, stationLocation
     }
   }, [drones]);
 
-  return <div ref={containerRef} className="lake-map" role="region" aria-label={`${lakeName} operator map`} />;
+  const resetView = () => {
+    const bounds = riskLayerRef.current?.getBounds();
+    if (bounds?.isValid()) mapRef.current?.fitBounds(bounds, { padding: [24, 24] });
+    else mapRef.current?.setView([lakeCenter.lat, lakeCenter.lon], LAKE_ZOOM);
+  };
+  return <div className="lake-map-frame"><div ref={containerRef} className="lake-map" role="region" aria-label={`${lakeName} operator map`} /><div className="map-tools"><button className="button-secondary" onClick={resetView}>Reset view</button><p className="field-help">Priority: blue lower to red higher. Dashed zones use proxy estimates.</p></div></div>;
+
 }

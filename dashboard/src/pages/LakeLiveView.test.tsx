@@ -16,6 +16,17 @@ const member = (capabilities: string[]) => vi.fn().mockResolvedValue({ aal: "aal
 const view = (client: unknown, request: unknown, fetcher: unknown, connectOperational: unknown = vi.fn(() => () => {})) => render(<PrincipalProvider client={client as never} request={request as never}><MemoryRouter initialEntries={["/lakes/lake-1"]}><Routes><Route path="/lakes/:lakeId" element={<LakeLiveView client={client as never} fetcher={fetcher as never} connectOperational={connectOperational as never} />} /></Routes></MemoryRouter></PrincipalProvider>);
 
 describe("LakeLiveView", () => {
+  it("shows pending stored setup before opening operational updates and supports recheck", async () => {
+    let ready = false;
+    const connect = vi.fn(() => () => {});
+    const fetcher = vi.fn(async (url: string) => response(url.includes("setup-status") ? {setup_status:ready ? "ready" : "queued"} : url.includes("registered-drones") ? {drones:[]} : url.includes("alerts") ? [] : {}));
+    view(lakeClient({name:"Lake",centroid_lat:1,centroid_lon:2,station_id:"station"}),member(["station.read"]),fetcher,connect);
+    expect(await screen.findByRole("heading", {name:"Lake setup is queued"})).toBeVisible();
+    expect(connect).not.toHaveBeenCalled();
+    ready = true;
+    fireEvent.click(screen.getByRole("button", {name:"Check setup again"}));
+    await waitFor(() => expect(connect).toHaveBeenCalledOnce());
+  });
   it("starts one simulated drone, adds another and prompts to regenerate zones", async () => {
     let push: (state: unknown) => void = () => {};
     const connectOperational = vi.fn((_url: string, _token: string, onState: (state: unknown) => void) => { push = onState; return () => {}; });
@@ -57,7 +68,7 @@ describe("LakeLiveView", () => {
       if (url.includes("/simulation/start")) return response({ simulated_drones: 1, waiting_drones: 0, real_drones_unaffected: true, zones: 4, riskmap: { type: "FeatureCollection", features: [] } });
       return response({ type: "FeatureCollection", features: [] });
     });
-    view(lakeClient({ name: "Canonical Lake", centroid_lat: 47.5, centroid_lon: -122.1, station_id: "station" }), member(["station.read", "autonomy.manage"]), fetcher);
+    view(lakeClient({ name: "Canonical Lake", centroid_lat: 47.5, centroid_lon: -122.1, station_id: "station" }), member(["station.read", "autonomy.manage", "fleet_safety.manage"]), fetcher);
     expect(await screen.findByText("cell-1")).toBeVisible();  // the real drone's own zone
     await waitFor(() => expect(screen.getByRole("button", { name: "Start simulation" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "Start simulation" }));

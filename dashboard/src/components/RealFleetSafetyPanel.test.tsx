@@ -24,7 +24,7 @@ describe("real fleet safety controls", () => {
 
   it("sends only an enabled policy and nonempty reason", () => {
     const onSetAutonomy = vi.fn();
-    render(<RealFleetSafetyPanel capabilities={["autonomy.manage"]} status={paused} onSetAutonomy={onSetAutonomy} onRequestSafeReturn={vi.fn()} />);
+    render(<RealFleetSafetyPanel capabilities={["fleet_safety.manage"]} status={paused} onSetAutonomy={onSetAutonomy} onRequestSafeReturn={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: /enable real autonomy/i }));
     expect(screen.getByRole("alert")).toHaveTextContent(/reason is required/i);
     fireEvent.change(screen.getByLabelText(/safety reason/i), { target: { value: "Shift handoff confirmed" } });

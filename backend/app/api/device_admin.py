@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
-from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import PlainTextResponse
@@ -13,17 +14,16 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.access.policy import Permission, require_recent_mfa, require_station_access
 from app.access.principal import Principal, get_principal
 from app.coordination.assignment import haversine_m
-from app.devices import live_commands, live_positions
+from app.devices import live_positions
+from app.devices.patrol_repository import get_patrol_repository
 from app.devices.repository import DeviceRepositoryError, get_device_repository
 from app.devices.auth import DeviceAuthenticationError, decode_base64url
-from app.missions.export import DEFAULT_ALTITUDE_M
 from app.missions.qgc_plan import build_patrol_plan, mission_rows, to_waypoints
 from app.models import LatLon
 from app.rate_limits import require_rate_limit
 
 router = APIRouter(prefix="/api/stations/{station_id}/inventory", tags=["real-device-inventory"])
 TEST_POSITION_SECONDS = 300
-PATROL_COMMAND_SECONDS = 120
 
 class RealInventoryRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -101,7 +101,7 @@ def _assigned_drone(station_id: str, drone_id: str) -> dict:
     except DeviceRepositoryError as exc:
         raise HTTPException(503, "Real inventory is unavailable") from exc
     drone = next((d for d in drones if d.get("inventory_id") == drone_id), None)
-    if not drone or not drone.get("lake_id"):
+    if not drone or not drone.get("lake_id") or drone.get("lifecycle") == "retired":
         raise HTTPException(409, "Assign the drone to a lake first")
     return drone
 
@@ -125,31 +125,86 @@ def _patrol_layout(station_id: str, drone: dict) -> tuple[list, str | None]:
         raise HTTPException(503, "Real inventory is unavailable") from exc
     return real_zone_layout(runtime), sync_real_assignments(runtime, lake_drones).get(drone["inventory_id"])
 
-class PatrolRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+class MissionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
     zone_id: str | None = Field(default=None, min_length=1, max_length=120)
+    home_lat: float = Field(ge=-90, le=90)
+    home_lon: float = Field(ge=-180, le=180)
+    altitude_m: float = Field(ge=5, le=120)
+
+
+class PatrolRequest(MissionRequest):
+    reviewed_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+MAX_HOME_DISTANCE_M = 5000
+
+
+def prepare_mission(station_id: str, drone: dict, value: MissionRequest):
+    zones, assigned = _patrol_layout(station_id, drone)
+    wanted = value.zone_id or assigned
+    zone = next((z for z in zones if z.zone_id == wanted and z.radius_m), None)
+    if zone is None:
+        raise HTTPException(404, "Patrol zone not found")
+    home = LatLon(value.home_lat, value.home_lon)
+    if haversine_m(home, zone.centroid) > MAX_HOME_DISTANCE_M:
+        raise HTTPException(422, "Home must be within 5 km of the patrol zone")
+    plan = build_patrol_plan(zone.centroid, zone.radius_m, value.altitude_m, home=home)
+    payload = {"lake_id": drone["lake_id"], "drone_id": drone["inventory_id"], "zone_id": zone.zone_id,
+               "home": {"lat": home.lat, "lon": home.lon}, "altitude_m": value.altitude_m, "mission": mission_rows(plan)}
+    fingerprint = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
+    return zone, plan, payload, fingerprint
+
+
+@router.post("/{drone_id}/mission-preview")
+def preview_mission(station_id: str, drone_id: str, value: MissionRequest, principal: Principal = Depends(get_principal)) -> dict:
+    _access(principal, station_id)
+    zone, plan, payload, fingerprint = prepare_mission(station_id, _assigned_drone(station_id, drone_id), value)
+    return {"zone_id": zone.zone_id, "home": payload["home"], "altitude_m": value.altitude_m,
+            "waypoint_count": len(plan["mission"]["items"]), "mission_hash": fingerprint,
+            "route": [{"lat": row[6], "lon": row[7]} for row in payload["mission"] if row[1] in (16, 22)]}
+
 
 @router.post("/{drone_id}/patrol", status_code=status.HTTP_202_ACCEPTED)
 def send_patrol(station_id: str, drone_id: str, value: PatrolRequest, request: Request, principal: Principal = Depends(get_principal)) -> dict:
-    """Queue one patrol loop of the drone's own zone for its Pi to upload; the pilot still arms it, and RC always overrides."""
+    """Queue a reviewed upload only. The pilot controls arming and RC override."""
     _access(principal, station_id)
     require_rate_limit("inventory.real.patrol", principal, request, station_id=station_id)
     drone = _assigned_drone(station_id, drone_id)
     if drone.get("credential_state") != "active":
         raise HTTPException(409, "The drone's credential is not active")
-    zones, assigned = _patrol_layout(station_id, drone)
-    wanted = value.zone_id or assigned
-    zone = next((z for z in zones if wanted in (None, z.zone_id) and z.radius_m), None)
-    if zone is None:
-        raise HTTPException(404, "Patrol zone not found")
-    plan = build_patrol_plan(zone.centroid, zone.radius_m, DEFAULT_ALTITUDE_M, home=zone.centroid)
-    command_id = str(uuid4())
-    live_commands.queue(drone_id, {
-        "command_id": command_id, "command_type": "patrol", "zone_id": zone.zone_id,
-        "expires_at": (datetime.now(timezone.utc) + timedelta(seconds=PATROL_COMMAND_SECONDS)).isoformat(),
-        "mission": mission_rows(plan), "ack": False,
-    })
-    return {"command_id": command_id, "zone_id": zone.zone_id, "waypoints": len(plan["mission"]["items"])}
+    zone, plan, payload, fingerprint = prepare_mission(station_id, drone, value)
+    if fingerprint != value.reviewed_hash:
+        raise HTTPException(409, "Mission changed; refresh and review the preview again")
+    try:
+        result = get_patrol_repository().queue(station_id, drone_id, drone["lake_id"], principal.user_id,
+            {**payload, "mission_hash": fingerprint})
+    except DeviceRepositoryError as exc:
+        raise HTTPException(409, "Patrol could not be queued; refresh the drone and review again") from exc
+    return {**result, "zone_id": zone.zone_id, "waypoints": len(plan["mission"]["items"])}
+
+
+@router.get("/{drone_id}/patrol-commands/latest")
+def latest_patrol_command(station_id: str, drone_id: str, principal: Principal = Depends(get_principal)) -> dict:
+    _admin(principal, station_id)
+    try:
+        result = get_patrol_repository().latest(station_id, drone_id)
+    except DeviceRepositoryError as exc:
+        raise HTTPException(503, "Patrol status is unavailable") from exc
+    return result or {"command": None}
+
+
+@router.get("/{drone_id}/patrol-commands/{command_id}")
+def patrol_command_status(station_id: str, drone_id: str, command_id: str, principal: Principal = Depends(get_principal)) -> dict:
+    _admin(principal, station_id)
+    try:
+        result = get_patrol_repository().status(station_id, drone_id, command_id)
+    except DeviceRepositoryError as exc:
+        raise HTTPException(503, "Patrol status is unavailable") from exc
+    if not result:
+        raise HTTPException(404, "Patrol command not found")
+    return result
+
 
 @router.get("/{drone_id}/patrol-zones")
 def list_patrol_zones(station_id: str, drone_id: str, principal: Principal = Depends(get_principal)) -> dict:
@@ -160,28 +215,11 @@ def list_patrol_zones(station_id: str, drone_id: str, principal: Principal = Dep
     return {"lake_id": drone["lake_id"], "assigned_zone_id": assigned,
             "zones": [{"zone_id": z.zone_id, "radius_m": round(z.radius_m), "is_proxy": z.is_proxy} for z in zones if z.radius_m]}
 
-class MissionRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    zone_id: str = Field(min_length=1, max_length=120)
-    home_lat: float = Field(ge=-90, le=90)
-    home_lon: float = Field(ge=-180, le=180)
-    altitude_m: float = Field(ge=5, le=120)  # 120 m stays under the FAA's 400 ft ceiling
-
-MAX_HOME_DISTANCE_M = 5000
-
 @router.post("/{drone_id}/mission")
 def download_mission(station_id: str, drone_id: str, value: MissionRequest, principal: Principal = Depends(get_principal)) -> PlainTextResponse:
     """A Mission Planner file for the operator to review and load; nothing is sent to the drone."""
     _admin(principal, station_id)
-    zones, _ = _patrol_layout(station_id, _assigned_drone(station_id, drone_id))
-    zone = next((z for z in zones if z.zone_id == value.zone_id and z.radius_m), None)
-    if zone is None:
-        raise HTTPException(404, "Patrol zone not found")
-    home = LatLon(value.home_lat, value.home_lon)
-    # A swapped sign or typo in home would send takeoff and RTL somewhere else entirely.
-    if haversine_m(home, zone.centroid) > MAX_HOME_DISTANCE_M:
-        raise HTTPException(422, "Home must be within 5 km of the patrol zone")
-    plan = build_patrol_plan(zone.centroid, zone.radius_m, value.altitude_m, home=home)
+    zone, plan, _, _ = prepare_mission(station_id, _assigned_drone(station_id, drone_id), value)
     return PlainTextResponse(to_waypoints(plan), headers={"Content-Disposition": f'attachment; filename="{zone.zone_id}.waypoints"'})
 
 @router.post("/{drone_id}/retire")

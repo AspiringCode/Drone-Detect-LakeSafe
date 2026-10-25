@@ -71,6 +71,7 @@ PRIVILEGED_LIMITS: dict[str, tuple[int, int]] = {
     "verification.start": (5, 3600),
     "station.invitation.create": (20, 3600),
     "station.join.review": (40, 3600),
+    "station.member.change": (30, 3600),
     "station.review": (40, 3600),
     "lake.create": (10, 3600),
     "lake.refresh": (12, 3600),

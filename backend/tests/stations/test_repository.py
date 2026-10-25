@@ -29,6 +29,13 @@ def test_accept_invitation_queries_only_hash_and_normalized_email():
     assert client.last_rpc == ("accept_station_invitation", {"p_token_hash": "a" * 64, "p_user_id": "user-1", "p_email": "officer@example.gov"})
 
 
+def test_member_change_calls_atomic_station_scoped_rpc():
+    client = FakeClient({"membership_id": "m-1", "status": "active", "roles": ["viewer"]})
+    result = SupabaseWorkflowRepository(client).change_member("s-1", "m-1", "admin", ("viewer",), "active")
+    assert result["membership_id"] == "m-1"
+    assert client.last_rpc == ("change_station_membership", {"p_station_id": "s-1", "p_membership_id": "m-1", "p_actor_user_id": "admin", "p_roles": ["viewer"], "p_status": "active"})
+
+
 def test_station_approval_requests_atomic_admin_membership():
     client = FakeClient({"membership_id": "m", "station_id": "s", "user_id": "u", "status": "active", "roles": ["station_admin"]})
     result = SupabaseWorkflowRepository(client).review_station_request(StationReviewCreate("request", "reviewer", "approved"))

@@ -29,7 +29,7 @@ describe("AlertPanel", () => {
   it("calls onEscalate with the alert id when Confirm & Dispatch is clicked", () => {
     const onEscalate = vi.fn();
     render(<AlertPanel alert={mkAlert()} onEscalate={onEscalate} />);
-    fireEvent.click(screen.getByRole("button", { name: /confirm & dispatch/i }));
+    fireEvent.click(screen.getByRole("button", { name: /mark reviewed/i }));
     expect(onEscalate).toHaveBeenCalledTimes(1);
     expect(onEscalate).toHaveBeenCalledWith("a1");
   });
@@ -52,5 +52,24 @@ describe("AlertPanel", () => {
   it("renders a placeholder when there is no active alert", () => {
     render(<AlertPanel alert={null} />);
     expect(screen.getByText(/no active alert/i)).toBeTruthy();
+  });
+
+  it("surfaces failed review without claiming success and allows retry", async () => {
+    const review = vi.fn().mockRejectedValueOnce(new Error("Review unavailable")).mockResolvedValueOnce(undefined);
+    render(<AlertPanel alert={mkAlert()} onEscalate={review}/>);
+    fireEvent.click(screen.getByRole("button", {name:"Mark reviewed"}));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Review unavailable");
+    fireEvent.click(screen.getByRole("button", {name:"Mark reviewed"}));
+    expect(await screen.findByRole("button", {name:"Reviewed"})).toBeDisabled();
+    expect(screen.getByText(/No emergency services are contacted/)).toBeVisible();
+  });
+
+  it("requests authorized evidence without displaying a private storage key", async () => {
+    const evidence = vi.fn().mockResolvedValue({url:"https://example.com/signed-clip", expires_in:60});
+    render(<AlertPanel alert={mkAlert({thermal_clip_ref:"private/bucket/key.mp4"})} onEvidence={evidence}/>);
+    expect(screen.queryByText(/private\/bucket/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", {name:"Review thermal evidence"}));
+    expect(await screen.findByRole("link", {name:/Open thermal evidence/})).toHaveAttribute("href","https://example.com/signed-clip");
+    expect(evidence).toHaveBeenCalledWith("a1");
   });
 });

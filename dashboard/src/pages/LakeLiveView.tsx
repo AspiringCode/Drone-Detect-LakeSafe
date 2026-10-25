@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
+import { AccessibleDialog } from "../components/AccessibleDialog";
 import { Link, useParams } from "react-router-dom";
 import { AlertPanel } from "../components/AlertPanel";
 import { DroneRoster } from "../components/DroneRoster";
@@ -14,15 +14,12 @@ import { useOptionalPrincipal } from "../auth/PrincipalProvider";
 import { changeSimulation, loadRealFleetSafetyStatus, loadRegisteredDrones, requestSafeReturn, setRealAutonomy, type RealDroneChoice, type SimulationAction } from "../lib/fleetData";
 import { RealFleetSafetyPanel } from "../components/RealFleetSafetyPanel";
 import { ApiError } from "../lib/apiClient";
-
 const API = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 const wsFor = (lakeId: string) => `${API.replace(/^http/, "ws")}/ws/operations/lakes/${lakeId}`;
 type LakeMetadata = { name: string; centroid_lat: number; centroid_lon: number; station_id?: string };
-
 export function hasLakeCapability(principal: Principal | null | undefined, lakeStationId: string | null, capability: Capability): boolean {
   return Boolean(lakeStationId && principal && (principal.aal === "aal2" || principal.judge_demo_access === true) && principal.memberships.some((item) => item.station_id === lakeStationId && item.status === "active" && item.capabilities.includes(capability)));
 }
-
 export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, connect = connectPositions, connectOperational = connectOperationalPositions }: { client?: SupabaseLike; accessToken?: string; fetcher?: typeof fetch; connect?: typeof connectPositions; connectOperational?: typeof connectOperationalPositions }) {
   const { lakeId = "" } = useParams();
   const principalContext = useOptionalPrincipal();
@@ -34,6 +31,8 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
   const [alert, setAlert] = useState<Alert | null>(null);
   const alertCue = useNewAlertCue(alert);
   const [noLive, setNoLive] = useState(false);
+  const [setupStatus, setSetupStatus] = useState<"queued" | "failed" | null>(null);
+  const [runtimeAttempt, setRuntimeAttempt] = useState(0);
   const [metadataError, setMetadataError] = useState(false);
   const [lakeName, setLakeName] = useState("Lake operations");
   const [lakeCenter, setLakeCenter] = useState<LatLon | null>(null);
@@ -49,15 +48,17 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
   const [realSafety, setRealSafety] = useState<RealFleetSafetyStatus | null>(null);
   const [realSafetyBusy, setRealSafetyBusy] = useState(false);
   const [realSafetyError, setRealSafetyError] = useState<string | null>(null);
-
   const canReadOperations = hasLakeCapability(principal, lakeStationId, "station.read");
   const canManageAlerts = hasLakeCapability(principal, lakeStationId, "alert.manage");
   const canManageAutonomy = hasLakeCapability(principal, lakeStationId, "autonomy.manage");
+  const canManageRealSafety = hasLakeCapability(principal, lakeStationId, "fleet_safety.manage");
   const stationCapabilities = lakeStationId ? principal?.memberships.find((item) => item.station_id === lakeStationId && item.status === "active")?.capabilities ?? [] : [];
   useEffect(() => {
     let active = true;
     let stop = () => {};
     setNoLive(false);
+    setSetupStatus(null);
+    setOperationsDataError(null);
     setRiskmap(null);
     setAlert(null);
     setDrones([]);
@@ -65,6 +66,11 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
       const token = accessToken ?? (await client.auth.getSession()).data.session?.access_token;
       if (!active) return;
       if (!token) throw new Error("Missing operator session");
+      const setupResponse = await fetcher(`${API}/api/lakes/${encodeURIComponent(lakeId)}/setup-status`, { headers: { Authorization: `Bearer ${token}` } });
+      if (setupResponse.ok) {
+        const setup = await setupResponse.json();
+        if (setup.setup_status === "queued" || setup.setup_status === "failed") { if (active) setSetupStatus(setup.setup_status); return; }
+      }
       const freshToken = async () => accessToken ?? (await client.auth.getSession()).data.session?.access_token;
       stop = connectOperational(wsFor(lakeId), freshToken, (state) => { if (!active) return; setDrones(state.drones); setSimulationRunning(state.simulation_running ?? false); if (state.latest_alert) setAlert(state.latest_alert); }, (live) => { if (active) setLiveLost(!live); });
       const options = { headers: { Authorization: `Bearer ${token}` } };
@@ -83,7 +89,7 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
       ]);
     })().catch(() => { if (active) setOperationsDataError("Live lookout data could not be loaded. Return to lakes and reopen this workspace to retry."); });
     return () => { active = false; stop(); };
-  }, [lakeId, fetcher, connectOperational, client, accessToken, canReadOperations]);
+  }, [lakeId, fetcher, connectOperational, client, accessToken, canReadOperations, runtimeAttempt]);
   useEffect(() => {
     let active = true;
     setMetadataError(false);
@@ -104,7 +110,6 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
     })();
     return () => { active = false; };
   }, [client, lakeId]);
-
   useEffect(() => {
     setRegisteredChecked(false);
     if (!canReadOperations || !lakeStationId) { setRegistered([]); setRealSafety(null); setOperationsDataError(null); return; }
@@ -115,9 +120,8 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
     void loadRealFleetSafetyStatus(lakeStationId, lakeId, client, fetcher).then((status) => { if (active) setRealSafety(status); }, () => {});
     return () => { active = false; };
   }, [canReadOperations, lakeStationId, lakeId, client, fetcher]);
-
   async function simulate(action: SimulationAction, realDrones?: RealDroneChoice) {
-    if (!canManageAutonomy) return;
+    if (!canManageAutonomy || (realDrones === "replan" && !canManageRealSafety)) return;
     setAskAboutRealDrones(false);
     setSimulationBusy(true); setSimulationError(null);
     try {
@@ -133,22 +137,37 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
   // Test markers are simulated too, but they are not part of the session.
   const waitingDrones = drones.filter((drone) => drone.source === "simulated" && !drone.assigned_zone && !drone.drone_id.endsWith("(test)"));
   async function changeRealAutonomy(enabled: boolean, reason: string) {
-    if (!canManageAutonomy || !lakeStationId) return;
+    if (!canManageRealSafety || !lakeStationId) return;
     setRealSafetyBusy(true); setRealSafetyError(null);
     try { setRealSafety(await setRealAutonomy(lakeStationId, lakeId, enabled, reason, client, fetcher)); }
-    catch (error) { setRealSafetyError(error instanceof ApiError && error.status === 403 ? "Recent MFA is required before changing real fleet safety policy." : "The real fleet safety policy could not be updated."); }
+    catch (error) { setRealSafetyError(error instanceof ApiError && error.status === 403 ? (error.code.includes("mfa") || /recent|mfa/i.test(error.message) ? "Recent MFA is required before changing real fleet safety policy." : "Your station role cannot change real fleet safety policy.") : "The real fleet safety policy could not be updated."); }
     finally { setRealSafetyBusy(false); }
   }
   async function returnRealFleet(reason: string) {
-    if (!canManageAutonomy || !lakeStationId) return;
+    if (!canManageRealSafety || !lakeStationId) return;
     setRealSafetyBusy(true); setRealSafetyError(null);
     try { setRealSafety(await requestSafeReturn(lakeStationId, lakeId, reason, client, fetcher)); }
-    catch (error) { setRealSafetyError(error instanceof ApiError && error.status === 403 ? "Recent MFA is required before requesting a fleet safe return." : "The fleet safe-return request could not be sent."); }
+    catch (error) { setRealSafetyError(error instanceof ApiError && error.status === 403 ? (error.code.includes("mfa") || /recent|mfa/i.test(error.message) ? "Recent MFA is required before requesting a fleet safe return." : "Your station role cannot request a fleet safe return.") : "The fleet safe-return request could not be sent."); }
     finally { setRealSafetyBusy(false); }
   }
   async function demo() { if (!canManageAlerts) return; const token = accessToken ?? (await client.auth.getSession()).data.session?.access_token; const response = await fetcher(`${API}/api/lakes/${lakeId}/demo/trigger`, { method: "POST", headers: { Authorization: `Bearer ${token ?? ""}` } }); if (response.ok) setAlert(await response.json()); }
-  async function escalate(id: string) { if (!canManageAlerts) return; const token = accessToken ?? (await client.auth.getSession()).data.session?.access_token; await fetcher(`${API}/api/lakes/${lakeId}/alerts/${id}/escalate`, { method: "POST", headers: { Authorization: `Bearer ${token ?? ""}` } }); }
+  async function escalate(id: string) {
+    if (!canManageAlerts) throw new Error("Your station role cannot review alerts.");
+    const token = accessToken ?? (await client.auth.getSession()).data.session?.access_token;
+    const response = await fetcher(`${API}/api/lakes/${encodeURIComponent(lakeId)}/alerts/${encodeURIComponent(id)}/review`, { method: "POST", headers: { Authorization: `Bearer ${token ?? ""}` } });
+    if (!response.ok) throw new Error(response.status === 403 ? "Your station role or MFA session cannot review this alert. Check access and try again." : "Review could not be saved. Try again.");
+    const result = await response.json();
+    if (!result.reviewed) throw new Error("The server did not confirm the review. Try again.");
+    setAlert((current) => current?.alert_id === id ? { ...current, reviewed_at: result.reviewed_at } : current);
+  }
+  async function evidence(id: string) {
+    const token = accessToken ?? (await client.auth.getSession()).data.session?.access_token;
+    const response = await fetcher(`${API}/api/evidence/alerts/${encodeURIComponent(id)}/thermal`, { headers: { Authorization: `Bearer ${token ?? ""}` } });
+    if (!response.ok) throw new Error("Evidence unavailable");
+    return response.json();
+  }
   if (metadataError) return <main className="app-page"><AppHeader active="lakes" contextLabel={lakeName} client={client} /><section className="runtime-unavailable"><h1>Lake information is unavailable</h1><p role="alert" aria-label="Lake information error">Lake information could not be loaded. Return to lakes and reopen this workspace to retry.</p><Link className="button-link" to="/lakes">Return to lakes</Link></section></main>;
+  if (setupStatus) return <main className="app-page"><AppHeader active="lakes" contextLabel={lakeName} client={client}/><section className="runtime-unavailable"><h1>{setupStatus === "queued" ? "Lake setup is queued" : "Lake setup needs attention"}</h1><p role="status">{setupStatus === "queued" ? "The stored shoreline and patrol plan are being prepared. Check again for readiness." : "The stored patrol plan could not be prepared. A station administrator can review the lake setup."}</p><div className="fleet-refresh"><button className="button-secondary" onClick={() => setRuntimeAttempt((value) => value + 1)}>Check setup again</button><Link to="/lakes">Return to lakes</Link></div></section></main>;
   if (noLive) return <main className="app-page"><AppHeader active="lakes" contextLabel={lakeName} client={client} /><section className="runtime-unavailable"><h1>No live data for this lake</h1><p>The operator runtime is unavailable. Return to your lakes to choose another workspace.</p><Link className="button-link" to="/lakes">Return to lakes</Link></section></main>;
   return (
     <main ref={ref} className="app-page live-shell">
@@ -192,7 +211,7 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
           </section>
           <section className="panel-card alert-card" aria-label="Active alert">
             <div className="panel-heading"><h2>Active alert</h2></div>
-            <AlertPanel alert={alert} onEscalate={canManageAlerts ? escalate : undefined} />
+            <AlertPanel key={alert?.alert_id ?? "none"} alert={alert} onEscalate={canManageAlerts ? escalate : undefined} onEvidence={canReadOperations ? evidence : undefined} />
           </section>
         </aside>
       </section>
@@ -200,18 +219,14 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
         {operationsDataError && <p className="operations-data-error" role="alert" aria-label="Operational data error">{operationsDataError}</p>}
         {registered.length > 0 && realSafety && <RealFleetSafetyPanel capabilities={stationCapabilities} status={realSafety} busy={realSafetyBusy} error={realSafetyError} onSetAutonomy={changeRealAutonomy} onRequestSafeReturn={returnRealFleet} />}
       </section>}
-      {/* Portalled to <body>: the page's entrance transform would otherwise anchor position: fixed to <main>, not the screen. */}
-      {askAboutRealDrones && createPortal(<div className="modal-backdrop" onKeyDown={(event) => { if (event.key === "Escape") setAskAboutRealDrones(false); }}>
-        <div className="modal-card" role="dialog" aria-modal="true" aria-labelledby="real-drones-title">
-          <h2 id="real-drones-title">Change real drones’ flight paths?</h2>
-          <p>{registered.length === 1 ? "A real drone is" : `${registered.length} real drones are`} on this lake. Changing re-divides the lake for every drone, so {registered.length === 1 ? "its" : "their"} next patrol uses a new zone.</p>
-          <div className="modal-actions">
-            <button autoFocus onClick={() => void simulate("simulation/start", "replan")}>Change flight paths</button>
-            <button className="button-secondary" onClick={() => void simulate("simulation/start", "keep")}>Leave unaffected</button>
-            <button className="button-secondary" onClick={() => setAskAboutRealDrones(false)}>Cancel</button>
-          </div>
+      {askAboutRealDrones && <AccessibleDialog title="Change real drones’ flight paths?" onClose={() => setAskAboutRealDrones(false)}>
+        <p>{registered.length === 1 ? "A real drone is" : `${registered.length} real drones are`} on this lake. Changing re-divides the lake for every drone, so the next patrol uses a new zone.</p>
+        <div className="modal-actions">
+          {canManageRealSafety && <button onClick={() => void simulate("simulation/start", "replan")}>Change flight paths</button>}
+          <button className="button-secondary" onClick={() => void simulate("simulation/start", "keep")}>Leave unaffected</button>
+          <button className="button-secondary" onClick={() => setAskAboutRealDrones(false)}>Cancel</button>
         </div>
-      </div>, document.body)}
+      </AccessibleDialog>}
     </main>
   );
 }

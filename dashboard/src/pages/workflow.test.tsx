@@ -2,7 +2,6 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { AuthGate } from "../auth/AuthGate";
-import { OnboardingGate } from "../auth/OnboardingGate";
 import { PrincipalProvider, usePrincipal } from "../auth/PrincipalProvider";
 import { ActiveStationProvider } from "../hooks/useActiveStation";
 import { LoginPage } from "./LoginPage";
@@ -36,10 +35,6 @@ function gated(client: unknown) {
   return <MemoryRouter initialEntries={["/lakes"]}><Routes><Route element={<AuthGate client={client as never} />}><Route path="/lakes" element={<p>Protected lakes</p>} /></Route><Route path="/login" element={<p>Login</p>} /><Route path="/verify-2fa" element={<p>Verify</p>} /><Route path="/onboarding" element={<p>Onboarding</p>} /></Routes></MemoryRouter>;
 }
 
-function onboardingGated(client: unknown) {
-  return <MemoryRouter initialEntries={["/onboarding"]}><Routes><Route element={<OnboardingGate client={client as never} />}><Route path="/onboarding" element={<p>Onboarding</p>} /></Route><Route path="/login" element={<p>Login</p>} /><Route path="/verify-2fa" element={<p>Verify</p>} /></Routes></MemoryRouter>;
-}
-
 describe("AuthGate", () => {
   it("redirects a visitor without a session to login", async () => { const { client } = authClient({ hasSession: false }); render(gated(client)); expect(await screen.findByText("Login")).toBeInTheDocument(); });
   it("permits an AAL1 civilian session into the public workspace", async () => { const { client } = authClient({ currentLevel: "aal1" }); render(gated(client)); expect(await screen.findByText("Protected lakes")).toBeInTheDocument(); });
@@ -65,20 +60,6 @@ describe("PrincipalProvider", () => {
     fireEvent.click(screen.getByRole("button", { name: /retry/i }));
     await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-  });
-});
-
-describe("OnboardingGate", () => {
-  it("allows an AAL2 session without an organization and re-evaluates on auth changes", async () => {
-    const { client, callback } = authClient({ orgs: [] });
-    render(onboardingGated(client));
-    expect(await screen.findByText("Onboarding")).toBeInTheDocument();
-
-    client.auth.getSession.mockResolvedValue({ data: { session: null } });
-    callback("SIGNED_OUT", null);
-
-    expect(await screen.findByText("Login")).toBeInTheDocument();
-    await waitFor(() => expect(client.auth.getSession).toHaveBeenCalledTimes(2));
   });
 });
 
@@ -115,15 +96,9 @@ describe("operator workflow", () => {
     await waitFor(() => expect(auth.mfa.getAuthenticatorAssuranceLevel).toHaveBeenCalledWith("token"));
   });
 
-  it("restores onboarding search controls after a network failure", async () => {
-    const fetcher = vi.fn().mockRejectedValue(new TypeError("network unavailable"));
-    render(<MemoryRouter><OnboardingPage fetcher={fetcher} /></MemoryRouter>);
-    fireEvent.change(screen.getByLabelText(/station name/i), { target: { value: "LakeSafe" } });
-    fireEvent.change(screen.getByLabelText(/station address/i), { target: { value: "Sammamish, WA" } });
-    fireEvent.click(screen.getByRole("button", { name: /find nearby lakes/i }));
-
-    expect(await screen.findByRole("alert")).toHaveTextContent(/could not find lakes/i);
-    expect(screen.getByRole("button", { name: /find nearby lakes/i })).toBeEnabled();
+  it("redirects obsolete onboarding to the verified station access workflow", async () => {
+    render(<MemoryRouter initialEntries={["/onboarding"]}><Routes><Route path="/onboarding" element={<OnboardingPage />} /><Route path="/station-access" element={<p>Station access</p>} /></Routes></MemoryRouter>);
+    expect(await screen.findByText("Station access")).toBeVisible();
   });
 
   it("enrolls a genuine TOTP factor, presents it, and verifies the enrollment", async () => {
