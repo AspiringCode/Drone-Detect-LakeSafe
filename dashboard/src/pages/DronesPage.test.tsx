@@ -3,11 +3,16 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DronesPage } from "./DronesPage";
 
-const station = vi.hoisted(() => ({ current: null as null | { station_id: string; station_name: string; capabilities: string[] } }));
+const station = vi.hoisted(() => ({ current: null as null | { station_id: string; station_name: string; capabilities: string[] }, select: vi.fn() }));
 const apiRequest = vi.hoisted(() => vi.fn());
-vi.mock("../hooks/useActiveStation", () => ({ useOptionalActiveStation: () => ({ station: station.current, select: vi.fn() }) }));
+vi.mock("../hooks/useActiveStation", () => ({ useOptionalActiveStation: () => ({ station: station.current, select: station.select }) }));
+vi.mock("../auth/PrincipalProvider", () => ({ useOptionalPrincipal: () => ({ principal: { memberships: [
+  { station_id: "st-1", station_name: "Demo Station", status: "active" },
+  { station_id: "st-2", station_name: "Second Station", status: "active" },
+  { station_id: "st-3", station_name: "Inactive Station", status: "revoked" },
+] } }) }));
 vi.mock("../lib/apiClient", () => ({ apiRequest }));
-vi.mock("../components/AppHeader", () => ({ AppHeader: () => <header>header</header> }));
+vi.mock("../components/AppHeader", () => ({ AppHeader: ({ showStationPicker }: { showStationPicker?: boolean }) => <header data-testid="app-header">header{showStationPicker && <select aria-label="Active station"/>}</header> }));
 
 const lakes = [
   { lake_id: "test-drone-field", station_id: "st-1", org_id: null, name: "Drone Test Field", centroid_lat: 47.592, centroid_lon: -122.032 },
@@ -19,7 +24,7 @@ const drone = { inventory_id: "d-1", lake_id: "test-drone-field", lifecycle: "ci
 const page = (setup = false) => render(<MemoryRouter><DronesPage client={client} setup={setup} /></MemoryRouter>);
 
 describe("DronesPage", () => {
-  beforeEach(() => { apiRequest.mockReset(); station.current = { station_id: "st-1", station_name: "Demo Station", capabilities: ["inventory.manage"] }; });
+  beforeEach(() => { apiRequest.mockReset(); station.select.mockReset(); station.current = { station_id: "st-1", station_name: "Demo Station", capabilities: ["inventory.manage"] }; });
   afterEach(() => vi.unstubAllGlobals());
 
   it("is unavailable without the inventory capability", () => {
@@ -46,6 +51,19 @@ describe("DronesPage", () => {
     await screen.findByText("No real drones are registered to this station yet.");
     expect(screen.queryByLabelText("Manufacturer")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Register a drone" })).toHaveAttribute("href", "/drones/setup");
+  });
+
+  it("puts the station control under the page title and links Add drone to setup", async () => {
+    apiRequest.mockResolvedValue({ drones: [] });
+    page();
+    const picker = screen.getByRole("combobox", { name: "Active station" });
+    expect(picker.closest(".page-heading")).toHaveTextContent("Drones");
+    expect(screen.getByTestId("app-header").querySelector("select")).toBeNull();
+    expect([...picker.querySelectorAll("option")].map((option) => option.textContent)).toEqual(["Demo Station", "Second Station"]);
+    fireEvent.change(picker, { target: { value: "st-2" } });
+    expect(station.select).toHaveBeenCalledWith("st-2");
+    expect(screen.getByRole("link", { name: "Add drone" })).toHaveAttribute("href", "/drones/setup");
+    expect(screen.queryByRole("link", { name: "Open setup guide" })).not.toBeInTheDocument();
   });
 
   it("registers a drone and shows its ID in the connect commands", async () => {

@@ -2,6 +2,10 @@
 .touch-shell, .touch-panel, .command-block { min-width: 0; }
 .page-heading.touch-heading { display: flex; max-width: none; justify-content: space-between; align-items: center; gap: 1.25rem; flex-wrap: wrap; margin-bottom: 2rem; }
 .touch-heading p { margin: .75rem 0 0; color: var(--text-muted); }
+.drone-add-link { gap: .35rem; }
+.drone-heading-context { min-width: 0; max-width: 100%; }
+.station-picker--page { margin-top: .75rem; width: 32rem; max-width: 100%; }
+.station-picker.station-picker--page select { width: 100%; max-width: 100%; min-height: 2.75rem; padding: .65rem 2.25rem .65rem .85rem; border: 1px solid var(--border-strong); background-color: var(--surface); border-radius: 10px; color: var(--text-muted); font-size: 1rem; }
 .touch-panel { padding: clamp(1.25rem, 3vw, 2rem); border: 1px solid var(--border); border-radius: 18px; background: var(--surface); margin-top: 1.25rem; }
 .touch-panel p { line-height: 1.65; }
 .touch-panel h3 { font-size: 1rem; }

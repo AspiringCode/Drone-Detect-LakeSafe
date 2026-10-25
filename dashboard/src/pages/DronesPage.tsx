@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { AppHeader } from "../components/AppHeader";
+import { StationPicker } from "../components/StationPicker";
 import { useOptionalActiveStation } from "../hooks/useActiveStation";
 import { apiRequest } from "../lib/apiClient";
 import { supabase, type SupabaseLike } from "../lib/supabase";
@@ -98,7 +99,7 @@ export function DronesPage({ client = supabase, setup = false }: { client?: Supa
     void act(() => apiRequest(`/api/stations/${encodeURIComponent(stationId)}/inventory/${drone.inventory_id}/retire`, { method: "POST" }, client), "Drone retired.", "Drone could not be retired.");
   };
 
-  if (!allowed) return <main className="app-page"><AppHeader active="drones" showStationPicker client={client}/><section className="workflow-shell"><h1>Drone registry is unavailable</h1><p>Choose a station where you are a station administrator.</p></section></main>;
+  if (!allowed) return <main className="app-page"><AppHeader active="drones" client={client}/><section className="workflow-shell"><h1>Drone registry is unavailable</h1><StationPicker page/><p>Choose a station where you are a station administrator.</p></section></main>;
   const lakeName = (id: string | null) => lakes.find((lake) => lake.lake_id === id)?.name ?? "Not assigned";
   const connectIds = [...new Set([...(registered ? [registered] : []), ...drones.map((drone) => drone.inventory_id)])];
   const connectId = connectIds.includes(selectedDrone) ? selectedDrone : connectIds[0] ?? "<drone-id>";
@@ -117,8 +118,8 @@ export function DronesPage({ client = supabase, setup = false }: { client?: Supa
           </span>
         </li>)}</ul>}
       </section>;
-  return <main className="app-page"><AppHeader active="drones" showStationPicker client={client}/><section className="workflow-shell touch-shell">
-    <header className="page-heading touch-heading"><div><h1>{setup ? "Drone setup" : "Drones"}</h1><p>{station?.station_name}</p></div>{setup ? <Link to="/drones">Back to registered drones</Link> : <Link className="button-link button-secondary" to="/drones/setup">Open setup guide</Link>}</header>
+  return <main className="app-page"><AppHeader active="drones" client={client}/><section className="workflow-shell touch-shell">
+    <header className="page-heading touch-heading"><div className="drone-heading-context"><h1>{setup ? "Drone setup" : "Drones"}</h1><StationPicker page/></div>{setup ? <Link to="/drones">Back to registered drones</Link> : <Link className="button-link button-secondary drone-add-link" to="/drones/setup">Add drone <span aria-hidden="true">+</span></Link>}</header>
     <div ref={feedback}>
       {status && <p className="form-success" role="status">{status}</p>}
       {error && <div className="touch-error" role="alert"><p>{error}</p></div>}

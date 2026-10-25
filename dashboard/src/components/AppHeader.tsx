@@ -4,6 +4,7 @@ import { supabase, type SupabaseLike } from "../lib/supabase";
 import { useOptionalPrincipal } from "../auth/PrincipalProvider";
 import { useOptionalActiveStation } from "../hooks/useActiveStation";
 import { WaveMark } from "./WaveMark";
+import { StationPicker } from "./StationPicker";
 
 type HeaderSection = "lakes" | "alerts" | "reports" | "drones" | "profile";
 
@@ -19,7 +20,6 @@ export function AppHeader({ active, contextLabel, showStationPicker = false, cli
   const principalContext = useOptionalPrincipal();
   const activeContext = useOptionalActiveStation();
   const stations = principalContext?.principal?.memberships?.filter((membership) => membership.status === "active") ?? [];
-  const selectedStation = activeContext?.station?.station_id ?? "";
   const [accountInitial, setAccountInitial] = useState("O");
   const [menuOpen, setMenuOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
@@ -36,10 +36,6 @@ export function AppHeader({ active, contextLabel, showStationPicker = false, cli
     }
     return () => { current = false; };
   }, [client]);
-
-  function chooseStation(stationId: string) {
-    activeContext?.select(stationId);
-  }
 
   async function signOut() {
     setSigningOut(true);
@@ -67,13 +63,7 @@ export function AppHeader({ active, contextLabel, showStationPicker = false, cli
       </nav>
       <div className="app-account">
         {principalContext?.principal?.judge_demo_access === true && <span className="status-label">Demo</span>}
-        {showStationPicker && <label className="station-picker">
-          <span className="sr-only">Active station</span>
-          <select aria-label="Active station" value={selectedStation} onChange={(event) => chooseStation(event.target.value)}>
-            {!stations.length && <option value="">{contextLabel ?? "No active station"}</option>}
-            {stations.map((station) => <option value={station.station_id} key={station.station_id}>{station.station_name}</option>)}
-          </select>
-        </label>}
+        {showStationPicker && <StationPicker contextLabel={contextLabel}/>}
         <button className="account-trigger" type="button" aria-label="Open account menu" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>
           <span aria-hidden="true">{accountInitial}</span>
         </button>
