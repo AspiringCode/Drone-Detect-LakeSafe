@@ -29,6 +29,7 @@ class PublicLake(BaseModel):
     approximate_center_geohash: str | None
     public_status: str
     refreshed_at: datetime
+    map_bounds: tuple[float, float, float, float] | None = None
 
 
 class PublicAlert(BaseModel):
@@ -79,7 +80,7 @@ class SupabasePublicProjectionRepository:
 
     def list_lakes(self) -> list[dict[str, object]]:
         return self._rows(self._client.table("public_lakes").select(
-            "lake_id,name,approximate_center_geohash,public_status,refreshed_at"
+            "lake_id,name,approximate_center_geohash,public_status,refreshed_at,map_bounds"
         ).order("name").execute().data)
 
     def list_alerts(self, lake_id: str) -> list[dict[str, object]]:

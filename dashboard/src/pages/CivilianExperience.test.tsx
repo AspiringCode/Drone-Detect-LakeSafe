@@ -119,7 +119,7 @@ describe("CivilianHomePage", () => {
     expect(await screen.findByText("Patrol presence")).toBeVisible();
     expect(screen.getAllByText("North lake area")).toHaveLength(2);
     expect(screen.queryByText(/battery|serial number|exact coordinates/i)).not.toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "Lake Sammamish map preview" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Lake Sammamish interactive lake map" })).toBeInTheDocument();
     expect(screen.queryByText(/privacy|generalized for/)).not.toBeInTheDocument();
   });
 });

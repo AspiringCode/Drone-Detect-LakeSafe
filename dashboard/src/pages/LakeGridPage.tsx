@@ -6,6 +6,7 @@ import { useOrientation } from "../lib/useOrientation";
 import { AppHeader } from "../components/AppHeader";
 import { LakePreviewMap } from "../components/LakePreviewMap";
 import { useOptionalActiveStation } from "../hooks/useActiveStation";
+import { useOptionalPrincipal } from "../auth/PrincipalProvider";
 
 export function LakeGridPage({ client = supabase }: { client?: SupabaseLike }) {
   const ref = useOrientation();
@@ -14,13 +15,14 @@ export function LakeGridPage({ client = supabase }: { client?: SupabaseLike }) {
   const [error, setError] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const activeStation = useOptionalActiveStation();
+  const canAddLake = useOptionalPrincipal()?.principal?.memberships.some((item) => item.status === "active" && item.capabilities.includes("lake.create"));
   useEffect(() => {
     let current = true;
     setLoading(true);
     setError(false);
     async function load() {
       try {
-        const { data, error: loadError } = await client.from("lakes").select("lake_id,station_id,org_id,name,centroid_lat,centroid_lon").order("name");
+        const { data, error: loadError } = await client.from("lakes").select("lake_id,station_id,org_id,name,centroid_lat,centroid_lon,map_bounds").order("name");
         if (!current) return;
         if (loadError) throw loadError;
         setLakes(data ?? []);
@@ -40,13 +42,14 @@ export function LakeGridPage({ client = supabase }: { client?: SupabaseLike }) {
         <header className="page-heading">
           <h1>Managed lakes</h1>
           <p>Select a lake to open its live operations workspace.</p>
+          {canAddLake && <Link className="button-link" to="/lakes/new">Add lake +</Link>}
         </header>
         {loading && <p className="empty-state" role="status">Loading lakes…</p>}
         {error && <section className="workflow-card"><p className="form-error" role="alert">Could not load lakes. Please try again.</p><button type="button" onClick={() => setAttempt((value) => value + 1)}>Retry</button></section>}
         {!loading && !error && <div className="lake-grid">
           {lakes.map((lake) => (
             <Link className="lake-card" to={`/lakes/${lake.lake_id}`} key={lake.lake_id} onClick={() => { if (lake.station_id) activeStation?.select(lake.station_id); }}>
-              <LakePreviewMap name={lake.name} lat={lake.centroid_lat} lon={lake.centroid_lon} />
+              <LakePreviewMap name={lake.name} lat={lake.centroid_lat} lon={lake.centroid_lon} bounds={lake.map_bounds} />
               <span className="lake-card__footer"><strong>{lake.name}</strong><span aria-hidden="true">→</span></span>
             </Link>
           ))}

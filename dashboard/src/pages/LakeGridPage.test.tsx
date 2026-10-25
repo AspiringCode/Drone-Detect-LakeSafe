@@ -52,11 +52,12 @@ it("shows every authorized lake despite a selected station and follows the opene
     getSession: vi.fn().mockResolvedValue({ data: { session: { access_token: "test" } } }),
     onAuthStateChange: () => ({ data: { subscription: { unsubscribe: vi.fn() } } }),
   }, from: () => ({ select: () => ({ order: async () => ({ data: lakes, error: null }) }) }) };
-  const principal = { memberships: lakes.map(lake => ({ station_id: lake.station_id, station_name: lake.name, status: "active", capabilities: [], roles: [] })) };
+  const principal = { memberships: lakes.map(lake => ({ station_id: lake.station_id, station_name: lake.name, status: "active", capabilities: ["lake.create"], roles: [] })) };
   function Selection() { return <output aria-label="Selected station">{useActiveStation().station?.station_id}</output>; }
   render(<MemoryRouter><PrincipalProvider client={client as never} request={vi.fn().mockResolvedValue(principal)}><ActiveStationProvider><LakeGridPage client={client as never}/><Selection/></ActiveStationProvider></PrincipalProvider></MemoryRouter>);
   for (const lake of lakes) expect(await screen.findByRole("link", { name: lake.name })).toHaveAttribute("href", `/lakes/${lake.lake_id}`);
   expect(screen.queryByRole("combobox", { name: "Active station" })).not.toBeInTheDocument();
+  expect(screen.getByRole("link", {name: "Add lake +"})).toHaveAttribute("href", "/lakes/new");
   fireEvent.click(screen.getByRole("link", { name: "Lake B" }));
   expect(screen.getByLabelText("Selected station")).toHaveTextContent("station-b");
   localStorage.removeItem("lakesafe-active-station");

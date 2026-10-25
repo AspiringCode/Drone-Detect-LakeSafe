@@ -4,6 +4,7 @@ export type PublicLake = Readonly<{
   approximate_center_geohash: string | null;
   public_status: string;
   refreshed_at: string;
+  map_bounds?: [number, number, number, number] | null;
 }>;
 
 export type PublicAlert = Readonly<{

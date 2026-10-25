@@ -37,6 +37,14 @@ const civilian = { user_id: "civilian", email: "civilian@example.com", aal: "aal
 const verifiedUnassigned = { ...civilian, user_id: "officer", aal: "aal2", account_class: "officer", verification_status: "verified" };
 
 describe("Phase 2 invited-member journey", () => {
+  it("switches station administration and loads the selected station's members", async () => {
+    request.mockImplementation(async (path: string) => path.endsWith("/members") ? {members:[]} : {requests:[]});
+    workspace({ ...verifiedUnassigned, memberships: ["one","two"].map(id => ({ station_id:id,station_name:`Station ${id}`,status:"active",roles:["station_admin"],capabilities:["member.manage","lake.create"] })) }, <StationAdminPage/>, "/stations/one/admin");
+    expect(await screen.findByRole("heading",{name:"Station one"})).toBeVisible();
+    fireEvent.change(screen.getByRole("combobox",{name:"Active station"}),{target:{value:"two"}});
+    expect(await screen.findByRole("heading",{name:"Station two"})).toBeVisible();
+    expect(request).toHaveBeenCalledWith("/api/stations/two/members",{},expect.anything());
+  });
   it("refreshes the principal and returns an invited viewer to the lakes workspace", async () => {
     render(<PrincipalProvider client={sessionClient() as never} request={async () => ({ user_id: "officer-1", email: "officer@example.gov", aal: "aal2", account_class: "officer", verification_status: "verified", reviewer: false, memberships: [] }) as never}>
       <MemoryRouter initialEntries={["/invitations/accept?token=single-use"]}><Routes>

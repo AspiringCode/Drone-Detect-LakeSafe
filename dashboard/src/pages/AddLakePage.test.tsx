@@ -1,49 +1,50 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, expect, it, vi } from "vitest";
 import { AddLakePage } from "./AddLakePage";
-
-const request = vi.hoisted(() => vi.fn());
-vi.mock("../lib/apiClient", () => ({ apiRequest: request }));
-vi.mock("../auth/PrincipalProvider", () => ({ useOptionalPrincipal: () => ({ principal: { memberships: [{ station_id: "station-1", status: "active", capabilities: ["lake.create"] }] }, refresh: vi.fn() }) }));
+const state = vi.hoisted(() => ({ request: vi.fn(), refresh: vi.fn(), principal: { memberships: [{station_id:"station-1",station_name:"Station one",status:"active",capabilities:["lake.create"]}] } }));
+vi.mock("../lib/apiClient", () => ({ apiRequest: state.request }));
+vi.mock("../auth/PrincipalProvider", () => ({ useOptionalPrincipal: () => ({ principal: state.principal, refresh: state.refresh }) }));
 vi.mock("../components/AppHeader", () => ({ AppHeader: () => <header/> }));
-vi.mock("../components/ShorelinePreview", () => ({ ShorelinePreview: ({ onFailure }: { onFailure: () => void }) => <div role="img" aria-label="Shoreline preview"><button type="button" onClick={onFailure}>Simulate drawing failure</button></div> }));
+vi.mock("../components/ShorelinePreview", () => ({ ShorelinePreview: ({onFailure}: {onFailure:()=>void}) => <div role="img" aria-label="Shoreline preview"><button type="button" onClick={onFailure}>Drawing failure</button></div> }));
+const candidate = {candidate_id:13645,name:"Lake Washington",source:"King County GIS",shoreline:{type:"Polygon",coordinates:[]}};
 function page() {
-  render(<MemoryRouter initialEntries={["/stations/station-1/lakes/new"]}><Routes><Route path="/stations/:stationId/lakes/new" element={<AddLakePage/>}/></Routes></MemoryRouter>);
-  fireEvent.change(screen.getByLabelText("Lake name"), { target: { value: "Test lake" } });
-  fireEvent.change(screen.getByLabelText("Latitude"), { target: { value: "47.6" } });
-  fireEvent.change(screen.getByLabelText("Longitude"), { target: { value: "-122.1" } });
+  render(<MemoryRouter initialEntries={["/lakes/new"]}><Routes><Route path="/lakes/new" element={<AddLakePage/>}/><Route path="/lakes/:id" element={<p>Opened lake</p>}/></Routes></MemoryRouter>);
+  fireEvent.change(screen.getByLabelText("Lake name"),{target:{value:"Washington"}});
+  fireEvent.click(screen.getByRole("button",{name:"Search lakes"}));
 }
-beforeEach(() => request.mockReset());
-
-describe("lake shoreline review", () => {
-  it("does not offer creation when the API cannot find a shoreline", async () => {
-    request.mockResolvedValue({ candidates: [], data_source_status: "fallback_coverage" });
-    page();
-    fireEvent.click(screen.getByRole("button", { name: "Preview lake" }));
-    expect(await screen.findByText(/No shoreline was found/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Create lake and queue setup" })).not.toBeInTheDocument();
-    expect(request).toHaveBeenCalledTimes(1);
-  });
-
-  it("shows the returned boundary and invalidates it when location details change", async () => {
-    request.mockResolvedValue({ candidates: [{ name: "Test lake", shoreline: { type: "Polygon", coordinates: [[[-122.1,47.6],[-122.09,47.6],[-122.1,47.61],[-122.1,47.6]]] } }], data_source_status: "fallback_coverage" });
-    page();
-    fireEvent.click(screen.getByRole("button", { name: "Preview lake" }));
-    expect(await screen.findByRole("img", { name: "Shoreline preview" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Create lake and queue setup" })).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Latitude"), { target: { value: "47.61" } });
-    await waitFor(() => expect(screen.queryByRole("img", { name: "Shoreline preview" })).not.toBeInTheDocument());
-    expect(screen.getByRole("button", { name: "Preview lake" })).toBeInTheDocument();
-  });
-
-  it("withdraws creation if the returned boundary cannot be drawn", async () => {
-    request.mockResolvedValue({ candidates: [{ name: "Test lake", shoreline: { type: "Polygon", coordinates: [[[-122.1,47.6],[-122.09,47.6],[-122.1,47.61],[-122.1,47.6]]] } }], data_source_status: "fallback_coverage" });
-    page();
-    fireEvent.click(screen.getByRole("button", { name: "Preview lake" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Simulate drawing failure" }));
-    expect(screen.getByRole("alert")).toHaveTextContent("The shoreline could not be drawn");
-    expect(screen.queryByRole("button", { name: "Create lake and queue setup" })).not.toBeInTheDocument();
-    expect(request).toHaveBeenCalledTimes(1);
-  });
+async function selectLake() { fireEvent.click(await screen.findByRole("radio",{name:/Lake Washington/})); }
+beforeEach(()=>{state.request.mockReset();state.refresh.mockReset();state.principal.memberships=[{station_id:"station-1",station_name:"Station one",status:"active",capabilities:["lake.create"]}];});
+it("searches without coordinates and gives an actionable empty result",async()=>{
+  state.request.mockResolvedValue({candidates:[]});page();
+  expect(await screen.findByText(/No matching shoreline/)).toBeVisible();
+  expect(screen.queryByLabelText("Latitude")).not.toBeInTheDocument();
+  expect(state.request).toHaveBeenCalledWith("/api/lake-search?query=Washington",{},expect.anything());
+});
+it("invalidates selection when the search name changes",async()=>{
+  state.request.mockResolvedValue({candidates:[candidate]});page();await selectLake();
+  expect(screen.getByRole("img",{name:"Shoreline preview"})).toBeVisible();
+  fireEvent.change(screen.getByLabelText("Lake name"),{target:{value:"Pine"}});
+  expect(screen.queryByRole("button",{name:"Add lake to station"})).not.toBeInTheDocument();
+});
+it("does not create a lake whose preview fails",async()=>{
+  state.request.mockResolvedValue({candidates:[candidate]});page();await selectLake();
+  fireEvent.click(screen.getByRole("button",{name:"Drawing failure"}));
+  expect(screen.getByRole("alert")).toHaveTextContent("could not be drawn");
+  expect(screen.queryByRole("button",{name:"Add lake to station"})).not.toBeInTheDocument();
+});
+it("creates in an existing station using only the verified candidate ID",async()=>{
+  state.request.mockResolvedValueOnce({candidates:[candidate]}).mockResolvedValueOnce({lake_id:"lake-created",station_id:"station-1"});page();await selectLake();
+  fireEvent.click(screen.getByRole("button",{name:"Add lake to station"}));
+  expect(await screen.findByText("Opened lake")).toBeVisible();
+  expect(JSON.parse(state.request.mock.calls[1][1].body)).toEqual({candidate_id:13645,station_id:"station-1"});
+});
+it("offers a separate station and refreshes its new administrator membership",async()=>{
+  state.request.mockResolvedValueOnce({candidates:[candidate]}).mockResolvedValueOnce({lake_id:"lake-created",station_id:"station-new"});
+  state.refresh.mockImplementation(async()=>{state.principal.memberships.push({station_id:"station-new",station_name:"Washington station",status:"active",capabilities:["lake.create"]});});
+  page();await selectLake();fireEvent.click(screen.getByRole("radio",{name:"New station for this lake"}));
+  fireEvent.change(screen.getByLabelText("New station name"),{target:{value:"Washington station"}});
+  fireEvent.click(screen.getByRole("button",{name:"Create station and add lake"}));
+  expect(await screen.findByText("Opened lake")).toBeVisible();
+  expect(JSON.parse(state.request.mock.calls[1][1].body)).toEqual({candidate_id:13645,new_station_name:"Washington station"});
 });

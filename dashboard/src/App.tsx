@@ -46,6 +46,7 @@ export default function App() {
         <Route path="/lakes" element={<LakeLanding />} />
         <Route element={<OperationalGate />}>
           <Route path="/lakes/:lakeId" element={<LakeLiveView />} />
+          <Route path="/lakes/new" element={<AddLakePage />} />
           <Route path="/alerts" element={<AlertsPage />} />
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="/drones" element={<DronesPage />} />

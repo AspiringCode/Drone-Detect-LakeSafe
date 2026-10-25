@@ -35,6 +35,7 @@ export interface Lake {
   name: string;
   centroid_lat: number;
   centroid_lon: number;
+  map_bounds?: [number, number, number, number] | null;
 }
 export interface LakeCandidate { name: string; lat: number; lon: number; }
 

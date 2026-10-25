@@ -8,6 +8,7 @@ const metadata: Array<[RegExp, string, string]> = [
   [/^\/forgot-password$/, "Reset your password", "Request a secure LakeSafe password reset link."],
   [/^\/reset-password$/, "Choose a new password", "Choose a new LakeSafe password using your recovery link."],
   [/^\/lakes$/, "Lakes", "View the lakes available to your LakeSafe account."],
+  [/^\/lakes\/new$/, "Add a lake", "Find a lake by name and add it to an existing or new station."],
   [/^\/lakes\//, "Lake lookout", "View authorized lake coverage, detections and fleet status."],
   [/^\/alerts$/, "Alerts", "Review lake detections available to your station."],
   [/^\/reports$/, "Reports", "Review detection totals and lake reports for your station."],

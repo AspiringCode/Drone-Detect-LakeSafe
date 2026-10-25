@@ -1,22 +1,77 @@
-import { FormEvent, useCallback, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import type { Polygon, MultiPolygon } from "geojson";
 import { AppHeader } from "../components/AppHeader";
+import { ShorelinePreview } from "../components/ShorelinePreview";
 import { useOptionalPrincipal } from "../auth/PrincipalProvider";
+import { useOptionalActiveStation } from "../hooks/useActiveStation";
 import { apiRequest } from "../lib/apiClient";
 import { supabase } from "../lib/supabase";
-import { ShorelinePreview } from "../components/ShorelinePreview";
-import type { Polygon, MultiPolygon } from "geojson";
 import "./website-touchups.css";
 
-type LakeForm = { name: string; centroid_lat: number; centroid_lon: number; bbox: number[] };
-type LakePreview = { data_source_status: string; candidates: Array<{ name: string; shoreline?: Polygon | MultiPolygon }> };
+type Candidate = { candidate_id: number; name: string; shoreline: Polygon | MultiPolygon; source: string };
 export function AddLakePage() {
-  const { stationId = "" } = useParams(); const navigate = useNavigate(); const principalContext = useOptionalPrincipal(); const principal = principalContext?.principal; const allowed = principal?.memberships.some((item) => item.station_id === stationId && item.status === "active" && item.capabilities.includes("lake.create"));
-  const [candidate, setCandidate] = useState<LakePreview | null>(null); const [previewKey, setPreviewKey] = useState(""); const [error, setError] = useState(""); const [busy, setBusy] = useState(false);
-  const previewFailed = useCallback(() => { setCandidate(null); setPreviewKey(""); setError("The shoreline could not be drawn. Preview the lake again before continuing."); }, []);
-  function value(event: FormEvent<HTMLFormElement>): LakeForm { const form = new FormData(event.currentTarget); const lat = Number(form.get("lat")); const lon = Number(form.get("lon")); return { name: String(form.get("name")), centroid_lat: lat, centroid_lon: lon, bbox: [lon - .02, lat - .02, lon + .02, lat + .02] }; }
-  async function preview(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const payload = value(event); setBusy(true); setError(""); try { const result = await apiRequest<LakePreview>(`/api/stations/${stationId}/lake-candidates`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }, supabase); const boundary = result.candidates[0]?.shoreline; if (!boundary || !["Polygon", "MultiPolygon"].includes(boundary.type) || !boundary.coordinates?.length) { setCandidate(null); setError("No shoreline was found. Check the lake name and location, then preview again."); return; } setCandidate(result); setPreviewKey(JSON.stringify(payload)); } catch (e) { setError(e instanceof Error ? e.message : "Lake preview unavailable."); } finally { setBusy(false); } }
-  async function create(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const payload = value(event); if (JSON.stringify(payload) !== previewKey) { setCandidate(null); setError("Preview the updated lake details before creating it."); return; } setBusy(true); try { const result = await apiRequest<{ lake_id: string }>(`/api/stations/${stationId}/lakes`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }, supabase); await principalContext?.refresh(); navigate(`/lakes/${result.lake_id}`); } catch (e) { setError(e instanceof Error ? e.message : "Lake could not be added."); } finally { setBusy(false); } }
-  if (!allowed) return <main className="app-page"><AppHeader active="lakes"/><section className="workflow-shell"><h1>Add lake is unavailable</h1><p>This station has not granted you lake-creation access.</p></section></main>;
-  return <main className="app-page"><AppHeader active="lakes"/><section className="workflow-shell touch-shell"><header className="page-heading touch-heading"><div><h1>Add a lake</h1><p>Find the shoreline, review it, then confirm this station’s new lake.</p></div><Link to={`/stations/${stationId}/admin`}>Back to station</Link></header><ol className="lake-review-steps"><li aria-current={!candidate ? "step" : undefined}>1. Lake details</li><li aria-current={candidate ? "step" : undefined}>2. Review and confirm</li></ol><form className={`touch-panel lake-create-form ${candidate ? "has-preview" : ""}`} onSubmit={candidate ? create : preview} onChange={() => { setCandidate(null); setPreviewKey(""); }}><div><h2>Lake location</h2><p className="field-help">Enter the lake name and a point within the lake. The shoreline preview will show the area to be added.</p><label>Lake name<input name="name" required maxLength={160} disabled={busy}/></label><div className="form-grid form-grid--two"><label>Latitude<input name="lat" type="number" step="any" min="24" max="50" required disabled={busy}/></label><label>Longitude<input name="lon" type="number" step="any" min="-125" max="-66" required disabled={busy}/></label></div><p className="field-help">Editing these details requires a new preview.</p><button disabled={busy}>{busy ? "Working…" : candidate ? "Create lake and queue setup" : "Preview lake"}</button>{error && <p className="form-error" role="alert">{error}</p>}</div>{candidate?.candidates[0]?.shoreline && <section className="lake-boundary-review"><h2>Review the shoreline</h2><ShorelinePreview geometry={candidate.candidates[0].shoreline} onFailure={previewFailed}/><p className="coverage-preview-note">{candidate.data_source_status === "reviewed" ? "Reviewed coverage source matched." : "Coverage source is not reviewed. Setup will use fallback coverage."}</p><p className="field-help">Confirm that the boundary matches your lake before creating it. Operational setup is queued after creation.</p></section>}</form></section></main>;
+  const { stationId = "" } = useParams();
+  const navigate = useNavigate();
+  const context = useOptionalPrincipal();
+  const active = useOptionalActiveStation();
+  const admins = context?.principal?.memberships.filter(item => item.status === "active" && item.capabilities.includes("lake.create")) ?? [];
+  const [query, setQuery] = useState("");
+  const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [selected, setSelected] = useState<Candidate | null>(null);
+  const [searched, setSearched] = useState(false);
+  const [mode, setMode] = useState<"existing" | "new">("existing");
+  const [destination, setDestination] = useState(stationId);
+  const [stationName, setStationName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [created, setCreated] = useState<{ lake_id: string; station_id: string } | null>(null);
+  useEffect(() => {
+    if (!admins.some(item => item.station_id === destination)) setDestination(admins.find(item => item.station_id === active?.station?.station_id)?.station_id ?? admins[0]?.station_id ?? "");
+  }, [context?.principal, destination, active?.station?.station_id]);
+  useEffect(() => {
+    if (created && admins.some(item => item.station_id === created.station_id)) {
+      active?.select(created.station_id);
+      navigate(`/lakes/${created.lake_id}`, { replace: true });
+    }
+  }, [created, context?.principal, navigate]);
+  const previewFailed = useCallback(() => { setSelected(null); setError("The shoreline could not be drawn. Select the lake again before continuing."); }, []);
+  async function search(event: FormEvent) {
+    event.preventDefault(); if (busy) return;
+    setBusy(true); setError(""); setSelected(null); setCandidates([]); setSearched(false);
+    try {
+      const result = await apiRequest<{ candidates: Candidate[] }>(`/api/lake-search?query=${encodeURIComponent(query.trim())}`, {}, supabase);
+      setCandidates(result.candidates); setSearched(true);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Lake search is unavailable. Try again."); }
+    finally { setBusy(false); }
+  }
+  async function create(event: FormEvent) {
+    event.preventDefault(); if (busy || !selected || created) return;
+    setBusy(true); setError("");
+    try {
+      const result = await apiRequest<{ lake_id: string; station_id: string }>("/api/lake-setups", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ candidate_id: selected.candidate_id, ...(mode === "new" ? { new_station_name: stationName.trim() } : { station_id: destination }) }),
+      }, supabase);
+      setCreated(result);
+      try { await context?.refresh(); }
+      catch { setError("Your lake was created, but account access could not refresh. Reload the page to see it in your managed lakes."); }
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Lake could not be added. Try again."); }
+    finally { setBusy(false); }
+  }
+  if (!admins.length) return <main className="app-page"><AppHeader active="lakes"/><section className="workflow-shell"><h1>Add lake is unavailable</h1><p>An active station administrator can add lakes and create a lake station.</p><Link to="/station-access">Review station access</Link></section></main>;
+  return <main className="app-page"><AppHeader active="lakes"/><section className="workflow-shell touch-shell">
+    <header className="page-heading touch-heading"><div><h1>Add a lake</h1><p>Find your lake, check its shoreline, then choose its station.</p></div><Link to="/lakes">Back to lakes</Link></header>
+    <section className="touch-panel"><h2>Find your lake</h2><p>Search by name. Shoreline search currently covers King County, Washington.</p>
+      <form onSubmit={event => void search(event)}><label>Lake name<input name="name" value={query} minLength={2} maxLength={100} required disabled={busy || Boolean(created)} placeholder="e.g. Lake Washington" onChange={event => { setQuery(event.target.value); setSelected(null); setCandidates([]); setSearched(false); }}/></label><button disabled={busy || Boolean(created)}>{busy ? "Working..." : "Search lakes"}</button></form>
+      {searched && !candidates.length && <p role="status">No matching shoreline was found. Try another part of the name, or check that the lake is in King County.</p>}
+      {!!candidates.length && <fieldset className="lake-search-results" disabled={busy || Boolean(created)}><legend>Select a shoreline to review</legend>{candidates.map(candidate => <label className="choice" key={candidate.candidate_id}><input type="radio" name="candidate" checked={selected?.candidate_id === candidate.candidate_id} onChange={() => { setSelected(candidate); setStationName(`${candidate.name} station`); setError(""); }}/><span><strong>{candidate.name}</strong><span className="field-help"> {candidate.source}</span></span></label>)}</fieldset>}
+    </section>
+    {selected && <div className="workflow-grid lake-setup-review"><section className="touch-panel"><h2>Review {selected.name}</h2><ShorelinePreview geometry={selected.shoreline} onFailure={previewFailed}/><p className="field-help">Check the shoreline before adding it. Coverage planning starts after creation.</p></section>
+      <section className="touch-panel"><h2>Choose a station</h2><form onSubmit={event => void create(event)}><fieldset disabled={busy || Boolean(created)}><legend>Where should this lake belong?</legend><label className="choice"><input type="radio" name="destination" checked={mode === "existing"} onChange={() => setMode("existing")}/>Existing station</label><label className="choice"><input type="radio" name="destination" checked={mode === "new"} onChange={() => setMode("new")}/>New station for this lake</label>
+      {mode === "existing" ? <label>Station<select value={destination} onChange={event => setDestination(event.target.value)} required>{admins.map(item => <option key={item.station_id} value={item.station_id}>{item.station_name}</option>)}</select></label> : <><label>New station name<input value={stationName} onChange={event => setStationName(event.target.value)} minLength={2} maxLength={160} required/></label><p className="field-help">You will be the administrator of the new station. Other members must be invited or approved.</p></>}
+      <p className="field-help">This creates an operational workspace. It does not publish a public lake page.</p><button disabled={busy || Boolean(created)}>{busy ? "Creating..." : mode === "new" ? "Create station and add lake" : "Add lake to station"}</button></fieldset></form></section></div>}
+    {error && <p className="form-error" role="alert">{error}</p>}
+    {created && <p role="status">Lake created. Preparing your workspace...</p>}
+  </section></main>;
 }

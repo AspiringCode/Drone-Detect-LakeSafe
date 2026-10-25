@@ -439,3 +439,13 @@ legend { padding: 0 0.4rem; font-weight: 700; }
 .member-access-form input[type="checkbox"] { width: 20px; height: 20px; min-height: 20px; flex: 0 0 auto; }
 .member-change-summary { display: grid; gap: 8px; margin-block: 20px; }
 .member-change-summary dd { margin: 0 0 8px; overflow-wrap: anywhere; }
+
+.membership-roles { display: flex; flex-wrap: wrap; gap: .4rem .75rem; margin-top: .4rem; }
+.membership-roles strong { font-size: 1rem; font-weight: 750; color: var(--text); text-transform: capitalize; }
+.lake-preview--interactive .lake-preview-map { pointer-events: auto; }
+.lake-preview--interactive .leaflet-control-zoom a { width: 44px; height: 44px; line-height: 44px; }
+.public-map-reset { position: absolute; bottom: 2rem; right: .75rem; z-index: 500; box-shadow: var(--shadow-soft); }
+.lake-search-results { display: grid; gap: .65rem; margin-top: 1.25rem; }
+.lake-search-results .choice { align-items: center; padding: .5rem; }
+.lake-setup-review { margin-top: 1.25rem; }
+.lake-setup-review fieldset { display: grid; gap: 1rem; min-width: 0; }

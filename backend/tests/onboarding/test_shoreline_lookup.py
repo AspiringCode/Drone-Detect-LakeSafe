@@ -64,3 +64,28 @@ def test_normalize_rejects_empty_polygon():
 def test_normalize_promotes_polygon_to_multipolygon():
     value = normalize_shoreline({"type": "Polygon", "coordinates": [[[ -122.1, 47.6], [-122.0, 47.6], [-122.0, 47.7], [-122.1, 47.6]]]})
     assert value["type"] == "MultiPolygon"
+
+
+def test_esri_rings_preserve_islands_and_disconnected_water():
+    from shapely.geometry import Point, shape
+    shell = [[0,0],[0,10],[10,10],[10,0],[0,0]]
+    island = [[2,2],[8,2],[8,8],[2,8],[2,2]]
+    inner_lake = [[3,3],[3,4],[4,4],[4,3],[3,3]]
+    result = shape(shoreline_lookup.esri_shoreline({"rings": [shell,island,inner_lake]}))
+    assert result.is_valid and result.area == 65
+    assert not result.covers(Point(5,5))
+    assert result.covers(Point(3.5,3.5))
+
+
+def test_name_search_uses_official_ids_and_keeps_duplicate_names(monkeypatch):
+    features = [{"attributes": {"OBJECTID": i, "NAME": "Test Lake", "FEAT_TYPE": "Lake or pond", "WATER": "Water"}, "geometry": POLYGON} for i in (1,2)]
+    def get(url, **kwargs):
+        assert "LOWER(NAME) LIKE '%test%'" in kwargs["params"]["where"]
+        assert "geometry" not in kwargs["params"]
+        return httpx.Response(200,request=httpx.Request("GET",url),json={"features":features})
+    monkeypatch.setattr(shoreline_lookup.httpx,"get",get)
+    assert [item["candidate_id"] for item in shoreline_lookup.search_lakes("Test")] == [1,2]
+
+
+def test_name_search_rejects_sql_wildcards():
+    with pytest.raises(ShorelineLookupError): shoreline_lookup.search_lakes("%'; DROP")
