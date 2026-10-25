@@ -1,4 +1,5 @@
 import { lazy, Suspense } from "react";
+import { PageLoadBoundary } from "./components/PageLoadBoundary";
 import { RouteMetadata } from "./auth/RouteMetadata";
 import "./auth/recoverySession";
 import { BrowserRouter, Navigate, Outlet, Route, Routes } from "react-router-dom";
@@ -30,7 +31,7 @@ const ForgotPasswordPage = lazy(() => import("./pages/PasswordRecoveryPages").th
 const ResetPasswordPage = lazy(() => import("./pages/PasswordRecoveryPages").then((module) => ({ default: module.ResetPasswordPage })));
 
 export default function App() {
-  return <BrowserRouter><RouteMetadata /><Suspense fallback={<main className="auth-loading" role="status">Loading LakeSafe...</main>}><Routes>
+  return <BrowserRouter><RouteMetadata /><PageLoadBoundary><Suspense fallback={<main className="auth-loading" role="status">Loading LakeSafe...</main>}><Routes>
     <Route path="/login" element={<LoginPage />} />
     <Route path="/forgot-password" element={<ForgotPasswordPage />} />
     <Route path="/reset-password" element={<ResetPasswordPage />} />
@@ -60,7 +61,7 @@ export default function App() {
       </Route>
     </Route>
     <Route path="*" element={<Navigate to="/" replace />} />
-  </Routes></Suspense></BrowserRouter>;
+  </Routes></Suspense></PageLoadBoundary></BrowserRouter>;
 }
 
 function OperatorProviders() { return <PrincipalProvider><ActiveStationProvider><Outlet /></ActiveStationProvider></PrincipalProvider>; }
