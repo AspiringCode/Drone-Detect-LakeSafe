@@ -96,7 +96,9 @@ describe("operator workflow", () => {
     expect(rail).toContainElement(await screen.findByRole("button", { name: "Start simulation" }));
     expect(screen.queryByText("Patrol coverage, fleet telemetry and incident response.")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /deploy drone/i })).not.toBeInTheDocument();
-    await waitFor(() => expect(operational).toHaveBeenCalledWith(expect.stringContaining("/ws/operations/lakes/lake-sammamish"), "token", expect.any(Function)));
+    await waitFor(() => expect(operational).toHaveBeenCalledWith(expect.stringContaining("/ws/operations/lakes/lake-sammamish"), expect.any(Function), expect.any(Function), expect.any(Function)));
+    // the socket is handed a token getter so it can reconnect with a renewed session
+    await expect((operational.mock.calls[0] as unknown as [string, () => Promise<string>])[1]()).resolves.toBe("token");
   });
   it("does not borrow a capability from a different station's membership", () => {
     const principal: Principal = { user_id: "officer", email: "officer@example.gov", aal: "aal2", account_class: "officer", verification_status: "verified", reviewer: false, memberships: [

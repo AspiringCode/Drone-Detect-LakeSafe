@@ -42,6 +42,7 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
   const [simulationBusy, setSimulationBusy] = useState(false);
   const [simulationError, setSimulationError] = useState<string | null>(null);
   const [askAboutRealDrones, setAskAboutRealDrones] = useState(false);
+  const [liveLost, setLiveLost] = useState(false);
   // Start waits for this so the real-drone question is never skipped by an early click.
   const [registeredChecked, setRegisteredChecked] = useState(false);
   const [operationsDataError, setOperationsDataError] = useState<string | null>(null);
@@ -64,7 +65,8 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
       const token = accessToken ?? (await client.auth.getSession()).data.session?.access_token;
       if (!active) return;
       if (!token) throw new Error("Missing operator session");
-      stop = connectOperational(wsFor(lakeId), token, (state) => { if (!active) return; setDrones(state.drones); setSimulationRunning(state.simulation_running ?? false); if (state.latest_alert) setAlert(state.latest_alert); });
+      const freshToken = async () => accessToken ?? (await client.auth.getSession()).data.session?.access_token;
+      stop = connectOperational(wsFor(lakeId), freshToken, (state) => { if (!active) return; setDrones(state.drones); setSimulationRunning(state.simulation_running ?? false); if (state.latest_alert) setAlert(state.latest_alert); }, (live) => { if (active) setLiveLost(!live); });
       const options = { headers: { Authorization: `Bearer ${token}` } };
       await Promise.all([
         fetcher(`${API}/api/lakes/${lakeId}/riskmap`, options).then(async (response) => {
@@ -183,6 +185,7 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
                 {registered.length > 0 && <button className="button-secondary" disabled={simulationBusy} onClick={() => void simulate("zones/regenerate")}>Regenerate zones</button>}
               </>}
             </div>}
+            {liveLost && <p className="form-error" role="alert">Live updates paused. Reconnecting…</p>}
             {waitingDrones.length > 0 && <p className="fleet-prompt" role="status">{waitingDrones.length === 1 ? "A new drone is" : `${waitingDrones.length} new drones are`} waiting ashore. Regenerate zones to give {waitingDrones.length === 1 ? "it" : "them"} a patrol area.</p>}
             {simulationError && <p className="form-error" role="alert">{simulationError}</p>}
             <DroneRoster drones={drones} registered={registered} />
