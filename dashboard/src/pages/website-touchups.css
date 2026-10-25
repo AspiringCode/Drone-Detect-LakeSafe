@@ -24,9 +24,11 @@
 .fleet-registry li.is-new .status-label { background: var(--surface); }
 .fleet-registry li p { margin: .35rem 0 .5rem; }
 .fleet-registry details { margin: 0; font-size: .8rem; }
-/* Stretch so the lake select and the action buttons share one exact height. */
-.fleet-registry li > span:last-child { align-items: stretch; }
+.fleet-registry li > span:last-child { align-items: center; }
 .fleet-registry li > span label { display: flex; }
+.fleet-registry li > span:last-child > button,
+.fleet-registry li > span:last-child > .button-link,
+.fleet-registry li > span select { height: 2.75rem; min-height: 2.75rem; margin: 0; padding: .65rem .85rem; line-height: 1.25; white-space: nowrap; }
 .fleet-registry li > span select { max-width: 100%; }
 .fleet-registry .status-label { min-height: 0; margin: 0 0 0 .5rem; padding: .15rem .55rem; vertical-align: .1em; }
 .mission-download form { display: grid; gap: .75rem; max-width: 26rem; margin-top: .5rem; }
