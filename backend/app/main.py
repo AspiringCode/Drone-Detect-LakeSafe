@@ -671,6 +671,7 @@ def demo_trigger(lake_id: str, authorization: str | None = Header(default=None),
         raise HTTPException(status_code=409, detail="Start a simulation first")
     at = runtime.zones[0].centroid
     drone = next((d for d in runtime.engine.drones if d.assigned_zone==runtime.zones[0].zone_id),runtime.engine.drones[0])
+    at = drone.pos
     detected_at = datetime.now(timezone.utc)
     detection = Detection(0, (10.0, 10.0, 5.0, 5.0), 0.9, detected_at, source="simulated")
     alert = assemble_alert(detection, drone, confirmed=False, clip_ref=None, detected_at=detected_at)
