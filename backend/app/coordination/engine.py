@@ -218,6 +218,7 @@ class SimulationEngine:
         candidates = [d for d in self.drones if d.drone_id != detecting.drone_id and d.status != DroneStatus.RETURNING and d.battery >= .25]
         confirmer = min(candidates, key=lambda d: haversine_m(d.pos, at)) if candidates else None
         origins = {d.drone_id: {"position": d.pos, "zone": d.assigned_zone,
+                   'status':d.status,'target':self.targets.get(d.drone_id),
                    "waypoints": self._patrol_waypoints.get(d.drone_id), "index": self._patrol_index.get(d.drone_id, 0)}
                    for d in (detecting, confirmer) if d is not None}
         detecting.status = DroneStatus.INVESTIGATING
@@ -256,6 +257,9 @@ class SimulationEngine:
                         original = self._confirmation["origins"][drone.drone_id]
                         drone.status = DroneStatus.PATROLLING if original["zone"] else DroneStatus.IDLE
                         self.targets.pop(drone.drone_id, None)
+                        if original['status']==DroneStatus.EN_ROUTE and original['target']:
+                            drone.status=DroneStatus.EN_ROUTE
+                            self.targets[drone.drone_id]=original['target']
                         if original["waypoints"]:
                             self._patrol_waypoints[drone.drone_id] = original["waypoints"]
                             self._patrol_index[drone.drone_id] = original["index"]

@@ -145,7 +145,8 @@ def run_command(conn, sysid: int, state: dict, command: dict) -> tuple[str, str]
             int(target['lat']*1e7),int(target['lon']*1e7),position['alt_m'],0,0,0,0,0,0,0,0)
         return 'accepted', 'Returning to original patrol position' if kind=='resume_patrol' else 'Investigation target requested; arrival is not corroboration'
     if kind in ("return_to_reserve", "safety_hold"):
-        state.pop('investigation',None)
+        cancelled=state.pop('investigation',None)
+        if cancelled: state['cancelled_investigation']=cancelled['id']
         if not armed:
             return "accepted", "on the ground; nothing to do"
         mode, name = (RTL, "RTL") if kind == "return_to_reserve" else (LOITER, "LOITER")
@@ -275,6 +276,7 @@ def advance_investigation(conn, sysid, state):
     if not context:
         return
     if not state.get('armed') or state.get('custom_mode') != 4:
+        state['cancelled_investigation']=context['id']
         state.pop('investigation',None)  # pilot/safety mode always wins
         return
     if not context.get('returning'):
@@ -333,6 +335,10 @@ def main(argv: list[str] | None = None) -> int:
             completed = state.get('completed_investigation')
             if completed and not done[msg.get_srcSystem()].get('investigation:'+completed,{}).get('completed'):
                 done[msg.get_srcSystem()]['investigation:'+completed] = {'completed':True}
+                save_outcomes(args.outcome_file,outcomes)
+            cancelled=state.pop('cancelled_investigation',None)
+            if cancelled:
+                done[msg.get_srcSystem()]['investigation:'+cancelled]={'completed':True,'cancelled':True}
                 save_outcomes(args.outcome_file,outcomes)
         if now < next_send:
             continue

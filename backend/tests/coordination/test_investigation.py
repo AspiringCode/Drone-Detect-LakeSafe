@@ -48,3 +48,16 @@ def test_demo_sample_is_delayed_after_arrival_and_does_not_claim_camera_evidence
     assert value.step(30)['investigation']['finding'] is None
     assert value.step(3)['investigation']['finding']=='not_observed'
     assert not value.step(0)['confirmed']
+
+
+def test_interrupted_en_route_drone_resumes_its_original_target_after_return():
+    value=engine()
+    drone=value.drones[0]
+    drone.status=DroneStatus.EN_ROUTE
+    old_target=LatLon(47.602,-122.1)
+    value.targets[drone.drone_id]=old_target
+    value.trigger_detection('0',drone.pos,alert_id='a')
+    value.finish_investigation('a')
+    value.step(1)
+    assert drone.status==DroneStatus.EN_ROUTE
+    assert value.targets[drone.drone_id]==old_target

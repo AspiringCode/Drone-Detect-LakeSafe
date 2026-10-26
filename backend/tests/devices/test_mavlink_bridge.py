@@ -45,6 +45,13 @@ def test_resume_returns_to_origin_before_restarting_original_mission(monkeypatch
     assert state['completed_investigation']=='a'
 
 
+def test_pilot_override_is_journaled_as_cancellation_not_a_completed_return():
+    state={'armed':True,'custom_mode':5,'investigation':{'id':'a','returning':False}}
+    mavlink_bridge.advance_investigation(None,1,state)
+    assert state['cancelled_investigation']=='a'
+    assert 'investigation' not in state and 'completed_investigation' not in state
+
+
 def msg(kind, **fields):
     return SimpleNamespace(get_type=lambda: kind, **fields)
 
