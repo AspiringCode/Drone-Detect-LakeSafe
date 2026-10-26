@@ -8,6 +8,13 @@ from app.pipeline.ws import ConnectionHub, tick_loop
 SUPPORTED_LAKE_IDS = ("lake-sammamish", "lake-pine", "lake-beaver")
 
 
+@pytest.fixture(autouse=True)
+def published_catalog(monkeypatch):
+    from app import public_api
+    from types import SimpleNamespace
+    monkeypatch.setattr(public_api,'get_public_repository',lambda:SimpleNamespace(list_lakes=lambda:[{'lake_id':lake} for lake in SUPPORTED_LAKE_IDS]))
+
+
 @pytest.mark.anyio
 async def test_connection_hub_broadcasts_to_clients():
     class Client:

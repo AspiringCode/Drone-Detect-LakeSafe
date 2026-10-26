@@ -5,6 +5,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel,ConfigDict,StrictBool
 
 from app.access.policy import Permission, require_station_access, require_recent_mfa
 from app.access.principal import Principal, get_principal
@@ -14,6 +15,32 @@ from app.rate_limits import require_rate_limit
 from app.stations.schemas import InvitationAcceptInput, InvitationInput, JoinDecisionInput, StationRequestInput, MemberChangeInput
 
 router = APIRouter(prefix="/api", tags=["stations"])
+
+
+class PublicVisibilityInput(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    visible: StrictBool
+
+
+@router.get('/stations/{station_id}/public-visibility')
+def get_public_visibility(station_id: str,principal: Principal=Depends(get_principal)):
+    require_station_access(principal,station_id,Permission.MANAGE_MEMBERS)
+    try:
+        return get_workflow_repository().public_visibility(station_id)
+    except Exception as exc:
+        raise HTTPException(503,'Public visibility is unavailable') from exc
+
+
+@router.post('/stations/{station_id}/public-visibility')
+def set_public_visibility(station_id: str,value: PublicVisibilityInput,principal: Principal=Depends(get_principal)):
+    require_station_access(principal,station_id,Permission.MANAGE_MEMBERS)
+    require_recent_mfa(principal,timedelta(minutes=10))
+    try:
+        result=get_workflow_repository().set_public_visibility(station_id,principal.user_id,value.visible)
+        if not result: raise ValueError('Station not found')
+        return result
+    except Exception as exc:
+        raise HTTPException(503,'Public visibility could not be saved') from exc
 
 
 def _require_verified(principal: Principal) -> None:

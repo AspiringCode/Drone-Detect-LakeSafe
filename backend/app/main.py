@@ -54,6 +54,7 @@ from app.api.safety import router as safety_router
 from app.public_api import PublicPatrolPresence, router as public_router
 from app.evidence import router as evidence_router
 from app.devices import live_alerts, live_positions
+from app.devices.investigations import get_investigation_repository
 from app.devices.monitor import HeartbeatMonitor, monitor_loop
 from app.devices.repository import DeviceRepositoryError, get_device_repository
 from app.devices.reconciler import RealCapacityReconciler, configure_real_autonomy_service, has_real_autonomy_service
@@ -164,6 +165,10 @@ class LakeRuntime:
     # Set while a simulation runs with real drones left unaffected: the layout they keep flying.
     real_zones: list | None = None
     reviewed_alerts: dict[str, str] = field(default_factory=dict)
+    review_decisions: dict[str, str] = field(default_factory=dict)
+    real_investigations: dict = field(default_factory=dict)
+    investigation_checked_at: float = 0
+    investigation_history: dict = field(default_factory=dict)
 
 
 DEFAULT_PATROL_DRONES = 4
@@ -503,8 +508,27 @@ def _drain_real_alerts(runtime: LakeRuntime) -> list:
 def live_state(runtime: LakeRuntime, state: dict) -> dict:
     """Operations-only frame: simulation plus real drones, and the newest alert so a drone detection shows without a reload."""
     alerts = _drain_real_alerts(runtime)
-    return {**live_positions.with_real_drones(runtime.lake_id, state), "latest_alert": {**_jsonable(alerts[-1]), "reviewed_at": runtime.reviewed_alerts.get(alerts[-1].alert_id)} if alerts else None,
+    if any(a.source == 'real' for a in alerts) and monotonic()-runtime.investigation_checked_at>3:
+        runtime.investigation_checked_at=monotonic()
+        try:
+            runtime.real_investigations=get_investigation_repository().states(runtime.lake_id)
+        except DeviceRepositoryError:
+            runtime.real_investigations={}
+    return {**live_positions.with_real_drones(runtime.lake_id, state), "latest_alert": alert_payload(runtime,alerts[-1]) if alerts else None,
+            'alerts': [alert_payload(runtime,a) for a in alerts[-30:]],
             "simulation_running": bool(runtime.engine.drones)}
+
+
+def alert_payload(runtime, alert):
+    if alert.source=='simulated':
+        incident=runtime.engine.investigation_status(alert.alert_id)
+        if incident: runtime.investigation_history[alert.alert_id]=dict(incident)
+    details = runtime.real_investigations.get(alert.alert_id,{}) if alert.source=='real' else {
+        'investigation':runtime.investigation_history.get(alert.alert_id),
+        'review_decision':runtime.review_decisions.get(alert.alert_id)}
+    investigation=details.get('investigation')
+    return {**_jsonable(alert),**details,'confirmed':bool(investigation and investigation.get('finding')=='observed'),
+            'reviewed_at':runtime.reviewed_alerts.get(alert.alert_id)}
 
 
 def current_state(runtime: LakeRuntime) -> dict:
@@ -521,6 +545,9 @@ async def publish_public_patrol_presence(lake_id: str, payload: object) -> None:
     projection = public_patrol_payload(payload)
     if projection["lake_id"] != lake_id:
         raise ValueError("Public patrol projection lake does not match its channel")
+    from app.public_api import _repository
+    if not any(row['lake_id']==lake_id for row in _repository().list_lakes()):
+        return
     await get_runtime(lake_id).public_hub.broadcast(projection)
 
 
@@ -624,24 +651,37 @@ def get_alerts(lake_id: str, authorization: str | None = Header(default=None)):
             runtime.reviewed_alerts.update(get_alert_review_repository().reviewed_alerts(lake_id))
         except AlertReviewUnavailable as exc:
             raise HTTPException(status_code=503, detail="Alert review status is unavailable") from exc
-    return [{**_jsonable(alert), "reviewed_at": runtime.reviewed_alerts.get(alert.alert_id)} for alert in alerts]
+        try:
+            runtime.real_investigations=get_investigation_repository().states(lake_id)
+        except DeviceRepositoryError as exc:
+            raise HTTPException(503,'Investigation status is unavailable') from exc
+    return [alert_payload(runtime,alert) for alert in alerts]
+
+
+class DemoDetectionRequest(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    second_finding: Literal['observed','not_observed','inconclusive']='observed'
 
 
 @app.post("/api/lakes/{lake_id}/demo/trigger")
-def demo_trigger(lake_id: str, authorization: str | None = Header(default=None)):
+def demo_trigger(lake_id: str, authorization: str | None = Header(default=None), value: DemoDetectionRequest | None=None):
     authorize_lake(lake_id, authorization, Permission.MANAGE_ALERTS)
     runtime = get_runtime(lake_id)
     if not runtime.engine.drones:
         raise HTTPException(status_code=409, detail="Start a simulation first")
     at = runtime.zones[0].centroid
-    runtime.engine.trigger_detection(runtime.zones[0].zone_id, at=at)
-    state = runtime.engine.step(30.0)
-    drone = state["drones"][0]
+    drone = next((d for d in runtime.engine.drones if d.assigned_zone==runtime.zones[0].zone_id),runtime.engine.drones[0])
     detected_at = datetime.now(timezone.utc)
     detection = Detection(0, (10.0, 10.0, 5.0, 5.0), 0.9, detected_at, source="simulated")
-    alert = assemble_alert(detection, drone, confirmed=bool(state.get("confirmed")), clip_ref=None, detected_at=detected_at)
+    alert = assemble_alert(detection, drone, confirmed=False, clip_ref=None, detected_at=detected_at)
+    alert.location=at
+    try:
+        runtime.engine.trigger_detection(runtime.zones[0].zone_id,at=at,alert_id=alert.alert_id)
+        runtime.engine._confirmation['demo_finding']=(value or DemoDetectionRequest()).second_finding
+    except ValueError as exc:
+        raise HTTPException(409,str(exc)) from exc
     runtime.alerts.save(alert)
-    return _jsonable(alert)
+    return alert_payload(runtime,alert)
 
 
 def _simulation_status(runtime: LakeRuntime) -> dict:
@@ -740,6 +780,8 @@ def regenerate_zones(lake_id: str, authorization: str | None = Header(default=No
     """Re-divide the lake: one zone per simulated drone, plus one per real drone unless they are left unaffected."""
     principal = authorize_lake(lake_id, authorization, Permission.CHANGE_SIMULATED_CIRCULATION)
     runtime = get_runtime(lake_id)
+    if runtime.engine._confirmation and runtime.engine._confirmation['phase']!='returned':
+        raise HTTPException(409,'End the current investigation and wait for patrol to resume before replanning')
     real = [] if runtime.real_zones is not None else _real_drone_ids(lake_id)
     if real:
         require_lake_permission(lake_id, principal, Permission.CHANGE_FLEET_SAFETY)
@@ -759,9 +801,14 @@ def regenerate_zones(lake_id: str, authorization: str | None = Header(default=No
     return _simulation_status(runtime)
 
 
+class AlertDecision(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    decision: Literal['confirmed','dismissed','ended']
+
+
 @app.post("/api/lakes/{lake_id}/alerts/{alert_id}/escalate", deprecated=True)
 @app.post("/api/lakes/{lake_id}/alerts/{alert_id}/review")
-def review_alert(lake_id: str, alert_id: str, authorization: str | None = Header(default=None)):
+def review_alert(lake_id: str, alert_id: str, authorization: str | None = Header(default=None), value: AlertDecision | None=None):
     principal = authorize_lake(lake_id, authorization, Permission.MANAGE_ALERTS)
     runtime = get_runtime(lake_id)
     _drain_real_alerts(runtime)
@@ -769,11 +816,20 @@ def review_alert(lake_id: str, alert_id: str, authorization: str | None = Header
     if alert is not None and alert.source == "simulated":
         already = alert_id in runtime.reviewed_alerts
         timestamp = runtime.reviewed_alerts.setdefault(alert_id, datetime.now(timezone.utc).isoformat())
+        decision=value.decision if value else 'confirmed'
+        previous=runtime.review_decisions.get(alert_id)
+        if previous and previous!=decision and not(previous=='confirmed' and decision=='ended'):
+            raise HTTPException(409,'This alert already has a decision')
+        runtime.review_decisions[alert_id]=decision
+        if decision in ('dismissed','ended'):
+            runtime.engine.finish_investigation(alert_id)
         return {"alert_id": alert_id, "source": "simulated", "reviewed": True,
-                "reviewed_at": timestamp, "durable": False, "already_reviewed": already}
+                "reviewed_at": timestamp, "durable": False, "already_reviewed": already,
+                'review_decision':decision,'investigation':runtime.engine.investigation_status(alert_id)}
     try:
-        result = get_alert_review_repository().review(lake_id, alert_id, principal.user_id)
-    except AlertReviewUnavailable as exc:
+        result = (get_investigation_repository().review(lake_id,alert_id,principal.user_id,value.decision) if value
+                  else get_alert_review_repository().review(lake_id, alert_id, principal.user_id))
+    except (AlertReviewUnavailable,DeviceRepositoryError) as exc:
         raise HTTPException(status_code=503, detail="Alert review could not be saved") from exc
     if result is None:
         raise HTTPException(status_code=404, detail="Alert not found")
@@ -805,6 +861,14 @@ async def public_positions_ws(websocket: WebSocket, lake_id: str):
     """Anonymous channel for delayed, projection-only patrol presence."""
     runtime = lake_runtimes.get(lake_id)
     if runtime is None or websocket_has_url_credentials(websocket):
+        await websocket.close(code=1008)
+        return
+    from app.public_api import _repository
+    try:
+        visible=any(row['lake_id']==lake_id for row in _repository().list_lakes())
+    except Exception:
+        visible=False
+    if not visible:
         await websocket.close(code=1008)
         return
     await runtime.public_hub.connect(websocket)

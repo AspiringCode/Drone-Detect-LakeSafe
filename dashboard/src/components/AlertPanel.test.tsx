@@ -19,6 +19,20 @@ function mkAlert(overrides: Partial<Alert> = {}): Alert {
 }
 
 describe("AlertPanel", () => {
+  it('keeps operator decision distinct from a negative second-drone finding',()=>{
+    render(<AlertPanel alert={mkAlert({investigation:{alert_id:'a1',detecting:'d1',confirmer:'d2',phase:'finding_received',finding:'not_observed'}})} onDecision={vi.fn()}/>);
+    expect(screen.getByText('The second drone did not observe the detection.')).toBeVisible();
+    expect(screen.getByRole('button',{name:'Confirm detection'})).toBeEnabled();
+    expect(screen.queryByText(/Confirmed by second drone/)).toBeNull();
+  });
+  it('distinguishes arrival from findings and records a dismiss decision',async () => {
+    const onDecision=vi.fn().mockResolvedValue(undefined);
+    render(<AlertPanel alert={mkAlert({investigation:{alert_id:'a1',detecting:'d1',confirmer:'d2',phase:'awaiting_finding',finding:null}})} onDecision={onDecision}/>);
+    expect(screen.getByText(/No independent finding yet/i)).toBeVisible();
+    fireEvent.click(screen.getByRole('button',{name:'Dismiss and resume patrol'}));
+    expect(onDecision).toHaveBeenCalledWith('a1','dismissed');
+    expect(await screen.findByText(/Dismissed by operator/)).toBeVisible();
+  });
   it("renders GPS coordinates and a maps link", () => {
     render(<AlertPanel alert={mkAlert()} />);
     expect(screen.getByText(/47\.58100, -122\.09100/)).toBeTruthy();

@@ -11,6 +11,16 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
+def isolated_investigation_repository(monkeypatch):
+    from types import SimpleNamespace
+    from app import main
+    from app.api import devices
+    repository=SimpleNamespace(states=lambda lake:{},pending=lambda principal:[],begin=lambda *args:None)
+    monkeypatch.setattr(main,'get_investigation_repository',lambda:repository)
+    monkeypatch.setattr(devices,'get_investigation_repository',lambda:repository)
+
+
+@pytest.fixture(autouse=True)
 def _allow_durable_rate_limit_in_isolated_tests(monkeypatch):
     from app.rate_limits import RateLimitResult
     import app.rate_limits as limits

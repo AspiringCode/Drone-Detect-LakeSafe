@@ -73,6 +73,13 @@ export interface Detection {
   source: Source;
 }
 
+export type AlertDecision = 'confirmed' | 'dismissed' | 'ended';
+export interface Investigation {
+  alert_id: string; detecting: string; confirmer: string | null;
+  phase: 'en_route' | 'awaiting_finding' | 'finding_received' | 'returning' | 'returned' | 'unavailable' | 'failed';
+  finding: 'observed' | 'not_observed' | 'inconclusive' | null;
+  detail?: string | null; finding_alert_id?: string | null;
+}
 export interface Alert {
   alert_id: string;
   created_at: string;
@@ -81,6 +88,8 @@ export interface Alert {
   drone_id: string;
   thermal_clip_ref: string | null;
   reviewed_at?: string | null;
+  review_decision?: AlertDecision | null;
+  investigation?: Investigation | null;
   confirmed: boolean;
   source: Source;
   latency_ms: number | null;
@@ -93,6 +102,7 @@ export interface SimulationState {
   altitudes?: Record<string, number>;
   confirmed?: boolean;
   latest_alert?: Alert | null;
+  alerts?: Alert[];
   simulation_running?: boolean;
 }
 

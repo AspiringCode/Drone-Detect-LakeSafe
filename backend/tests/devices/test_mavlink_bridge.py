@@ -9,6 +9,42 @@ from app.devices import mavlink_bridge
 from app.devices.mavlink_bridge import flight_status, parse_drone, payload, update
 
 
+def test_investigation_refuses_ground_or_manual_control_and_keeps_origin(monkeypatch):
+    calls = []
+    conn = SimpleNamespace(mav=SimpleNamespace(set_position_target_global_int_send=lambda *args: calls.append(args)))
+    monkeypatch.setattr(mavlink_bridge, 'set_mode', lambda *args: True)
+    cmd = {'command_type': 'investigate', 'investigation_id': 'a', 'target': {'lat':47.6,'lon':-122.1}}
+    state = {'armed': False}
+    assert mavlink_bridge.run_command(conn, 1, state, cmd)[0] == 'rejected'
+    state.update(armed=True, custom_mode=3, position={'lat':47.601,'lon':-122.1,'alt_m':30}, last_heartbeat=0)
+    assert mavlink_bridge.run_command(conn, 1, state, cmd)[0] == 'rejected'  # stale telemetry
+    state.update(last_heartbeat=mavlink_bridge.time.monotonic(), last_position=mavlink_bridge.time.monotonic(), mission_index=4)
+    assert mavlink_bridge.run_command(conn, 1, state, cmd)[0] == 'accepted'
+    state['custom_mode'] = 4
+    assert state['investigation']['origin']['lat'] == 47.601
+    assert len(calls) == 1
+    state['custom_mode'] = 6  # pilot RTL must win
+    assert mavlink_bridge.run_command(conn, 1, state, {'command_type':'resume_patrol','investigation_id':'a'})[0] == 'rejected'
+
+
+def test_resume_returns_to_origin_before_restarting_original_mission(monkeypatch):
+    calls=[]
+    conn=SimpleNamespace(mav=SimpleNamespace(set_position_target_global_int_send=lambda *a:calls.append(('target',a)),
+        mission_set_current_send=lambda *a:calls.append(('mission',a))))
+    monkeypatch.setattr(mavlink_bridge,'set_mode',lambda *a:calls.append(('mode',a[-1])) or True)
+    monkeypatch.setattr(mavlink_bridge,'_reply',lambda *a:SimpleNamespace(seq=7))
+    context={'id':'a','origin':{'lat':47.601,'lon':-122.1,'alt_m':30},'mission_index':7,'returning':False}
+    state={'armed':True,'custom_mode':4,'position':{'lat':47.6,'lon':-122.1,'alt_m':30},
+           'last_position':mavlink_bridge.time.monotonic(),'last_heartbeat':mavlink_bridge.time.monotonic(),'investigation':context}
+    assert mavlink_bridge.run_command(conn,1,state,{'command_type':'resume_patrol','investigation_id':'a'})[0]=='accepted'
+    mavlink_bridge.advance_investigation(conn,1,state)
+    assert not any(c[0]=='mission' for c in calls)
+    state['position']['lat']=47.601
+    mavlink_bridge.advance_investigation(conn,1,state)
+    assert ('mission',(1,1,7)) in calls and ('mode',3) in calls
+    assert state['completed_investigation']=='a'
+
+
 def msg(kind, **fields):
     return SimpleNamespace(get_type=lambda: kind, **fields)
 

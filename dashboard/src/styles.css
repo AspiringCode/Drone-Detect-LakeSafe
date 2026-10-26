@@ -449,3 +449,8 @@ legend { padding: 0 0.4rem; font-weight: 700; }
 .lake-search-results .choice { align-items: center; padding: .5rem; }
 .lake-setup-review { margin-top: 1.25rem; }
 .lake-setup-review fieldset { display: grid; gap: 1rem; min-width: 0; }
+.alert-decisions { display:flex; flex-wrap:wrap; gap:.75rem; margin-block:1rem; }
+.alert-decisions button { min-height:44px; }
+.investigation-summary { border-block:1px solid var(--border, #c8dfeb); padding-block:1rem; margin-block:1rem; }
+.investigation-summary h3 { font-size:1rem; margin:0 0 .75rem; }
+.investigation-summary strong { overflow-wrap:anywhere; }

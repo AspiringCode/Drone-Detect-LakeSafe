@@ -81,17 +81,22 @@ class SupabasePublicProjectionRepository:
     def list_lakes(self) -> list[dict[str, object]]:
         return self._rows(self._client.table("public_lakes").select(
             "lake_id,name,approximate_center_geohash,public_status,refreshed_at,map_bounds"
-        ).order("name").execute().data)
+        ).eq('public_visible',True).order("name").execute().data)
 
     def list_alerts(self, lake_id: str) -> list[dict[str, object]]:
+        if not self._visible(lake_id): return []
         return self._rows(self._client.table("public_alerts").select(
             "lake_id,category,approximate_area_label,public_status,occurred_at,published_at"
         ).eq("lake_id", lake_id).order("published_at", desc=True).execute().data)
 
     def list_patrol_presence(self, lake_id: str) -> list[dict[str, object]]:
+        if not self._visible(lake_id): return []
         return self._rows(self._client.table("public_patrol_presence").select(
             "lake_id,generalized_zone,public_state,observed_bucket,published_at"
         ).eq("lake_id", lake_id).order("published_at", desc=True).execute().data)
+
+    def _visible(self,lake_id):
+        return bool(self._client.table('public_lakes').select('lake_id').eq('lake_id',lake_id).eq('public_visible',True).limit(1).execute().data)
 
     @staticmethod
     def _rows(data: object) -> list[dict[str, object]]:

@@ -7,7 +7,7 @@ import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Callable
-from urllib.parse import urlencode
+from urllib.parse import urlencode,urlparse
 
 import httpx
 import jwt
@@ -44,6 +44,7 @@ class IdMeSettings:
     userinfo_endpoint: str
     success_url: str
     failure_url: str
+    scope: str = 'openid'
 
     @classmethod
     def from_config(cls) -> "IdMeSettings":
@@ -52,9 +53,19 @@ class IdMeSettings:
             "IDME_CLIENT_SECRET": config.IDME_CLIENT_SECRET,
             "IDME_REDIRECT_URI": config.IDME_REDIRECT_URI,
             "IDME_AUDIENCE": config.IDME_AUDIENCE,
+            'IDME_SCOPE': config.IDME_SCOPE,
         }
         if any(not value for value in required.values()):
             raise IdMeVerificationError("ID.me verification is not configured")
+        _fernet()
+        for url in (config.IDME_PROFILE_SUCCESS_URL,config.IDME_PROFILE_FAILURE_URL,config.IDME_REDIRECT_URI,
+                    config.IDME_AUTHORIZATION_ENDPOINT,config.IDME_TOKEN_ENDPOINT,config.IDME_USERINFO_ENDPOINT,config.IDME_JWKS_URI):
+            parsed=urlparse(url or '')
+            if not parsed.hostname or parsed.username or parsed.password or parsed.fragment or (
+                parsed.scheme!='https' and not(parsed.scheme=='http' and parsed.hostname in {'localhost','127.0.0.1'})):
+                raise IdMeVerificationError('ID.me requires configured absolute callback and application URLs')
+        if 'openid' not in config.IDME_SCOPE.split() or len(config.IDME_SCOPE.split())<2:
+            raise IdMeVerificationError('ID.me affiliation policy scope is not configured')
         return cls(
             client_id=str(config.IDME_CLIENT_ID), client_secret=str(config.IDME_CLIENT_SECRET),
             redirect_uri=str(config.IDME_REDIRECT_URI), issuer=config.IDME_ISSUER,
@@ -62,6 +73,7 @@ class IdMeSettings:
             token_endpoint=config.IDME_TOKEN_ENDPOINT, jwks_uri=config.IDME_JWKS_URI,
             userinfo_endpoint=config.IDME_USERINFO_ENDPOINT,
             success_url=config.IDME_PROFILE_SUCCESS_URL, failure_url=config.IDME_PROFILE_FAILURE_URL,
+            scope=config.IDME_SCOPE,
         )
 
 
@@ -104,7 +116,7 @@ def start_authorization(user_id: str, repository: WorkflowRepository, settings: 
     ))
     return f"{settings.authorization_endpoint}?{urlencode({
         'response_type': 'code', 'client_id': settings.client_id, 'redirect_uri': settings.redirect_uri,
-        'scope': 'openid profile', 'state': secret.state, 'nonce': secret.nonce,
+        'scope': settings.scope, 'state': secret.state, 'nonce': secret.nonce,
         'code_challenge': _pkce_challenge(secret.verifier), 'code_challenge_method': 'S256',
     })}"
 

@@ -39,7 +39,7 @@ describe("operations data pages", () => {
     expect(await screen.findByRole("heading", { name: "Active alerts" })).toBeInTheDocument();
     expect(await screen.findByText("Lake Sammamish", { selector: ".alert-record p" })).toBeInTheDocument();
     expect(screen.getByText("drone-2")).toBeInTheDocument();
-    expect(screen.getByText("Confirmed")).toBeInTheDocument();
+    expect(screen.getByText("Corroborated · needs review")).toBeInTheDocument();
     expect(fetcher).toHaveBeenCalledWith(expect.stringContaining("/api/lakes/lake-sammamish/alerts"), { headers: { Authorization: "Bearer operator-token" } });
   });
 

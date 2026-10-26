@@ -18,6 +18,13 @@ from app.devices import drone_detect, drone_link, live_alerts
 LAKE_ID = next(iter(main.lake_runtimes))
 
 
+@pytest.fixture(autouse=True)
+def fresh_detection_timestamp(monkeypatch):
+    payload=json.loads(BODY)
+    payload['detected_at']=datetime.now(timezone.utc).isoformat()
+    monkeypatch.setitem(globals(),'BODY',json.dumps(payload).encode())
+
+
 class Repo:
     def __init__(self, public_key: str, lake_id: str | None) -> None:
         self.public_key = public_key
@@ -88,7 +95,7 @@ def _post(client, key, body: bytes, signed_body: bytes | None = None):
                        headers=drone_link.signed_headers(key, "d-1", signed_body or body, sequence=sequence, timestamp=timestamp))
 
 
-BODY = json.dumps({"confidence": 0.82, "bbox": [10, 20, 30, 40], "detected_at": "2026-10-22T18:00:00.000000Z",
+BODY = json.dumps({"confidence": 0.82, "bbox": [10, 20, 30, 40], "detected_at": datetime.now(timezone.utc).isoformat(),
                    "position": {"lat": 47.59, "lon": -122.09}}).encode()
 
 
@@ -101,7 +108,7 @@ def test_signed_detection_becomes_a_real_alert_in_its_lake_runtime(monkeypatch):
     monkeypatch.setattr(main, "authorize_lake", lambda *args: None)
     alerts = client.get(f"/api/lakes/{LAKE_ID}/alerts").json()
     alert = next(a for a in alerts if a["alert_id"] == alert_id)
-    assert (alert["source"], alert["drone_id"], alert["confirmed"], alert["location"]) == ("real", "d-1", True, {"lat": 47.59, "lon": -122.09})
+    assert (alert["source"], alert["drone_id"], alert["confirmed"], alert["location"]) == ("real", "d-1", False, {"lat": 47.59, "lon": -122.09})
     assert main.lake_runtimes[LAKE_ID].alert_backend.get(alert_id) is not None
     # Other lakes never see it.
     other = next(lake for lake in main.lake_runtimes if lake != LAKE_ID)

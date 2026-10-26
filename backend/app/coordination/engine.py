@@ -183,15 +183,48 @@ class SimulationEngine:
         if arrived:
             self._patrol_index[drone.drone_id] = (idx + 1) % len(waypoints)
 
-    def trigger_detection(self, zone_id: str, at: LatLon) -> None:
+    def investigation_status(self, alert_id: str) -> dict | None:
+        incident = self._confirmation
+        if not incident or incident.get("alert_id") != alert_id:
+            return None
+        return {key: incident[key] for key in ("alert_id", "detecting", "confirmer", "phase", "finding")}
+
+    def record_finding(self, alert_id: str, finding: str) -> None:
+        if not self.investigation_status(alert_id) or self._confirmation["phase"] != "awaiting_finding":
+            raise ValueError("The second drone has not arrived")
+        if finding not in {"observed", "not_observed", "inconclusive"}:
+            raise ValueError("Invalid finding")
+        self._confirmation.update(finding=finding, confirmed=finding == "observed", phase="finding_received")
+
+    def finish_investigation(self, alert_id: str) -> None:
+        if not self.investigation_status(alert_id):
+            return
+        if self._confirmation["phase"] in {"returning", "returned"}:
+            return
+        self._confirmation["phase"] = "returning"
+        for drone in self.drones:
+            original = self._confirmation["origins"].get(drone.drone_id)
+            if original and drone.battery >= .25:
+                drone.assigned_zone = original["zone"]
+                drone.status = DroneStatus.RETURNING
+                self.targets[drone.drone_id] = original["position"]
+
+    def trigger_detection(self, zone_id: str, at: LatLon, *, alert_id: str = "demo") -> None:
+        if not self.drones:
+            raise ValueError("No simulated drones")
+        if self._confirmation and self._confirmation["phase"] != "returned":
+            raise ValueError("Finish the current investigation before starting another")
         detecting = next((d for d in self.drones if d.assigned_zone == zone_id), self.drones[0])
+        candidates = [d for d in self.drones if d.drone_id != detecting.drone_id and d.status != DroneStatus.RETURNING and d.battery >= .25]
+        confirmer = min(candidates, key=lambda d: haversine_m(d.pos, at)) if candidates else None
+        origins = {d.drone_id: {"position": d.pos, "zone": d.assigned_zone,
+                   "waypoints": self._patrol_waypoints.get(d.drone_id), "index": self._patrol_index.get(d.drone_id, 0)}
+                   for d in (detecting, confirmer) if d is not None}
         detecting.status = DroneStatus.INVESTIGATING
         detecting.assigned_zone = zone_id
         self.targets[detecting.drone_id] = at
         self._patrol_waypoints.pop(detecting.drone_id, None)
 
-        candidates = [d for d in self.drones if d.drone_id != detecting.drone_id and d.status != DroneStatus.RETURNING]
-        confirmer = min(candidates, key=lambda d: haversine_m(d.pos, at)) if candidates else None
         if confirmer:
             confirmer.status = DroneStatus.EN_ROUTE
             confirmer.assigned_zone = zone_id
@@ -203,6 +236,8 @@ class SimulationEngine:
             "detecting": detecting.drone_id,
             "confirmer": confirmer.drone_id if confirmer else None,
             "confirmed": False,
+            "alert_id": alert_id, "phase": "en_route" if confirmer else "unavailable",
+            "finding": None, "origins": origins,
         }
 
     def step(self, dt: float) -> SimulationState:
@@ -217,13 +252,28 @@ class SimulationEngine:
             if target and drone.status in {DroneStatus.EN_ROUTE, DroneStatus.RETURNING}:
                 arrived = self._move_toward(drone, target, dt)
                 if arrived:
-                    if self._confirmation and drone.drone_id == self._confirmation.get("confirmer"):
+                    if self._confirmation and self._confirmation["phase"] == "returning" and drone.drone_id in self._confirmation["origins"]:
+                        original = self._confirmation["origins"][drone.drone_id]
+                        drone.status = DroneStatus.PATROLLING if original["zone"] else DroneStatus.IDLE
+                        self.targets.pop(drone.drone_id, None)
+                        if original["waypoints"]:
+                            self._patrol_waypoints[drone.drone_id] = original["waypoints"]
+                            self._patrol_index[drone.drone_id] = original["index"]
+                    elif self._confirmation and drone.drone_id == self._confirmation.get("confirmer"):
                         drone.status = DroneStatus.INVESTIGATING
-                        self._confirmation["confirmed"] = True
+                        self._confirmation["phase"] = "awaiting_finding"
+                        self._confirmation['arrived_at']=self.t
                     elif drone.status == DroneStatus.EN_ROUTE:
                         drone.status = DroneStatus.PATROLLING
                         self._start_patrol_if_circular(drone)
 
+        if (self._confirmation and self._confirmation['phase']=='awaiting_finding'
+            and self._confirmation.get('demo_finding') and self.t-self._confirmation.get('arrived_at',self.t)>=2):
+            self.record_finding(self._confirmation['alert_id'],self._confirmation['demo_finding'])
+        if self._confirmation and self._confirmation["phase"] == "returning" and not any(
+            d.status == DroneStatus.RETURNING for d in self.drones if d.drone_id in self._confirmation["origins"]
+        ):
+            self._confirmation["phase"] = "returned"
         assignment = {drone.drone_id: drone.assigned_zone for drone in self.drones}
         reassign_on_low_battery(self.drones, self.zones, assignment)
         self.altitudes = deconflict(self.drones, self.altitudes)
@@ -234,4 +284,5 @@ class SimulationEngine:
             "t": self.t,
             "altitudes": self.altitudes,
             "confirmed": bool(self._confirmation and self._confirmation["confirmed"]),
+            "investigation": self.investigation_status(self._confirmation["alert_id"]) if self._confirmation else None,
         }

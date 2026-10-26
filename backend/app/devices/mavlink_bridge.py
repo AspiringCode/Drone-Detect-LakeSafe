@@ -11,13 +11,14 @@ Raspberry Pi on the flight controller's TELEM port:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone,timedelta
 import argparse
 import json
 import os
 import sys
 import time
 import tempfile
+import math
 from pathlib import Path
 
 try:
@@ -50,6 +51,9 @@ def update(state: dict, msg, now: float) -> None:
         state["position"] = None if msg.lat == 0 and msg.lon == 0 else {
             "lat": msg.lat / 1e7, "lon": msg.lon / 1e7, "alt_m": msg.relative_alt / 1000,
         }
+        state['last_position'] = now
+    elif kind == 'MISSION_CURRENT':
+        state['mission_index'] = msg.seq
 
 
 def payload(state: dict, now: float) -> dict:
@@ -64,6 +68,8 @@ def payload(state: dict, now: float) -> dict:
     }
     if state.get("position"):
         body["position"] = state["position"]
+    if state.get('completed_investigation'):
+        body['investigation_completed'] = state['completed_investigation']
     return body
 
 
@@ -109,7 +115,37 @@ def run_command(conn, sysid: int, state: dict, command: dict) -> tuple[str, str]
     """Carry out one website command; returns (accepted|rejected, detail). The RC transmitter always overrides."""
     kind = command.get("command_type")
     armed = state.get("armed", False)
+    if kind in ('investigate', 'resume_patrol'):
+        now = time.monotonic()
+        position = state.get('position') or {}
+        if (not armed or now-state.get('last_heartbeat',float('-inf'))>STALE_S
+                or now-state.get('last_position',float('-inf'))>STALE_S
+                or not isinstance(position.get('alt_m'), (int,float)) or not 5<=position['alt_m']<=120):
+            return 'rejected', 'Fresh airborne telemetry and a safe relative altitude are required'
+        if kind == 'investigate':
+            if state.get('custom_mode') != AUTO or state.get('mission_index') is None or state.get('investigation'):
+                return 'rejected', 'Only an aircraft already patrolling in AUTO may investigate'
+            target = command.get('target') or {}
+            if not all(isinstance(target.get(k),(int,float)) and math.isfinite(target[k]) for k in ('lat','lon')) or not -90<=target['lat']<=90 or not -180<=target['lon']<=180:
+                return 'rejected', 'Invalid investigation location'
+            context = {'id':command['investigation_id'], 'origin':dict(position), 'mission_index':state['mission_index'], 'returning':False,
+                       'deadline':(datetime.now(timezone.utc)+timedelta(minutes=5)).isoformat()}
+            if not set_mode(conn,sysid,4):
+                return 'rejected','Flight controller refused GUIDED'
+            state['investigation'] = context
+        else:
+            context = state.get('investigation') or command.get('restore_context')
+            if not context or context.get('id') != command.get('investigation_id') or state.get('custom_mode') != 4:
+                return 'rejected','Original patrol context unavailable or pilot changed flight mode; pilot review required'
+            target = context['origin']
+            context['returning'] = True
+            state['investigation'] = context
+        # Keep the current altitude; no arming, takeoff, landing, or descent is issued.
+        conn.mav.set_position_target_global_int_send(0,sysid,AUTOPILOT_COMPONENT,6,3576,
+            int(target['lat']*1e7),int(target['lon']*1e7),position['alt_m'],0,0,0,0,0,0,0,0)
+        return 'accepted', 'Returning to original patrol position' if kind=='resume_patrol' else 'Investigation target requested; arrival is not corroboration'
     if kind in ("return_to_reserve", "safety_hold"):
+        state.pop('investigation',None)
         if not armed:
             return "accepted", "on the ground; nothing to do"
         mode, name = (RTL, "RTL") if kind == "return_to_reserve" else (LOITER, "LOITER")
@@ -144,6 +180,14 @@ def handle_reply(conn, sysid: int, state: dict, text: str, done: dict | set, per
             results.append((command, *run_command(conn, sysid, state, command)))
             continue
         if command_id not in done:
+            context_key = 'investigation:'+str(command.get('investigation_id'))
+            if command.get('command_type') == 'resume_patrol':
+                command = {**command,'restore_context':done.get(context_key)}
+            if command.get('command_type') == 'investigate':
+                # Persist the patrol origin before any flight command can execute.
+                done[context_key] = {'id':command.get('investigation_id'),'origin':dict(state.get('position') or {}),
+                                     'mission_index':state.get('mission_index'),'returning':False,
+                                     'deadline':(datetime.now(timezone.utc)+timedelta(minutes=5)).isoformat()}
             try:
                 expires = datetime.fromisoformat(command["expires_at"].replace("Z", "+00:00"))
                 valid = expires > datetime.now(timezone.utc)
@@ -155,6 +199,8 @@ def handle_reply(conn, sysid: int, state: dict, text: str, done: dict | set, per
             if persist is not None:
                 persist()
             outcome, detail = run_command(conn, sysid, state, command) if valid else ("rejected", "Command expired or has no valid expiry")
+            if outcome=='accepted' and state.get('investigation'):
+                done[context_key] = dict(state['investigation'])
             done[command_id] = {"status": outcome, "detail": detail, "expires_at": command.get("expires_at")}
             if persist is not None:
                 persist()
@@ -164,6 +210,8 @@ def handle_reply(conn, sysid: int, state: dict, text: str, done: dict | set, per
 
 
 def acknowledgement_request(drone_id: str, command: dict, outcome: str, detail: str):
+    if command.get('investigation_ack'):
+        return f"/api/devices/{drone_id}/investigation-commands/{command['command_id']}/acknowledgements", {'status':outcome,'detail':detail}
     if command.get("patrol_ack"):
         return f"/api/devices/{drone_id}/patrol-commands/{command['command_id']}/acknowledgements", {
             "command_id": command["command_id"], "status": outcome, "detail": detail,
@@ -222,6 +270,33 @@ def parse_drone(text: str) -> tuple[int, str, str]:
     return int(sysid), drone_id, key_path
 
 
+def advance_investigation(conn, sysid, state):
+    context = state.get('investigation')
+    if not context:
+        return
+    if not state.get('armed') or state.get('custom_mode') != 4:
+        state.pop('investigation',None)  # pilot/safety mode always wins
+        return
+    if not context.get('returning'):
+        if context.get('deadline') and datetime.fromisoformat(context['deadline'])<=datetime.now(timezone.utc):
+            if run_command(conn,sysid,state,{'command_type':'resume_patrol','investigation_id':context['id']})[0]!='accepted':
+                return
+        else:
+            return
+    position = state.get('position') or {}
+    origin = context['origin']
+    if not position or time.monotonic()-state.get('last_position',float('-inf'))>STALE_S:
+        return
+    distance = math.hypot((position['lat']-origin['lat'])*111320,
+                          (position['lon']-origin['lon'])*111320*math.cos(math.radians(origin['lat'])))
+    if distance<=8 and context.get('mission_index') is not None:
+        conn.mav.mission_set_current_send(sysid,AUTOPILOT_COMPONENT,context['mission_index'])
+        current=_reply(conn,sysid,['MISSION_CURRENT'])
+        if current is not None and current.seq==context['mission_index'] and set_mode(conn,sysid,AUTO):
+            state['completed_investigation'] = context['id']
+            state.pop('investigation',None)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="LakeSafe MAVLink bridge")
     parser.add_argument("--api", required=True)
@@ -239,10 +314,14 @@ def main(argv: list[str] | None = None) -> int:
     states: dict[int, dict] = {sysid: {} for sysid in drones}
     outcomes = load_outcomes(args.outcome_file)
     done = {sysid: outcomes.setdefault(drone_id, {}) for sysid, (drone_id, _) in drones.items()}
+    for sysid in states:
+        for key,value in done[sysid].items():
+            if key.startswith('investigation:') and isinstance(value,dict) and value.get('origin') and not value.get('completed'):
+                states[sysid]['investigation'] = dict(value)
     conn = mavutil.mavlink_connection(args.mavlink, baud=args.baud)
     next_send = time.monotonic()
     while True:
-        msg = conn.recv_match(type=["HEARTBEAT", "SYS_STATUS", "GLOBAL_POSITION_INT"], blocking=True, timeout=0.1)
+        msg = conn.recv_match(type=["HEARTBEAT", "SYS_STATUS", "GLOBAL_POSITION_INT", "MISSION_CURRENT"], blocking=True, timeout=0.1)
         now = time.monotonic()
         if msg is not None and msg.get_srcSystem() in states and msg.get_srcComponent() == AUTOPILOT_COMPONENT:
             state = states[msg.get_srcSystem()]
@@ -250,6 +329,11 @@ def main(argv: list[str] | None = None) -> int:
                 # A bare serial link streams nothing until asked; through Mission Planner this is harmless.
                 conn.mav.request_data_stream_send(msg.get_srcSystem(), AUTOPILOT_COMPONENT, mavutil.mavlink.MAV_DATA_STREAM_ALL, 2, 1)
             update(state, msg, now)
+            advance_investigation(conn,msg.get_srcSystem(),state)
+            completed = state.get('completed_investigation')
+            if completed and not done[msg.get_srcSystem()].get('investigation:'+completed,{}).get('completed'):
+                done[msg.get_srcSystem()]['investigation:'+completed] = {'completed':True}
+                save_outcomes(args.outcome_file,outcomes)
         if now < next_send:
             continue
         next_send = now + args.interval

@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { AccessibleDialog } from "../components/AccessibleDialog";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { AlertPanel } from "../components/AlertPanel";
 import { DroneRoster } from "../components/DroneRoster";
 import { LakeMap, type RiskGeoJSON } from "../components/LakeMap";
@@ -8,7 +8,7 @@ import { supabase, type SupabaseLike } from "../lib/supabase";
 import { connectOperationalPositions, connectPositions } from "../lib/ws";
 import { useOrientation } from "../lib/useOrientation";
 import { useNewAlertCue } from "../lib/useNewAlertCue";
-import type { Alert, Capability, LatLon, Principal, RealFleetSafetyStatus, RegisteredDrone, SimulationState } from "../lib/types";
+import type { Alert, AlertDecision, Capability, LatLon, Principal, RealFleetSafetyStatus, RegisteredDrone, SimulationState } from "../lib/types";
 import { AppHeader } from "../components/AppHeader";
 import { useOptionalPrincipal } from "../auth/PrincipalProvider";
 import { changeSimulation, loadRealFleetSafetyStatus, loadRegisteredDrones, requestSafeReturn, setRealAutonomy, type RealDroneChoice, type SimulationAction } from "../lib/fleetData";
@@ -29,6 +29,10 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
   const [simulationRunning, setSimulationRunning] = useState(false);
   const [riskmap, setRiskmap] = useState<RiskGeoJSON | null>(null);
   const [alert, setAlert] = useState<Alert | null>(null);
+  const [searchParams]=useSearchParams();
+  const chosenAlert=useRef(searchParams.get('alert') ?? '');
+  const [alertHistory,setAlertHistory]=useState<Alert[]>([]);
+  const [demoFinding,setDemoFinding]=useState('observed');
   const alertCue = useNewAlertCue(alert);
   const [noLive, setNoLive] = useState(false);
   const [setupStatus, setSetupStatus] = useState<"queued" | "failed" | null>(null);
@@ -61,6 +65,7 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
     setOperationsDataError(null);
     setRiskmap(null);
     setAlert(null);
+    setAlertHistory([]);
     setDrones([]);
     if (canReadOperations) void (async () => {
       const token = accessToken ?? (await client.auth.getSession()).data.session?.access_token;
@@ -72,7 +77,7 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
         if (setup.setup_status === "queued" || setup.setup_status === "failed") { if (active) setSetupStatus(setup.setup_status); return; }
       }
       const freshToken = async () => accessToken ?? (await client.auth.getSession()).data.session?.access_token;
-      stop = connectOperational(wsFor(lakeId), freshToken, (state) => { if (!active) return; setDrones(state.drones); setSimulationRunning(state.simulation_running ?? false); if (state.latest_alert) setAlert(state.latest_alert); }, (live) => { if (active) setLiveLost(!live); });
+      stop = connectOperational(wsFor(lakeId), freshToken, (state) => { if (!active) return; setDrones(state.drones); setSimulationRunning(state.simulation_running ?? false); if(state.alerts)setAlertHistory(state.alerts); const selected=state.alerts?.find(a=>a.alert_id===chosenAlert.current); if(selected)setAlert(selected); else if(!chosenAlert.current && state.latest_alert)setAlert(state.latest_alert); }, (live) => { if (active) setLiveLost(!live); });
       const options = { headers: { Authorization: `Bearer ${token}` } };
       await Promise.all([
         fetcher(`${API}/api/lakes/${lakeId}/riskmap`, options).then(async (response) => {
@@ -84,7 +89,7 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
         fetcher(`${API}/api/lakes/${lakeId}/alerts`, options).then(async (response) => {
           if (!response.ok) throw new Error("Alerts unavailable");
           const data: Alert[] = await response.json();
-          if (active) setAlert(data[0] ?? null);
+          if (active) {setAlertHistory(data);setAlert(data.find(a=>a.alert_id===chosenAlert.current) ?? data[data.length-1] ?? null);}
         }),
       ]);
     })().catch(() => { if (active) setOperationsDataError("Live lookout data could not be loaded. Return to lakes and reopen this workspace to retry."); });
@@ -150,15 +155,15 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
     catch (error) { setRealSafetyError(error instanceof ApiError && error.status === 403 ? (error.code.includes("mfa") || /recent|mfa/i.test(error.message) ? "Recent MFA is required before requesting a fleet safe return." : "Your station role cannot request a fleet safe return.") : "The fleet safe-return request could not be sent."); }
     finally { setRealSafetyBusy(false); }
   }
-  async function demo() { if (!canManageAlerts) return; const token = accessToken ?? (await client.auth.getSession()).data.session?.access_token; const response = await fetcher(`${API}/api/lakes/${lakeId}/demo/trigger`, { method: "POST", headers: { Authorization: `Bearer ${token ?? ""}` } }); if (response.ok) setAlert(await response.json()); }
-  async function escalate(id: string) {
+  async function demo() { if (!canManageAlerts || simulationBusy) return;setSimulationBusy(true);setSimulationError(null);try {const token = accessToken ?? (await client.auth.getSession()).data.session?.access_token; const response = await fetcher(`${API}/api/lakes/${lakeId}/demo/trigger`, { method: "POST", headers: { Authorization: `Bearer ${token ?? ""}`, 'Content-Type':'application/json' },body:JSON.stringify({second_finding:demoFinding}) }); if (!response.ok)throw new Error(response.status===409?'End the current investigation and wait for patrol to resume before simulating another detection.':'Detection could not be simulated.');const next:Alert=await response.json();chosenAlert.current=next.alert_id;setAlert(next);}catch(error){setSimulationError(error instanceof Error?error.message:'Simulation failed.');}finally{setSimulationBusy(false);} }
+  async function decideAlert(id: string, decision: AlertDecision) {
     if (!canManageAlerts) throw new Error("Your station role cannot review alerts.");
     const token = accessToken ?? (await client.auth.getSession()).data.session?.access_token;
-    const response = await fetcher(`${API}/api/lakes/${encodeURIComponent(lakeId)}/alerts/${encodeURIComponent(id)}/review`, { method: "POST", headers: { Authorization: `Bearer ${token ?? ""}` } });
+    const response = await fetcher(`${API}/api/lakes/${encodeURIComponent(lakeId)}/alerts/${encodeURIComponent(id)}/review`, { method: "POST", headers: { Authorization: `Bearer ${token ?? ""}`, 'Content-Type':'application/json' },body:JSON.stringify({decision}) });
     if (!response.ok) throw new Error(response.status === 403 ? "Your station role or MFA session cannot review this alert. Check access and try again." : "Review could not be saved. Try again.");
     const result = await response.json();
-    if (!result.reviewed) throw new Error("The server did not confirm the review. Try again.");
-    setAlert((current) => current?.alert_id === id ? { ...current, reviewed_at: result.reviewed_at } : current);
+    if (!result.reviewed || result.review_decision!==decision) throw new Error("The server did not confirm the decision. Try again.");
+    setAlert((current) => current?.alert_id === id ? { ...current, reviewed_at: result.reviewed_at,review_decision:result.review_decision,investigation:result.investigation ?? current.investigation } : current);
   }
   async function evidence(id: string) {
     const token = accessToken ?? (await client.auth.getSession()).data.session?.access_token;
@@ -197,7 +202,7 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
                 <button className="button-secondary" disabled={simulationBusy} onClick={() => void simulate("simulation/drones")}>Add simulated drone</button>
                 {/* A waiting drone has no zone until the lake is re-divided, so that becomes the primary action. */}
                 <button className={waitingDrones.length ? undefined : "button-secondary"} disabled={simulationBusy} onClick={() => void simulate("zones/regenerate")}>Regenerate zones</button>
-                {canManageAlerts && <button className="button-secondary" onClick={() => void demo()}>Simulate detection</button>}
+                {canManageAlerts && <><label>Demo second-drone finding<select value={demoFinding} disabled={simulationBusy} onChange={e=>setDemoFinding(e.target.value)}><option value="observed">Detection observed</option><option value="not_observed">No detection observed</option><option value="inconclusive">Inconclusive</option></select></label><button className="button-secondary" disabled={simulationBusy} onClick={() => void demo()}>Simulate detection</button></>}
                 <button className="button-secondary" disabled={simulationBusy} onClick={() => void simulate("simulation/stop")}>Stop simulation</button>
               </> : <>
                 <button className="button-secondary" disabled={simulationBusy || !registeredChecked} onClick={start}>Start simulation</button>
@@ -211,7 +216,8 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
           </section>
           <section className="panel-card alert-card" aria-label="Active alert">
             <div className="panel-heading"><h2>Active alert</h2></div>
-            <AlertPanel key={alert?.alert_id ?? "none"} alert={alert} onEscalate={canManageAlerts ? escalate : undefined} onEvidence={canReadOperations ? evidence : undefined} />
+            {alertHistory.length>1 && <label>Review an alert<select value={alert?.alert_id ?? ''} onChange={e=>{chosenAlert.current=e.target.value;setAlert(alertHistory.find(a=>a.alert_id===e.target.value) ?? null);}}>{[...alertHistory].reverse().map(a=><option key={a.alert_id} value={a.alert_id}>{new Date(a.created_at).toLocaleTimeString()} · {a.review_decision ?? 'Needs review'} · {a.drone_id}</option>)}</select></label>}
+            <AlertPanel key={alert?.alert_id ?? "none"} alert={alert} onRelatedAlert={(id)=>{const related=alertHistory.find(a=>a.alert_id===id);if(related){chosenAlert.current=id;setAlert(related);}}} onDecision={canManageAlerts ? decideAlert : undefined} onEvidence={canReadOperations ? evidence : undefined} />
           </section>
         </aside>
       </section>

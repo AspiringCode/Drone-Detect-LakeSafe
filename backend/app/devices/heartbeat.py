@@ -29,6 +29,7 @@ class HeartbeatPayload(BaseModel):
     # Optional so position-less drones keep working; only feeds the live map.
     position: Position | None = None
     flight_status: Literal["idle", "en_route", "patrolling", "investigating", "returning", "charging"] = "idle"
+    investigation_completed: str | None = Field(default=None, min_length=1, max_length=100)
 
 
 @dataclass(frozen=True)
@@ -57,6 +58,10 @@ class HeartbeatService:
             raise ValueError("heartbeat is missing its authenticated sequence")
         received = received_at or datetime.now(timezone.utc)
         outcome = self._repository.record_heartbeat(principal, value, received)
+        if value.investigation_completed:
+            from app.devices.investigations import get_investigation_repository
+            get_investigation_repository().call('complete_real_investigation', p_drone_id=principal.drone_id,
+                p_credential_id=principal.credential_id,p_sequence=principal.sequence,p_alert_id=value.investigation_completed)
         eligible = bool(outcome.get("eligible"))
         lake_id = outcome.get("lake_id")
         transitioned = bool(outcome.get("eligibility_changed"))

@@ -32,11 +32,13 @@ def test_confirmation_protocol_dispatches_second_drone():
     assert len(investigating) == 1 and len(enroute_confirm) >= 1
 
 
-def test_confirmation_marked_when_second_drone_arrives():
+def test_arrival_does_not_claim_an_independent_detection():
     eng = mk_engine(n_drones=2)
     eng.trigger_detection("z1", at=LatLon(47.58, -122.09))
     st = eng.step(30.0)
-    assert st["confirmed"] is True
+    assert st["confirmed"] is False
+    eng.record_finding('demo','observed')
+    assert eng.step(0)['confirmed'] is True
 
 
 def test_step_deconflicts_altitudes():

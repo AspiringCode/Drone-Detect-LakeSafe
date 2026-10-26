@@ -44,6 +44,16 @@ class WorkflowRepository(Protocol):
 class SupabaseWorkflowRepository:
     """Service-role-only adapter for transaction-backed station workflows."""
 
+    def public_visibility(self,station_id):
+        station=self._client.table('stations').select('public_pages_open').eq('station_id',station_id).single().execute().data
+        lakes=self._client.table('lakes').select('lake_id,name').eq('station_id',station_id).execute().data or []
+        lakes=[l for l in lakes if l['lake_id']!='test-drone-field']
+        published=self._client.table('public_lakes').select('lake_id').in_('lake_id',[l['lake_id'] for l in lakes]).execute().data if lakes else []
+        return {'visible':station['public_pages_open'],'lakes':lakes,'published_lakes':len(published or [])}
+
+    def set_public_visibility(self,station_id,actor,visible):
+        return self._client.rpc('set_station_public_visibility',{'p_station_id':station_id,'p_actor':actor,'p_visible':visible}).execute().data
+
     def __init__(self, client=None) -> None:
         if client is None:
             if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:

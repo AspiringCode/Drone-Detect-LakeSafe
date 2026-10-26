@@ -111,7 +111,7 @@ class SupabaseDeviceRepository(DeviceAuthRepository):
         for row in reversed(rows):
             point = wkb.loads(bytes.fromhex(row["precise_location"]))  # PostgREST returns PostGIS geometry as EWKB hex
             alerts.append(Alert(row["alert_id"], datetime.fromisoformat(row["occurred_at"]), LatLon(point.y, point.x), row["category"],
-                                row.get("hardware_ref") or "unknown", row.get("thermal_clip_ref"), True, "real", None))
+                                row.get("hardware_ref") or "unknown", row.get("thermal_clip_ref"), False, "real", None))
         return alerts
 
     def record_heartbeat(self, principal, heartbeat, received_at: datetime) -> dict:
