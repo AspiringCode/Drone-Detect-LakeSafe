@@ -110,6 +110,8 @@ describe("LakeLiveView", () => {
     act(() => push({ drones: [{ drone_id: "d-1", pos: { lat: 47.592, lon: -122.032 }, battery: 0.9, status: "patrolling", assigned_zone: null, source: "real" }], conflicts: [], t: 1, latest_alert: alert }));
     expect(screen.queryByText("awaiting heartbeat")).not.toBeInTheDocument();
     expect(screen.getByText(/GPS: 47\.59200, -122\.03200/)).toBeVisible();
+    act(()=>push({drones:[],conflicts:[],t:0,alerts:[],latest_alert:null,simulation_running:false}));
+    expect(screen.getByText('No active alert.')).toBeVisible();
   });
 
   it.each(["returned", "thrown"])("explains a %s metadata failure instead of waiting forever", async (kind) => {

@@ -77,7 +77,7 @@ export function LakeLiveView({ client = supabase, accessToken, fetcher = fetch, 
         if (setup.setup_status === "queued" || setup.setup_status === "failed") { if (active) setSetupStatus(setup.setup_status); return; }
       }
       const freshToken = async () => accessToken ?? (await client.auth.getSession()).data.session?.access_token;
-      stop = connectOperational(wsFor(lakeId), freshToken, (state) => { if (!active) return; setDrones(state.drones); setSimulationRunning(state.simulation_running ?? false); if(state.alerts)setAlertHistory(state.alerts); const selected=state.alerts?.find(a=>a.alert_id===chosenAlert.current); if(selected)setAlert(selected); else if(!chosenAlert.current && state.latest_alert)setAlert(state.latest_alert); }, (live) => { if (active) setLiveLost(!live); });
+      stop = connectOperational(wsFor(lakeId), freshToken, (state) => { if (!active) return; setDrones(state.drones); setSimulationRunning(state.simulation_running ?? false); if(state.alerts)setAlertHistory(state.alerts); const selected=state.alerts?.find(a=>a.alert_id===chosenAlert.current); if(state.alerts && !state.alerts.length){chosenAlert.current='';setAlert(null);} else if(selected)setAlert(selected); else if(!chosenAlert.current && state.latest_alert)setAlert(state.latest_alert); }, (live) => { if (active) setLiveLost(!live); });
       const options = { headers: { Authorization: `Bearer ${token}` } };
       await Promise.all([
         fetcher(`${API}/api/lakes/${lakeId}/riskmap`, options).then(async (response) => {
