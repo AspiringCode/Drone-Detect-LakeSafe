@@ -816,11 +816,12 @@ def review_alert(lake_id: str, alert_id: str, authorization: str | None = Header
     if alert is not None and alert.source == "simulated":
         already = alert_id in runtime.reviewed_alerts
         timestamp = runtime.reviewed_alerts.setdefault(alert_id, datetime.now(timezone.utc).isoformat())
-        decision=value.decision if value else 'confirmed'
+        decision=value.decision if value else None
         previous=runtime.review_decisions.get(alert_id)
-        if previous and previous!=decision and not(previous=='confirmed' and decision=='ended'):
+        if decision and previous and previous!=decision and not(previous=='confirmed' and decision=='ended'):
             raise HTTPException(409,'This alert already has a decision')
-        runtime.review_decisions[alert_id]=decision
+        if decision:
+            runtime.review_decisions[alert_id]=decision
         if decision in ('dismissed','ended'):
             runtime.engine.finish_investigation(alert_id)
         return {"alert_id": alert_id, "source": "simulated", "reviewed": True,

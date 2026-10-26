@@ -26,6 +26,8 @@ def assemble_alert(
         confirmed=confirmed,
         source=detection.source,
         latency_ms=latency_ms,
+        confidence=detection.confidence,
+        bbox=detection.bbox,
     )
 
 

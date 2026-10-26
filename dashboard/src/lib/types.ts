@@ -93,6 +93,8 @@ export interface Alert {
   confirmed: boolean;
   source: Source;
   latency_ms: number | null;
+  confidence?: number | null;
+  bbox?: [number,number,number,number] | null;
 }
 
 export interface SimulationState {

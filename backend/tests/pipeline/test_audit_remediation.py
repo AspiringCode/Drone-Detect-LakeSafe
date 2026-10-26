@@ -20,6 +20,7 @@ def test_simulation_review_validates_existence_and_is_idempotent(monkeypatch):
     first = main.review_alert(runtime.lake_id, alert.alert_id, None)
     second = main.review_alert(runtime.lake_id, alert.alert_id, None)
     assert first["reviewed"] is True and first["durable"] is False
+    assert first['review_decision'] is None  # legacy acknowledgement is not a yes/no decision
     assert second["already_reviewed"] is True
     assert second["reviewed_at"] == first["reviewed_at"]
     assert "escalated" not in first

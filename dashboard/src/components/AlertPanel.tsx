@@ -38,6 +38,7 @@ export function AlertPanel({ alert, onEscalate, onEvidence, onDecision,onRelated
         <SimulatedBadge source={alert.source} />
         <span className="alert-panel__mode">{alert.detection_mode}</span>
       </div>
+      <dl className="alert-observation"><div><dt>Detecting drone</dt><dd>{alert.drone_id}</dd></div><div><dt>Recorded</dt><dd>{new Date(alert.created_at).toLocaleString()}</dd></div>{typeof alert.confidence==='number' && <div><dt>Model score</dt><dd>{Math.round(alert.confidence*100)}%</dd></div>}</dl>
       <p>
         GPS: {alert.location.lat.toFixed(5)}, {alert.location.lon.toFixed(5)}{" "}
         <a href={mapsUrl} target="_blank" rel="noreferrer">

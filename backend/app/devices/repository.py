@@ -93,6 +93,7 @@ class SupabaseDeviceRepository(DeviceAuthRepository):
                 "precise_location": f"SRID=4326;POINT({alert.location.lon} {alert.location.lat})",
                 "category": alert.detection_mode, "status": "active", "source": "real",
                 "hardware_ref": alert.drone_id, "thermal_clip_ref": alert.thermal_clip_ref,
+                'subject_data':{'confidence':alert.confidence,'bbox':alert.bbox},
             }).execute()
         except Exception as exc:
             raise DeviceRepositoryError("Alert could not be saved") from exc
@@ -103,7 +104,7 @@ class SupabaseDeviceRepository(DeviceAuthRepository):
         from app.models import Alert, LatLon
         try:
             rows = self._client.table("operational_alerts").select(
-                "alert_id,occurred_at,precise_location,category,hardware_ref,thermal_clip_ref"
+                "alert_id,occurred_at,precise_location,category,hardware_ref,thermal_clip_ref,subject_data"
             ).eq("lake_id", lake_id).eq("source", "real").eq("status", "active").order("occurred_at", desc=True).limit(limit).execute().data or []
         except Exception as exc:
             raise DeviceRepositoryError("Alerts are unavailable") from exc
@@ -111,7 +112,8 @@ class SupabaseDeviceRepository(DeviceAuthRepository):
         for row in reversed(rows):
             point = wkb.loads(bytes.fromhex(row["precise_location"]))  # PostgREST returns PostGIS geometry as EWKB hex
             alerts.append(Alert(row["alert_id"], datetime.fromisoformat(row["occurred_at"]), LatLon(point.y, point.x), row["category"],
-                                row.get("hardware_ref") or "unknown", row.get("thermal_clip_ref"), False, "real", None))
+                                row.get("hardware_ref") or "unknown", row.get("thermal_clip_ref"), False, "real", None,
+                                (row.get('subject_data') or {}).get('confidence'),(row.get('subject_data') or {}).get('bbox')))
         return alerts
 
     def record_heartbeat(self, principal, heartbeat, received_at: datetime) -> dict:

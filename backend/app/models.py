@@ -114,3 +114,5 @@ class Alert:
     confirmed: bool
     source: Source
     latency_ms: int | None
+    confidence: float | None = None
+    bbox: tuple[float,float,float,float] | None = None

@@ -454,3 +454,6 @@ legend { padding: 0 0.4rem; font-weight: 700; }
 .investigation-summary { border-block:1px solid var(--border, #c8dfeb); padding-block:1rem; margin-block:1rem; }
 .investigation-summary h3 { font-size:1rem; margin:0 0 .75rem; }
 .investigation-summary strong { overflow-wrap:anywhere; }
+.alert-observation { display:grid; grid-template-columns:repeat(auto-fit,minmax(9rem,1fr)); gap:.75rem; }
+.alert-observation dt { font-size:.85rem; color:var(--muted,#526a7e); }
+.alert-observation dd { margin:.25rem 0 0; overflow-wrap:anywhere; font-weight:650; }
