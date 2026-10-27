@@ -1,5 +1,5 @@
 begin;
-select plan(15);
+select plan(17);
 select has_column('public','stations','simulation_only','stations declare physical isolation');
 select has_column('public','lakes','demo_source_lake_id','demo lakes identify reviewed catalog source');
 insert into auth.users(id,aud,role,email,encrypted_password,email_confirmed_at,raw_app_meta_data,raw_user_meta_data,created_at,updated_at)
@@ -46,5 +46,14 @@ insert into public.station_membership_roles(membership_id,role) values
  ('00000000-0000-0000-0000-000000005123','safety_supervisor'),('00000000-0000-0000-0000-000000005124','safety_supervisor');
 select lives_ok($$select private.assert_real_safety_actor('00000000-0000-0000-0000-000000005111','00000000-0000-0000-0000-000000005102')$$,'judge can use fleet safety within the enabled demo station');
 select throws_ok($$select private.assert_real_safety_actor('00000000-0000-0000-0000-000000005112','00000000-0000-0000-0000-000000005102')$$,'42501',null,'even a mistakenly assigned judge safety role cannot control an ordinary station');
+select lives_ok($test$do $body$
+declare registered jsonb; command jsonb;
+begin
+ registered:=public.register_real_drone('00000000-0000-0000-0000-000000005111','Test','PGTAP-JUDGE','AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA','00000000-0000-0000-0000-000000005102');
+ update public.drone_inventory set lake_id='isolation-demo-lake',lifecycle='circulating' where inventory_id=(registered->>'drone_id')::uuid;
+ command:=public.queue_real_patrol('00000000-0000-0000-0000-000000005111',(registered->>'drone_id')::uuid,'isolation-demo-lake','00000000-0000-0000-0000-000000005102',jsonb_build_object('lake_id','isolation-demo-lake','drone_id',registered->>'drone_id','mission','[[],[],[]]'::jsonb,'mission_hash',repeat('0',64)));
+ if command is null then raise exception 'judge patrol queue denied'; end if;
+end; $body$;$test$,'judge can queue reviewed patrols without station-management authority');
+select throws_ok($$select public.queue_real_patrol('00000000-0000-0000-0000-000000005112','00000000-0000-0000-0000-000000005199','isolation-real-lake','00000000-0000-0000-0000-000000005102','{}')$$,'42501',null,'judge patrol queue rejects ordinary-station scope before device lookup');
 select * from finish();
 rollback;

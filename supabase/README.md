@@ -11,7 +11,7 @@ or recreate the hosted database.
 ## Migration history
 
 [`migrations/`](migrations/) is the authoritative ordered schema history. It
-currently ends at `0052_judge_station_device_access.sql`, including lake setup,
+currently ends at `0053_judge_patrol_commands.sql`, including lake setup,
 judge access, member management, durable patrol commands, investigation decisions,
 public-page visibility, December judge access, and isolated public simulations.
 

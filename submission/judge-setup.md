@@ -22,7 +22,7 @@ Signing in to Supabase alone does not establish that the API is available.
 1. On the public home page, choose Beaver Lake, Lake Sammamish, or Pine Lake.
    Pan/zoom the map and inspect published notices, patrol presence, and freshness.
 2. Sign in as **JUDGE_ALL** using the [demo credential handout](demo-credentials.md)
-   and open **Lakes → Beaver Lake**. The other judge accounts each see one lake.
+   and open **Lakes â†’ Beaver Lake**. The other judge accounts each see one lake.
 3. Select **Start simulation**, **Add simulated drone**, and **Regenerate zones**.
 4. Choose **Detection observed**, **No detection observed**, or **Inconclusive**
    under **Demo second-drone finding**, then select **Simulate detection**.
@@ -39,9 +39,9 @@ Signing in to Supabase alone does not establish that the API is available.
    judge stations. The shared accounts cannot access existing original-station
    drones or manage station membership, lake creation or public visibility.
 
-Within an authorized judge or private administrator station, **Drones → Add drone +**
+Within an authorized judge or private administrator station, **Drones â†’ Add drone +**
 opens Register, Assign lake, and Connect; mission preview/export does not arm or
-launch a device. **Account → Stations → Manage station** provides member access
+launch a device. **Account â†’ Stations â†’ Manage station** provides member access
 and lake setup. Station management requires private administrator access. Do not register or command a device without its owner's authorization.
 
 Keep SIMULATED labels visible. Demo findings are generated, no camera clip is
@@ -57,7 +57,7 @@ or drowning detection.
 - Supabase CLI and Docker for a complete local database reset and pgTAP checks.
 
 The tracked migration directory is authoritative and currently ends at
-`0052_judge_station_device_access.sql`. Historical `0009` files now use
+`0053_judge_patrol_commands.sql`. Historical `0009` files now use
 `000901` and `000902` versions. Follow the [database guide](../supabase/README.md);
 do not reset the hosted judge project or assume migrations create auth passwords.
 
