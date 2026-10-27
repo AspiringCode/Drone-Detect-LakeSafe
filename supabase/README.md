@@ -1,43 +1,87 @@
-# Supabase Setup
+# Supabase database setup
 
-Apply the migrations in order. The access foundation requires a local Supabase
-environment because its RLS assertions are pgTAP tests:
+Supabase provides PostgreSQL, authentication, private evidence storage, and
+row-level security for LakeSafe. Browser requests use the public project key and
+the user's session. Server-only operations use a backend service-role credential.
+
+For the hosted demonstration, start with the [project README](../README.md) and
+[judge setup guide](../submission/judge-setup.md). Judges do not need to reset
+or recreate the hosted database.
+
+## Migration history
+
+[`migrations/`](migrations/) is the authoritative ordered schema history. It
+currently ends at `0049_station_public_visibility.sql`, including lake setup,
+judge access, member management, durable patrol commands, investigation decisions,
+and public-page visibility.
+
+The historical duplicate `0009` filenames were replaced by
+`000901_idme_verification_hardening.sql` and
+`000902_lake_data_source_status.sql`. Preserve these filenames and their order;
+do not reapply old copies under the original names. A hosted project upgraded
+manually needs its migration history reconciled before using CLI deployment.
+
+## Local database checks
+
+Install the Supabase CLI and Docker, then run these from the repository root
+against a **local development stack**:
 
 ```text
+supabase start
 supabase db reset
 supabase test db
 supabase db lint --level error
-cd backend
-uv run pytest -q
 ```
 
-The backend service role is server-only. Browser tokens establish identity, but
-station verification, membership, and roles are reloaded from the database for
-every operational request and WebSocket check.
+`db reset` destroys and recreates local database state. Never use a reset against
+the hosted judge project. These commands do not provision private hosted judge
+credentials or configure an ID.me partner application.
 
-Backend tests use `InMemoryBackend`; they do not require Supabase credentials or network access.
+The pgTAP suite is under [`tests/database/`](tests/database/). Additional native
+SQL regressions cover [website workflows](tests/website_workflows.sql),
+[lake workspaces](tests/lake_workspaces.sql), and
+[investigation/public visibility](tests/investigation_visibility.sql). Use their
+transaction/rollback boundaries in a controlled test database; an in-memory
+Python test is not proof that hosted RLS passed.
 
-## Production release gate
+## Access and data boundaries
 
-Run these commands, in this order, for every release candidate:
+- Operational authority is reloaded from verification, active station membership,
+  and roles for REST and WebSocket requests; browser-supplied roles are not trusted.
+- Public pages read dedicated public projections. They do not expose precise
+  aircraft positions, device identifiers, private evidence, or station memberships.
+- New lakes are not automatically published. Administrators explicitly control
+  public lake-page visibility; this does not grant membership.
+- Signed device reports and durable command acknowledgements are distinct from
+  simulation events. Retirement revokes device access while retaining history.
+- Service-role credentials and ID.me/signing secrets belong only in the backend.
+  Device private keys belong on the device. Do not commit filled environment files.
+
+CAC judge fixtures have a narrowly scoped, expiring password-only exception.
+Ordinary operator access still requires verification and MFA. These fixtures and
+their credentials are maintained privately, not created by public signup.
+
+## Application checks and release evidence
 
 ```text
-supabase db reset
-supabase test db
-supabase db lint --level error
 cd backend
+uv sync --frozen
 uv run pytest -q
 cd ../dashboard
-npm test -- --run
+npm ci
+npm test
 npm run build
+cd ..
 git diff --check
 ```
 
-The release is blocked if any command fails, including any failure drill in
-`backend/tests/integration/test_failure_drills.py`. It is also blocked if a
-public DTO gains a forbidden operational field, an operational table enters
-the public Realtime publication, an audit mutation succeeds, a direct client
-storage read succeeds, or cross-station access returns data. A local machine
-without the Supabase CLI, Docker, or a running database cannot clear the
-database portion of this gate; run those checks in the configured Supabase CI
-or release environment before deployment.
+Python tests primarily use isolated repositories and mocks; they do not establish
+hosted database or aircraft acceptance. GitHub Actions runs backend and frontend
+checks in [Checks](../.github/workflows/checks.yml); it does not currently run
+the local Supabase/pgTAP commands above. Keep database results separate from CI.
+
+A database/security release must pass migration, lint, RLS, audit, storage, and
+cross-station checks in its target test environment. Block publication if a public
+DTO exposes operational fields, an audit mutation succeeds, direct client access
+to private evidence succeeds, or cross-station reads return data. A missing CLI,
+Docker engine, or running database means those checks were not performed.

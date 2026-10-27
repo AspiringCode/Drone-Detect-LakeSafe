@@ -1,26 +1,114 @@
-# Judge setup and local demo guide
+# Judge walkthrough and local setup
 
-This guide runs the source locally. It contains no credentials. Values in angle brackets
-are placeholders and must be supplied through a private environment; never commit a
-filled-in copy.
+## Hosted application
 
-## Prerequisites
+Open **https://lakesafe.vercel.app**. Public lake browsing does not require an
+account. For operator access, use the fictional CAC credentials supplied privately
+by the maintainer; no passwords or private keys are included in this repository.
 
-- Git
-- Python 3.11 or newer and `uv`
-- Node.js/npm compatible with the committed dashboard lock file
-- Supabase CLI and Docker for a complete local database/reset/test environment
-- A Supabase project or local Supabase stack configured with test-only users and station
-  membership for authenticated operational screens
+Prepared judge fixtures have a temporary password-only exception. Normal
+operator access requires current verification, MFA, active station membership,
+and the capability needed for the requested action. The seeded CAC exception
+expires **November 1, 2026 at 00:00 America/Los_Angeles**; judging after that date
+requires the maintainer to arrange appropriate access. Public signup does not
+grant station access.
 
-## Install and start
+The dashboard runs on Vercel; its FastAPI backend runs separately on Northflank.
+Signing in to Supabase alone does not establish that the API is available.
 
-In separate terminals from the repository root:
+## Suggested walkthrough
+
+1. On the public home page, choose Beaver Lake, Lake Sammamish, or Pine Lake.
+   Pan/zoom the map and inspect published notices, patrol presence, and freshness.
+2. Sign in as the prepared operator and open **Lakes → Beaver Lake**.
+3. Select **Start simulation**, **Add simulated drone**, and **Regenerate zones**.
+4. Choose **Detection observed**, **No detection observed**, or **Inconclusive**
+   under **Demo second-drone finding**, then select **Simulate detection**.
+5. Review the initial detector and location, the investigating drone, and its
+   separate finding. Arrival alone is not corroboration.
+6. **Confirm detection** keeps observation open. **Dismiss and resume patrol** or
+   **End investigation and resume patrol** requests restoration of the original
+   patrols. Observe the resulting state, not just the button click.
+7. After two alerts in the same runtime session, use **Review an alert** to revisit
+   an earlier one. Open **Alerts** and **Reports** for available lake-scoped records.
+8. In **Drones**, switch stations beneath the title, then use **Add drone +** to
+   inspect Register, Assign lake, and Connect. Register/command only a separately
+   approved test device. Preview/export does not arm or launch it.
+9. In Account/Stations, inspect the roles and **Manage station** controls. **Add
+   lake +** searches official King County shorelines and supports an existing or
+   new station. New lakes remain private until explicitly published.
+
+Keep SIMULATED labels visible. Demo findings are generated, no camera clip is
+recorded, and no emergency service is contacted. Simulation/review state may reset
+when the API restarts. A software demo is not validation of physical drone flight
+or drowning detection.
+
+## Local prerequisites
+
+- Git, Python 3.11 or newer, and `uv`.
+- Node.js 24.11 or newer within major 24, with npm.
+- A configured Supabase test project and test identities/memberships.
+- Supabase CLI and Docker for a complete local database reset and pgTAP checks.
+
+The tracked migration directory is authoritative and currently ends at
+`0049_station_public_visibility.sql`. Historical `0009` files now use
+`000901` and `000902` versions. Follow the [database guide](../supabase/README.md);
+do not reset the hosted judge project or assume migrations create auth passwords.
+
+## Environment configuration
+
+Create an untracked `backend/.env` with values for the intended test project:
+
+```dotenv
+SUPABASE_URL=<test-project-url>
+SUPABASE_KEY=<public-project-key>
+SUPABASE_SERVICE_ROLE_KEY=<server-only-service-role-key>
+SUPABASE_JWT_ISSUER=<project-auth-issuer>
+SUPABASE_JWT_AUDIENCE=authenticated
+CORS_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:5175
+```
+
+Legacy HS256 projects also need `SUPABASE_JWT_SECRET`; asymmetric tokens use
+the project's verification-key path. Match the backend configuration to the
+actual Supabase project rather than changing token validation to accept another
+issuer.
+
+Create an untracked `dashboard/.env.local`:
+
+```dotenv
+VITE_API_BASE_URL=http://localhost:8000
+VITE_SUPABASE_URL=<same-test-project-url>
+VITE_SUPABASE_ANON_KEY=<public-project-key>
+```
+
+Use the Vite URL printed at startup and allow that exact origin in backend CORS.
+For a local frontend using the hosted API, set its API origin to
+`https://site--lakesafe-api--cbq5jh567mfk.code.run`; the Vercel website is not an
+API origin. This still reads/writes the hosted project, not an isolated local
+database.
+
+ID.me additionally requires `IDME_CLIENT_ID`, `IDME_CLIENT_SECRET`,
+`IDME_REDIRECT_URI`, the provider-approved `IDME_SCOPE`,
+`VERIFICATION_SESSION_ENCRYPTION_KEY`, and absolute
+`IDME_PROFILE_SUCCESS_URL` / `IDME_PROFILE_FAILURE_URL` dashboard URLs.
+Provider-approved affiliation claims must be tested before claiming enrollment
+works. Missing configuration is reported unavailable. It is not needed for the
+prepared CAC exception.
+
+Real-device operation additionally uses the configured gateway transport and
+signing material, heartbeat freshness/replay checks, and the device's own private
+key. See the [Pi guide](../deploy/pi/README.md). Never place service-role,
+JWT/provider/signing secrets or device private keys in a `VITE_` variable,
+repository, recording, or judge handout.
+
+## Start and test
+
+In separate terminals, from the repository root:
 
 ```text
 cd backend
-uv sync
-uv run uvicorn app.main:app --reload
+uv sync --frozen
+uv run uvicorn app.main:app --env-file .env --reload
 ```
 
 ```text
@@ -29,144 +117,39 @@ npm ci
 npm run dev
 ```
 
-The dashboard dev server normally prints its local URL. The backend default is
-`http://localhost:8000`; set `VITE_API_BASE_URL` if the service uses another origin.
-
-## Environment variable names
-
-Backend variables found in `backend/app`:
+For application checks:
 
 ```text
-SUPABASE_URL=<local-or-test-supabase-url>
-SUPABASE_KEY=<public-anon-key-for-server-public-projection-client>
-SUPABASE_SERVICE_ROLE_KEY=<server-only-service-role-secret>
-SUPABASE_JWT_SECRET=<server-only-legacy-hs256-verification-secret-if-used>
-SUPABASE_JWT_ISSUER=<expected-token-issuer>
-SUPABASE_JWT_AUDIENCE=<expected-token-audience>
-
-IDME_CLIENT_ID=<provider-client-id>
-IDME_CLIENT_SECRET=<server-only-provider-secret>
-IDME_REDIRECT_URI=<backend-callback-url>
-IDME_ISSUER=<provider-issuer>
-IDME_AUDIENCE=<provider-audience>
-IDME_AUTHORIZATION_ENDPOINT=<provider-authorization-url>
-IDME_TOKEN_ENDPOINT=<provider-token-url>
-IDME_JWKS_URI=<provider-jwks-url>
-IDME_USERINFO_ENDPOINT=<provider-userinfo-url>
-VERIFICATION_SESSION_ENCRYPTION_KEY=<server-only-fernet-key>
-IDME_PROFILE_SUCCESS_URL=<dashboard-success-route>
-IDME_PROFILE_FAILURE_URL=<dashboard-failure-route>
-
-RISK_CONNECTOR_REFRESH_HOURS=<integer-hours>
-DEVICE_CLOCK_SKEW_SECONDS=<integer-seconds>
-REAL_HEARTBEAT_TTL_SECONDS=<integer-seconds>
-REAL_GATEWAY_URL=<heartbeat-or-server-only-gateway-url>
-REAL_GATEWAY_SIGNING_KEY_REF=<server-only-secret-reference>
-REAL_GATEWAY_SIGNING_KEY=<server-only-resolved-hmac-secret>
-CORS_ALLOWED_ORIGINS=<comma-separated-hosted-dashboard-origins>
-```
-
-Dashboard variables found in `dashboard/src`:
-
-```text
-VITE_API_BASE_URL=<backend-origin>
-VITE_SUPABASE_URL=<local-or-test-supabase-url>
-VITE_SUPABASE_ANON_KEY=<public-anon-key>
-```
-
-Never put the service-role key, ID.me secret, verification encryption key, JWT secret,
-or real-device signing secret in a `VITE_` variable. Those values are backend-only.
-
-## Supabase migration order
-
-`supabase db reset` applies the migrations in filename order. The current sequence is:
-
-```text
-0001_init.sql
-0002_orgs_lakes.sql
-0003_identity_foundation.sql
-0004_officer_verification.sql
-0005_station_access.sql
-0006_station_lake_cutover.sql
-0007_station_rls.sql
-0008_station_verification_workflows.sql
-0009_idme_verification_hardening.sql
-0009_lake_data_source_status.sql
-0010_station_review_self_approval.sql
-0011_risk_snapshots_zone_plans.sql
-0012_atomic_zone_plan_persistence.sql
-0013_risk_refresh_worker.sql
-0014_risk_refresh_worker_hardening.sql
-0015_risk_refresh_claim_tokens.sql
-0016_risk_refresh_publish_lease.sql
-0017_risk_refresh_atomic_publish.sql
-0018_simulated_inventory_autonomy.sql
-0019_autonomy_outbox_commit.sql
-0020_simulated_inventory_api.sql
-0021_real_device_gateway.sql
-0022_real_heartbeat_capacity.sql
-0023_atomic_real_heartbeat_queue.sql
-0024_real_command_acknowledgements.sql
-0025_real_outbox_claim_scope.sql
-0026_real_fleet_safety.sql
-0027_real_delivery_retry_and_safe_return_ack.sql
-0028_real_command_expired_reconciliation.sql
-0029_alerts_public_projections.sql
-0030_audit_storage_hardening.sql
-0031_real_safety_request_reconciliation.sql
-0032_thermal_evidence_hardening.sql
-0033_rls_regression_and_grants.sql
-0034_privileged_rate_limits.sql
-0035_rate_limit_and_safety_idempotency_hardening.sql
-0036_reviewed_multi_lake_sources.sql
-0037_risk_plan_safety_reserve.sql
-```
-
-Do not rename one of the two `0009` migrations casually; their current lexical ordering
-is part of the checked-in history.
-
-## Database and release gates
-
-Run the commands specified by `supabase/README.md` from the repository root:
-
-```text
-supabase db reset
-supabase test db
-supabase db lint --level error
 cd backend
 uv run pytest -q
 cd ../dashboard
-npm test -- --run
+npm test
 npm run build
 cd ..
 git diff --check
 ```
 
-Any failure blocks the release. A machine without the Supabase CLI, Docker, or a running
-database cannot claim the database portion passed.
+Database checks and their separate release evidence are described in
+[`supabase/README.md`](../supabase/README.md). In-memory tests do not prove
+hosted RLS, actual aircraft behavior, or third-party enrollment.
 
-## Local demonstration flow
+## Troubleshooting and remaining limits
 
-1. Start the local Supabase stack and apply all migrations through `0037`.
-2. Configure a test user with current officer verification, MFA (`aal2`), active station
-   membership, and the minimum role needed for each action. Use only test identities.
-3. Start the backend and dashboard with the environment names above.
-4. Open the civilian screens first and show only generalized/delayed projections.
-5. Sign in as the prepared station member, select Lake Sammamish, Pine Lake, and Beaver
-   Lake, and show source attribution plus proxy-priority/baseline coverage labels.
-6. Queue a simulated circulation eligibility change and show its reconciliation plus
-   desired/acknowledged versions; explain that this action does not rebuild the displayed
-   zone plan. Then trigger a demo alert. Keep every SIMULATED label visible and say that
-   no 911/CAD feed or physical aircraft is connected.
-7. Do not enable the real adapter unless a separately controlled hardware test has been
-   authorized and configured; local judges do not need it for the software demo.
+- **Cannot check account access:** verify the API origin, backend availability,
+  CORS, matching Supabase projects, and current station access.
+- **Lake setup needs attention/queued:** inspect that lake's setup state. Its
+  unavailability must not be mistaken for a complete, empty alert history.
+- **503/no healthy upstream:** inspect Northflank instance health and logs. The
+  hosted 512 MB service has experienced an out-of-memory restart; a reachable
+  frontend does not guarantee an available API.
+- **No public lake:** a newly added lake is private until an administrator
+  publishes it. Public-page visibility is separate from join-request access.
+- **No real drone position:** registration alone does not supply telemetry.
+  Inspect current signed heartbeats; a test marker is labeled simulated.
+- **Password recovery email:** the CAC setup uses Supabase's restricted default
+  sender; unrestricted public email delivery is deferred.
+- **ID.me unavailable:** partner application/policy/redirect setup is still an
+  external integration requirement. Do not submit identity documents for the demo.
 
-## Pre-submission setup gaps
-
-- No stable hosted judge URL is documented.
-- No dedicated judge credentials are documented.
-- No checked-in `.env.example` exists.
-- No one-command reset-and-seed flow exists.
-
-Resolve these gaps before relying on remote judging. Until then, this source setup is the
-truthful path and requires a maintainer to provision test identities and database state.
+See the [AI assistance disclosure](ai-disclosure.md), [privacy/safety design](privacy-and-safety.md),
+and [architecture](architecture-and-algorithms.md) for implementation boundaries.

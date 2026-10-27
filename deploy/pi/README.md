@@ -1,72 +1,173 @@
 # Drone Raspberry Pi setup
 
-Three services run on each drone's Pi (Raspberry Pi OS, user `pi`):
+These components connect an ArduPilot flight controller, thermal camera, and
+optional visible-light camera to LakeSafe. Judges can use the
+[website simulation](../../README.md#try-the-software-demonstration) without
+building or flying this hardware.
 
-| Service | What it does |
+**Status:** signed device transport, mission upload/acknowledgement, investigation,
+and return logic exist in software. Disarmed and mocked checks are not validation
+of autonomous open-water flight, thermal-model accuracy, or rescue performance.
+
+## Components
+
+| Service | Function |
 |---|---|
-| `lakesafe-bridge` | ArduPilot MAVLink → signed heartbeats, writes the live position file |
-| `lakesafe-detect` | InfiRay P2 Pro (USB) → hot-spot or YOLO detection → signed alert; with `LAKESAFE_RECORD` set, also saves the boxed thermal view |
-| `lakesafe-camera` | Pi camera (CSI ribbon port) → timestamped H.264 `.ts` segments for demo footage |
+| `lakesafe-bridge` | Reads MAVLink state, sends signed heartbeats, handles supported commands, and writes a local position file. |
+| `lakesafe-detect` | Reads the USB P2 Pro, filters detections over time, and submits signed alerts at the bridge's position. Optional thermal recording. |
+| `lakesafe-camera` | Records a separate CSI camera to timestamped H.264 transport-stream segments. Optional; not required for the bridge. |
+
+The model-free thermal hot-spot mode does not identify a drowning person. YOLO
+mode requires separately supplied compatible weights. No validated detection
+accuracy is claimed for either mode here.
 
 ## 1. Packages and checkout
 
+The supplied systemd units assume Raspberry Pi OS, user `pi`, and a checkout at
+`/home/pi/Drone-Detect-LakeSafe`. Change their user and paths for another account.
+
 ```bash
+sudo apt update
 sudo apt install -y git python3-venv python3-opencv python3-picamera2 ffmpeg v4l-utils
-git clone <repo> ~/Drone-Detect-LakeSafe && cd ~/Drone-Detect-LakeSafe/backend
-# --system-site-packages: Picamera2 and the Pi's OpenCV come from apt, not pip.
+git clone https://github.com/AspiringCode/Drone-Detect-LakeSafe.git ~/Drone-Detect-LakeSafe
+cd ~/Drone-Detect-LakeSafe/backend
 python3 -m venv --system-site-packages .venv
-.venv/bin/pip install pymavlink cryptography   # numpy comes with python3-opencv; a pip numpy can break it
+.venv/bin/pip install pymavlink cryptography
 ```
 
-`drone_detect` only imports `ultralytics` when `LAKESAFE_MODEL` points at weights; the
-model-free hot-spot detector needs none of it.
+The repository may require GitHub access. Picamera2, OpenCV, and NumPy come from
+the OS packages; avoid replacing their compatible NumPy with an unrelated pip
+installation. `ultralytics` is loaded only when model weights are requested;
+install and validate the model-specific dependencies separately for YOLO mode.
 
-## 2. P2 Pro access without root
+## 2. Device identity and API connection
 
-The P2 Pro is a UVC camera (USB id `0bda:5830`); its frame is 256x384 YUYV, the top half the
-colour image and the bottom half 16-bit temperatures. `drone_detect.py` reads it with OpenCV
-the same way [LeoDJ/P2Pro-Viewer](https://github.com/LeoDJ/P2Pro-Viewer) (MIT) does. That
-project's udev rule lets the `pi` user open it:
+In LakeSafe, open **Drones → select the station → Add drone +**. Generate the
+device key on the Pi or its ground laptop:
+
+```bash
+cd ~/Drone-Detect-LakeSafe/backend
+.venv/bin/python -m app.devices.drone_link keygen --key drone.pem
+chmod 600 drone.pem
+```
+
+Register only the printed public key, manufacturer, and serial number. Assign the
+registered device to its intended lake; the website provides the device ID and
+connection commands. Keep the private key on the device and out of screenshots,
+repositories, and videos. Provision it as `/etc/lakesafe/drone.pem`, readable only
+by the service account, and point `LAKESAFE_KEY` at that file.
+
+Set `LAKESAFE_API` to the API origin. For the hosted service this is
+`https://site--lakesafe-api--cbq5jh567mfk.code.run`, not
+`https://lakesafe.vercel.app`. For a laptop API on a hotspot, use its reachable
+LAN address and start the local API with `--host 0.0.0.0`; the example hotspot
+address is not universal. Signed requests require a synchronized clock.
+
+For the supplied `pi` service account, install the generated private key before
+starting the bridge:
+
+```bash
+sudo install -d -m 755 /etc/lakesafe
+sudo install -o pi -g pi -m 600 drone.pem /etc/lakesafe/drone.pem
+```
+
+Use the website's Connect step for either the Pi serial connection or a ground
+laptop receiving MAVLink. Start on a disarmed bench. A current signed heartbeat
+should change the registered device from **Awaiting heartbeat** to its reported
+state and place it on the assigned lake map. A **Place test marker** action is
+explicitly simulated; it is not evidence of aircraft telemetry.
+
+## 3. Cameras
+
+The P2 Pro path expects its UVC YUYV frame layout, with a color image and raw
+temperature data. Confirm the device index rather than assuming camera 0:
+
+```bash
+v4l2-ctl --list-devices
+```
+
+For the supported USB identifier, a restricted video-group udev rule is:
 
 ```bash
 echo 'ACTION=="add", SUBSYSTEMS=="usb", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5830", MODE="660", GROUP="video"' \
   | sudo tee /etc/udev/rules.d/60-p2pro.rules
-sudo udevadm control --reload && sudo usermod -aG video pi
-v4l2-ctl --list-devices        # note the /dev/videoN; pass --camera N if it isn't 0
+sudo udevadm control --reload
+sudo usermod -aG video pi
 ```
 
-On a Pi Zero 2 W the camera goes in the **USB** micro-USB port (not PWR IN) through a data OTG
-adapter. More troubleshooting: `docs/thermal-camera-pi-setup.md`.
+Reconnect the camera and refresh the user's group session. On a Pi Zero, connect
+the P2 Pro through the USB data port and a data-capable OTG adapter. See the
+[thermal-camera guide](../../docs/thermal-camera-pi-setup.md) for troubleshooting.
 
-## 3. Pi camera
-
-Connect the camera to the CSI port (a Pi Zero needs the narrow 22-pin ribbon), then:
+For the optional CSI camera, use the correct ribbon for the board and confirm:
 
 ```bash
-rpicam-hello --list-cameras     # must list the sensor (older OS: libcamera-hello)
+rpicam-hello --list-cameras
 ```
 
-## 4. Config and services
+Older OS images may call this `libcamera-hello`.
+
+## 4. Configuration and services
+
+Copy the [environment template](lakesafe.env.example), then replace its placeholders:
 
 ```bash
-sudo mkdir -p /etc/lakesafe && sudo cp ~/Drone-Detect-LakeSafe/deploy/pi/lakesafe.env.example /etc/lakesafe/drone.env
-sudo nano /etc/lakesafe/drone.env      # drone id, API address, LAKESAFE_RECORD
+sudo mkdir -p /etc/lakesafe
+sudo cp ~/Drone-Detect-LakeSafe/deploy/pi/lakesafe.env.example /etc/lakesafe/drone.env
+sudo nano /etc/lakesafe/drone.env
 mkdir -p /home/pi/footage
 sudo cp ~/Drone-Detect-LakeSafe/deploy/pi/*.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now lakesafe-bridge lakesafe-detect lakesafe-camera
-journalctl -fu lakesafe-camera         # "recording to /home/pi/footage"
 ```
 
-## 5. Footage
+Check `LAKESAFE_API`, registered device ID, private-key path, MAVLink system ID,
+serial/UDP endpoint, and baud rate. Leave `LAKESAFE_MODEL` empty for the hot-spot
+mode. `LAKESAFE_RECORD` controls thermal recording; the separate camera service
+also needs a valid output directory.
 
-Both recordings are named by UTC start time (`thermal_…avi`, `visible_…ts`) and carry a
-burned-in UTC clock, so they line up side by side in a video editor. Copy them to the laptop:
+On a controlled disarmed bench, enable only the services you need:
+
+```bash
+sudo systemctl enable --now lakesafe-bridge lakesafe-detect
+# Optional, only with the CSI camera and output folder configured:
+sudo systemctl enable --now lakesafe-camera
+journalctl -u lakesafe-bridge -u lakesafe-detect -f
+```
+
+Service restart is not proof that the device is healthy: inspect the logs and
+the website's heartbeat, assignment, and command-acknowledgement state.
+
+## 5. Mission and investigation boundaries
+
+The website downloads Mission Planner `.waypoints` files in **QGC WPL 110**
+format. The CLI also supports QGroundControl `.plan`; only that format carries
+the exported geofence. Review launch coordinates, altitude, route, and fence in
+the ground-control software before any flight.
+
+Downloading is separate from queueing a patrol, and receiving a command is
+separate from confirming its upload. The website does not arm the aircraft.
+Pilot override remains authoritative. Update the companion bridge before testing
+new investigation/return commands; do not infer physical acceptance from a
+successful browser simulation.
+
+## 6. Recording and cleanup
+
+Thermal `thermal_*.avi` and visible `visible_*.ts` files use UTC names and
+burned-in clocks to support alignment. A useful bench take must retain its real
+provenance; generated browser events do not create real thermal evidence.
+
+On the Pi, stop the services to finish the current recording before copying it:
+
+```bash
+sudo systemctl stop lakesafe-camera lakesafe-detect lakesafe-bridge
+```
+
+Then, from the laptop:
 
 ```bash
 scp "pi@lakesafe-pod.local:/home/pi/footage/*" .
 ```
 
-A Pi Zero 2 W SD card fills at roughly 2.7 GB per hour of 720p video; clear the folder between
-flights. Stop the services before powering down when you can; a file cut off by a battery pull
-still plays, but its last second may be lost.
+Replace the example hostname as needed. Monitor free disk space and stop
+recording before powering down; interruption can lose the current segment.
+Local video files are not part of a source-code deployment.
