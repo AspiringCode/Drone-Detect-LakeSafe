@@ -38,7 +38,7 @@ class SupabaseAccessRepository:
         expiry = verification.get("expires_at")
         if verification.get("revoked_at") or (isinstance(expiry, str) and datetime.fromisoformat(expiry.replace("Z", "+00:00")) <= datetime.now(timezone.utc)):
             verification_status = "expired"
-        memberships = self.client.table("station_memberships").select("station_id,status,stations(name,status),station_membership_roles(role)").eq("user_id", user_id).execute().data or []
+        memberships = self.client.table("station_memberships").select("station_id,status,stations(name,status,simulation_only),station_membership_roles(role)").eq("user_id", user_id).execute().data or []
         judge_response = self.client.table("cac_judge_access").select("expires_at").eq("user_id", user_id).maybe_single().execute()
         judge_access = judge_response.data if judge_response is not None else None
         judge_expiry = judge_access.get("expires_at") if judge_access else None
@@ -49,6 +49,7 @@ class SupabaseAccessRepository:
             normalized.append({
                 "station_id": membership["station_id"],
                 "station_name": station.get("name"),
+                "simulation_only": station.get("simulation_only") is True,
                 "membership_status": membership.get("status") if station.get("status") == "active" else "inactive_station",
                 "roles": [item["role"] for item in membership.get("station_membership_roles") or []],
             })

@@ -1,0 +1,42 @@
+begin;
+select plan(11);
+select has_column('public','stations','simulation_only','stations declare physical isolation');
+select has_column('public','lakes','demo_source_lake_id','demo lakes identify reviewed catalog source');
+insert into auth.users(id,aud,role,email,encrypted_password,email_confirmed_at,raw_app_meta_data,raw_user_meta_data,created_at,updated_at)
+values
+ ('00000000-0000-0000-0000-000000005101','authenticated','authenticated','isolation-admin@example.test','not-used',now(),'{"fictional_demo":true,"fixture_set":"cac-2026-operators"}','{}',now(),now()),
+ ('00000000-0000-0000-0000-000000005102','authenticated','authenticated','isolation-judge@example.test','not-used',now(),'{"fictional_demo":true,"fixture_set":"cac-2026-operators"}','{}',now(),now());
+insert into public.cac_judge_access(user_id,expires_at)
+values ('00000000-0000-0000-0000-000000005101','2027-01-01T08:00:00Z'),('00000000-0000-0000-0000-000000005102','2027-01-01T08:00:00Z');
+insert into public.officer_verifications(user_id,provider,provider_subject,method,affiliation,status,expires_at)
+select id,'manual','isolation:'||id::text,'manual_review','us_law_enforcement','verified','2027-01-01T08:00:00Z'
+from auth.users where id in ('00000000-0000-0000-0000-000000005101','00000000-0000-0000-0000-000000005102');
+insert into public.stations(station_id,name,status,simulation_only) values
+ ('00000000-0000-0000-0000-000000005111','Isolated simulation','pending',true),
+ ('00000000-0000-0000-0000-000000005112','Ordinary operations','pending',false);
+insert into public.station_memberships(membership_id,station_id,user_id,status) values
+ ('00000000-0000-0000-0000-000000005121','00000000-0000-0000-0000-000000005111','00000000-0000-0000-0000-000000005101','active'),
+ ('00000000-0000-0000-0000-000000005122','00000000-0000-0000-0000-000000005112','00000000-0000-0000-0000-000000005101','active'),
+ ('00000000-0000-0000-0000-000000005123','00000000-0000-0000-0000-000000005111','00000000-0000-0000-0000-000000005102','active'),
+ ('00000000-0000-0000-0000-000000005124','00000000-0000-0000-0000-000000005112','00000000-0000-0000-0000-000000005102','active');
+insert into public.station_membership_roles(membership_id,role) values
+ ('00000000-0000-0000-0000-000000005121','station_admin'),('00000000-0000-0000-0000-000000005122','station_admin'),
+ ('00000000-0000-0000-0000-000000005123','demo_operator'),('00000000-0000-0000-0000-000000005124','demo_operator');
+update public.stations set status='active' where station_id in ('00000000-0000-0000-0000-000000005111','00000000-0000-0000-0000-000000005112');
+insert into public.lakes(lake_id,station_id,name,centroid_lat,centroid_lon,shoreline,created_by)
+values ('isolation-demo-lake','00000000-0000-0000-0000-000000005111','Demo lake',47.5,-122,public.st_geomfromtext('MULTIPOLYGON EMPTY',4326),'00000000-0000-0000-0000-000000005101'),
+ ('isolation-real-lake','00000000-0000-0000-0000-000000005112','Real lake',47.5,-122,public.st_geomfromtext('MULTIPOLYGON EMPTY',4326),'00000000-0000-0000-0000-000000005101');
+select throws_ok($$insert into public.drone_inventory(station_id,source,lifecycle) values('00000000-0000-0000-0000-000000005111','real','available')$$,'23514',null,'even privileged insertion cannot register a real drone in the demo station');
+select lives_ok($$insert into public.drone_inventory(station_id,source,lifecycle) values('00000000-0000-0000-0000-000000005111','simulated','available')$$,'simulated inventory remains allowed');
+select throws_ok($$update public.stations set simulation_only=false where station_id='00000000-0000-0000-0000-000000005111'$$,'23514',null,'simulation isolation cannot be removed');
+select throws_ok($$update public.lakes set demo_source_lake_id='lake-beaver' where lake_id='isolation-real-lake'$$,'23514',null,'normal stations cannot request a demo runtime');
+set constraints all immediate;
+set local role authenticated;
+select tests.authenticate_as('00000000-0000-0000-0000-000000005102','aal1');
+select is((select count(*) from public.lakes where lake_id='isolation-demo-lake'),case when now()<'2027-01-01T08:00:00Z'::timestamptz then 1 else 0 end::bigint,'judge can read the isolated lake within the access window');
+select is((select count(*) from public.lakes where lake_id='isolation-real-lake'),0::bigint,'demo role cannot read an ordinary station even if mistakenly assigned');
+select is((select count(*) from public.drone_inventory where source='real'),0::bigint,'public judge sees no real inventory');
+select throws_ok($$insert into public.station_membership_roles(membership_id,role) values('00000000-0000-0000-0000-000000005123','station_admin')$$,'42501',null,'public judge cannot grant administrator roles');
+select throws_ok($$update public.stations set public_pages_open=true where station_id='00000000-0000-0000-0000-000000005111'$$,'42501',null,'public judge cannot publish station pages');
+select * from finish();
+rollback;

@@ -88,6 +88,34 @@ def test_stored_plan_accepts_only_planner_scale_boundary_roundoff():
                 zones_from_plan(context)
 
 
+def test_public_demo_runtime_has_independent_fleet_alerts_and_replannable_zones(monkeypatch):
+    lake_id = "judge-isolation-test"
+    original = main.lake_runtimes["lake-beaver"]
+    original_drones = list(original.engine.drones)
+    monkeypatch.setattr(main, "get_lake_runtime_repository", lambda: SimpleNamespace(runtime_context=lambda _: {
+        "name": "Beaver Lake (Judge simulation)", "simulation_source_lake_id": "lake-beaver",
+    }))
+    try:
+        runtime = main.get_runtime(lake_id)
+        assert runtime.lake_id == lake_id
+        assert runtime.engine is not original.engine
+        assert runtime.alerts is not original.alerts
+        assert not runtime.engine.drones
+        assert len(runtime.zone_builder(2)) == 2
+        assert original.engine.drones == original_drones
+    finally:
+        main.lake_runtimes.pop(lake_id, None)
+
+
+def test_public_demo_setup_is_ready_without_a_persisted_physical_plan(monkeypatch):
+    monkeypatch.setattr(main, "get_current_principal", lambda _: object())
+    monkeypatch.setattr(main, "require_lake_permission", lambda *args: None)
+    monkeypatch.setattr(main, "get_lake_runtime_repository", lambda: SimpleNamespace(runtime_context=lambda _: {
+        "setup_status": "ready", "simulation_source_lake_id": "lake-beaver",
+    }))
+    assert main.get_lake_setup_status("judge-setup-test")["simulation_only"] is True
+
+
 def _stored_context(lake_id="persisted-lake"):
     from shapely.geometry import Polygon, Point
     polygon = Polygon([(-122.1, 47.5), (-122.09, 47.5), (-122.09, 47.51), (-122.1, 47.5)])

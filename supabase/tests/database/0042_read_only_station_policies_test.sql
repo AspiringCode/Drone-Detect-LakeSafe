@@ -13,7 +13,7 @@ values
  ('00000000-0000-0000-0000-000000004203','manual','readonly-expired','manual_review','us_law_enforcement','verified',now()-interval '1 day',null),
  ('00000000-0000-0000-0000-000000004204','manual','readonly-revoked','manual_review','us_law_enforcement','verified',now()+interval '1 day',now());
 insert into public.cac_judge_access(user_id,created_at,expires_at)
-values('00000000-0000-0000-0000-000000004202','2026-10-01T00:00:00Z','2026-11-01T07:00:00Z');
+values('00000000-0000-0000-0000-000000004202','2026-10-01T00:00:00Z','2027-01-01T08:00:00Z');
 insert into public.stations(station_id,name,status) values
  ('00000000-0000-0000-0000-000000004211','Read-only Station A','pending'),
  ('00000000-0000-0000-0000-000000004212','Read-only Station B','pending');
@@ -40,7 +40,7 @@ select tests.authenticate_as('00000000-0000-0000-0000-000000004201','aal2');
 select lives_ok($$select lake_id from public.lakes where lake_id='readonly-lake-a'$$,'ordinary AAL2 station read succeeds before read-only probe');
 select is((select count(*) from public.lakes where lake_id='readonly-lake-a'),1::bigint,'unexpired verification with no expiry retains normal station access');
 select tests.authenticate_as('00000000-0000-0000-0000-000000004202','aal1');
-select is((select count(*) from public.lakes where lake_id='readonly-lake-a'),case when now()<'2026-11-01T07:00:00Z'::timestamptz then 1 else 0 end::bigint,'current judge AAL1 session reads own lake');
+select is((select count(*) from public.lakes where lake_id='readonly-lake-a'),case when now()<'2027-01-01T08:00:00Z'::timestamptz then 1 else 0 end::bigint,'current judge AAL1 session reads own lake');
 select is((select count(*) from public.lakes where lake_id='readonly-lake-b'),0::bigint,'judge session cannot read a different station');
 select tests.authenticate_as('00000000-0000-0000-0000-000000004201','aal1');
 select is((select count(*) from public.lakes where lake_id='readonly-lake-a'),0::bigint,'ordinary AAL1 remains denied');
@@ -61,7 +61,7 @@ begin
  for probe in
    select * from (values
      ('00000000-0000-0000-0000-000000004201'::uuid,'aal2','readonly-lake-a',1::bigint),
-     ('00000000-0000-0000-0000-000000004202'::uuid,'aal1','readonly-lake-a',case when now()<'2026-11-01T07:00:00Z'::timestamptz then 1 else 0 end::bigint),
+     ('00000000-0000-0000-0000-000000004202'::uuid,'aal1','readonly-lake-a',case when now()<'2027-01-01T08:00:00Z'::timestamptz then 1 else 0 end::bigint),
      ('00000000-0000-0000-0000-000000004202'::uuid,'aal1','readonly-lake-b',0::bigint),
      ('00000000-0000-0000-0000-000000004201'::uuid,'aal1','readonly-lake-a',0::bigint),
      ('00000000-0000-0000-0000-000000004203'::uuid,'aal2','readonly-lake-a',0::bigint),

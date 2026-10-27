@@ -54,10 +54,13 @@ def _capabilities(membership) -> list[str]:
         "dispatcher": {"station.read", "alert.manage"},
         "safety_supervisor": {"station.read", "autonomy.manage", "fleet_safety.manage"},
         "station_admin": {"station.read", "alert.manage", "lake.create", "inventory.manage", "autonomy.manage", "member.manage"},
+        "demo_operator": {"station.read", "alert.manage", "autonomy.manage"},
     }
     values = set()
     for role in membership.roles:
         values |= role_capabilities.get(str(role), set())
+    if "demo_operator" in membership.roles:
+        values &= role_capabilities["demo_operator"] if membership.simulation_only else set()
     return sorted(values)
 
 

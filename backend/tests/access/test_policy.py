@@ -53,3 +53,20 @@ def test_judge_access_does_not_satisfy_recent_mfa():
     judge = replace(principal(aal="aal1"), judge_demo_access=True)
     with pytest.raises(HTTPException, match="Recent MFA"):
         require_recent_mfa(judge, timedelta(minutes=5))
+
+
+def test_public_demo_role_is_simulation_only_even_with_accidental_extra_roles():
+    from app.stations.routes import _capabilities
+    subject = replace(principal(aal="aal1", roles=frozenset({StationRole.DEMO_OPERATOR, StationRole.STATION_ADMIN, StationRole.SAFETY_SUPERVISOR})), judge_demo_access=True)
+    with pytest.raises(HTTPException):
+        require_station_access(subject, "station-1", Permission.READ_OPERATIONS)
+    assert _capabilities(subject.memberships[0]) == []
+    subject = replace(subject, memberships=(replace(subject.memberships[0], simulation_only=True),))
+    for permission in (Permission.READ_OPERATIONS, Permission.MANAGE_ALERTS, Permission.CHANGE_SIMULATED_CIRCULATION):
+        require_station_access(subject, "station-1", permission)
+    for permission in (Permission.MANAGE_INVENTORY, Permission.CHANGE_FLEET_SAFETY, Permission.ADD_LAKE, Permission.MANAGE_MEMBERS):
+        with pytest.raises(HTTPException):
+            require_station_access(subject, "station-1", permission)
+    assert _capabilities(subject.memberships[0]) == ["alert.manage", "autonomy.manage", "station.read"]
+    with pytest.raises(HTTPException):
+        require_station_access(subject, "real-station", Permission.MANAGE_ALERTS)

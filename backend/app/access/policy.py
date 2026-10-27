@@ -23,6 +23,7 @@ _ROLE_PERMISSIONS = {
     StationRole.DISPATCHER: frozenset({Permission.READ_OPERATIONS, Permission.MANAGE_ALERTS}),
     StationRole.SAFETY_SUPERVISOR: frozenset({Permission.READ_OPERATIONS, Permission.CHANGE_FLEET_SAFETY, Permission.CHANGE_SIMULATED_CIRCULATION}),
     StationRole.STATION_ADMIN: frozenset({Permission.READ_OPERATIONS, Permission.MANAGE_ALERTS, Permission.ADD_LAKE, Permission.MANAGE_INVENTORY, Permission.CHANGE_SIMULATED_CIRCULATION, Permission.MANAGE_MEMBERS}),
+    StationRole.DEMO_OPERATOR: frozenset({Permission.READ_OPERATIONS, Permission.MANAGE_ALERTS, Permission.CHANGE_SIMULATED_CIRCULATION}),
 }
 
 
@@ -42,6 +43,10 @@ def require_station_access(principal: Principal, station_id: str, permission: Pe
     if (principal.aal != "aal2" and not principal.judge_demo_access) or not _current_verification(principal) or membership is None or membership.status != "active":
         raise HTTPException(status_code=403, detail="Verified station access is required")
     granted = set().union(*(_ROLE_PERMISSIONS[role] for role in membership.roles)) if membership.roles else set()
+    if StationRole.DEMO_OPERATOR in membership.roles:
+        if not membership.simulation_only:
+            raise HTTPException(status_code=403, detail="Demo access requires an isolated simulation station")
+        granted &= _ROLE_PERMISSIONS[StationRole.DEMO_OPERATOR]
     if permission not in granted:
         raise HTTPException(status_code=403, detail="Station role does not permit this action")
     return membership

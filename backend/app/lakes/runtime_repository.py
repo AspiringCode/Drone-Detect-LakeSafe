@@ -50,9 +50,11 @@ class SupabaseLakeRuntimeRepository:
         self._client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
     def runtime_context(self, lake_id):
-        row = self._client.table("lakes").select("lake_id,station_id,name,shoreline").eq("lake_id", lake_id).maybe_single().execute().data
+        row = self._client.table("lakes").select("lake_id,station_id,name,shoreline,demo_source_lake_id,stations(simulation_only)").eq("lake_id", lake_id).maybe_single().execute().data
         if not row:
             return None
+        if row.get("demo_source_lake_id") and (row.get("stations") or {}).get("simulation_only") is True:
+            return {**row, "setup_status": "ready", "simulation_source_lake_id": row["demo_source_lake_id"], "plan_id": None, "cells": []}
         plan = self._client.table("zone_plans").select("zone_plan_id,zone_plan_cells(zone_plan_cell_id,ordinal,boundary,seed,risk_score,metadata)").eq("lake_id", lake_id).eq("station_id", row["station_id"]).eq("status", "active").maybe_single().execute().data
         job = self._client.table("risk_refresh_jobs").select("status,failure_reason").eq("lake_id", lake_id).maybe_single().execute().data or {}
         return {**row, "setup_status": "ready" if plan else ("failed" if job.get("status") == "failed" else "queued"),

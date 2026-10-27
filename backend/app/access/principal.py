@@ -15,6 +15,7 @@ class StationRole(StrEnum):
     DISPATCHER = "dispatcher"
     SAFETY_SUPERVISOR = "safety_supervisor"
     STATION_ADMIN = "station_admin"
+    DEMO_OPERATOR = "demo_operator"
 
 
 @dataclass(frozen=True)
@@ -23,6 +24,7 @@ class StationMembership:
     station_name: str
     status: str
     roles: frozenset[StationRole]
+    simulation_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -60,6 +62,7 @@ def principal_from_claims(claims: dict[str, object], repository) -> Principal:
             station_name=str(row.get("station_name") or "Station"),
             status=str(row.get("membership_status") or ""),
             roles=frozenset(StationRole(role) for role in row.get("roles", []) if role in StationRole._value2member_map_),
+            simulation_only=row.get("simulation_only") is True,
         )
         for row in profile.get("memberships", [])
     )
