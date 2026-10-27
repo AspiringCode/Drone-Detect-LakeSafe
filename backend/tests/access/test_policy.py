@@ -70,3 +70,31 @@ def test_public_demo_role_is_simulation_only_even_with_accidental_extra_roles():
     assert _capabilities(subject.memberships[0]) == ["alert.manage", "autonomy.manage", "station.read"]
     with pytest.raises(HTTPException):
         require_station_access(subject, "real-station", Permission.MANAGE_ALERTS)
+
+
+def test_public_judge_device_access_is_explicit_and_station_scoped():
+    from datetime import timedelta
+    from app.access.policy import require_recent_mfa
+    from app.stations.routes import _capabilities
+    subject = replace(principal(aal="aal1", roles=frozenset({StationRole.DEMO_OPERATOR, StationRole.SAFETY_SUPERVISOR})), judge_demo_access=True)
+    membership = replace(subject.memberships[0], simulation_only=True, demo_device_access=True)
+    subject = replace(subject, memberships=(membership,))
+    for permission in (Permission.MANAGE_INVENTORY, Permission.CHANGE_FLEET_SAFETY):
+        require_station_access(subject, "station-1", permission)
+    require_recent_mfa(subject, timedelta(minutes=10), station_id="station-1")
+    assert "inventory.manage" in _capabilities(membership)
+    assert "fleet_safety.manage" in _capabilities(membership)
+    for permission in (Permission.ADD_LAKE, Permission.MANAGE_MEMBERS):
+        with pytest.raises(HTTPException):
+            require_station_access(subject, "station-1", permission)
+    for altered in (
+        replace(subject, judge_demo_access=False),
+        replace(subject, verification_status="expired"),
+        replace(subject, memberships=(replace(membership, status="revoked"),)),
+        replace(subject, memberships=(replace(membership, simulation_only=False),)),
+        replace(subject, memberships=(replace(membership, demo_device_access=False),)),
+    ):
+        with pytest.raises(HTTPException):
+            require_recent_mfa(altered, timedelta(minutes=10), station_id="station-1")
+    with pytest.raises(HTTPException):
+        require_recent_mfa(subject, timedelta(minutes=10), station_id="ordinary-station")

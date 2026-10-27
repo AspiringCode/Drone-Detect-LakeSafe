@@ -78,6 +78,22 @@ def test_admin_without_safety_role_cannot_enable_real_autonomy():
     assert response.status_code == 403
 
 
+def test_password_only_public_judge_controls_only_opted_in_demo_station():
+    from dataclasses import replace
+    subject = _principal(StationRole.DEMO_OPERATOR, recent_mfa=False)
+    membership = replace(subject.memberships[0], simulation_only=True, demo_device_access=True)
+    subject = replace(subject, aal="aal1", judge_demo_access=True, memberships=(membership,))
+    repository = SafetyRepository()
+    client = _client(subject, repository, Reconciler())
+    assert client.post("/api/stations/station-1/lakes/lake-1/safety/autonomy", json={"enabled": True, "reason": "judge device test"}).status_code == 202
+    assert client.post("/api/stations/station-1/lakes/lake-1/safety/safe-return", json={"reason": "judge device test"}).status_code == 202
+    assert client.post("/api/stations/ordinary-station/lakes/lake-1/safety/autonomy", json={"enabled": True, "reason": "test"}).status_code == 404
+    assert len(repository.calls) == 2
+    for changed in (replace(membership, simulation_only=False), replace(membership, demo_device_access=False)):
+        denied = _client(replace(subject, memberships=(changed,)), SafetyRepository(), Reconciler())
+        assert denied.post("/api/stations/station-1/lakes/lake-1/safety/autonomy", json={"enabled": True, "reason": "test"}).status_code == 403
+
+
 def test_verified_station_viewer_can_read_real_safety_status_without_secrets_or_controls():
     response = _client(_principal(StationRole.VIEWER), SafetyRepository(), Reconciler()).get(
         "/api/stations/station-1/lakes/lake-1/safety/status"

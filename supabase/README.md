@@ -11,7 +11,7 @@ or recreate the hosted database.
 ## Migration history
 
 [`migrations/`](migrations/) is the authoritative ordered schema history. It
-currently ends at `0051_isolated_public_demo_stations.sql`, including lake setup,
+currently ends at `0052_judge_station_device_access.sql`, including lake setup,
 judge access, member management, durable patrol commands, investigation decisions,
 public-page visibility, December judge access, and isolated public simulations.
 
@@ -60,15 +60,26 @@ Python test is not proof that hosted RLS passed.
 CAC judge fixtures have a narrowly scoped, expiring password-only exception.
 Ordinary operator access still requires verification and MFA. The
 [public judge handout](../submission/demo-credentials.md) contains only shared
-simulation credentials, valid through December 31, 2026. Private administrator
+judge credentials, valid through December 31, 2026. Private administrator
 credentials remain outside the repository; public signup creates neither type.
 
-Public judge memberships use `demo_operator`, limited to reading operations,
-reviewing alerts, and changing simulated circulation on `simulation_only` stations.
-The API caps that role even if another role is accidentally added. Database guards
-reject real inventory in those stations and prevent conversion to physical
-stations. Their demo lake runtimes are rebuilt from reviewed catalog geometry,
-without copying another station's live fleet or alerts.
+Public judge memberships retain `demo_operator`, so ordinary-station access is
+blocked even if another role is accidentally assigned. Their existing isolation
+flag is `simulation_only`; the separate server-owned `demo_device_access` opt-in
+permits real devices within the three dedicated judge stations. The opt-in is
+invalid on ordinary stations. Stations without it retain the real-device guard.
+
+The capped demo role exposes inventory and fleet-safety capabilities only for
+opted-in isolated memberships. Those public memberships also hold the scoped
+`safety_supervisor` role required by database safety functions. Their expiring
+password-only exception applies to these judge-station controls; normal operators
+and original-station controls retain their MFA requirements. Database safety
+functions independently reject public demo actors on ordinary stations.
+
+Judge lake runtimes use reviewed catalog geometry without copying another
+station's live fleet, alerts or device credentials. Publicly shared accounts can
+control devices deliberately connected to judge stations; original-station devices
+remain outside their authority.
 
 ## Application checks and release evidence
 

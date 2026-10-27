@@ -58,12 +58,13 @@ def test_public_demo_station_flag_comes_from_the_repository():
         "profiles": SimpleNamespace(data={"account_class": "officer"}),
         "station_memberships": SimpleNamespace(data=[{
             "station_id": "demo-station", "status": "active",
-            "stations": {"name": "Public demo", "status": "active", "simulation_only": True},
+            "stations": {"name": "Public demo", "status": "active", "simulation_only": True, "demo_device_access": True},
             "station_membership_roles": [{"role": "demo_operator"}],
         }]),
     })
     principal = principal_from_claims({"sub": "user-1", "aal": "aal1"}, repository)
     assert principal.memberships[0].simulation_only is True
+    assert principal.memberships[0].demo_device_access is True
     assert str(next(iter(principal.memberships[0].roles))) == "demo_operator"
 
 

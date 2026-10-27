@@ -21,7 +21,7 @@ application data and verifies sign-ins. Public lake browsing requires no account
 
 - **Visitors:** choose a public lake, explore its map, and read published notices
   and patrol updates. No account is required.
-- **Judges:** use the [public simulation-only demo accounts](submission/demo-credentials.md),
+- **Judges:** use the [public judge demo accounts](submission/demo-credentials.md),
   open **Lakes**, and select a lake card. Access lasts through December 31, 2026.
   Prepared CAC accounts have a temporary password-only exception; this is not
   the normal operator-enrollment policy.
@@ -55,8 +55,10 @@ source. The Drone Test Field is a separate test area, not a public lake.
    **End investigation and resume patrol** ends continued observation.
 5. Observe the simulated drones resume their original patrols. After two alerts,
    use **Review an alert** to revisit the session's records.
-6. Open **Alerts** and **Reports** to review the demo records. Hardware and station
-   administration workflows require separately authorized private accounts.
+6. Open **Alerts** and **Reports** to review the demo records. **Drones** supports
+   registration and mission workflows within the separate judge stations; see the
+   [device walkthrough](submission/demo-credentials.md#device-registration-and-mission-workflow).
+   Original stations and station administration require private access.
 
 Simulation activity is labeled **SIMULATED**. Its findings are generated scenarios,
 not camera observations, and the demo records no camera clip. Simulation state

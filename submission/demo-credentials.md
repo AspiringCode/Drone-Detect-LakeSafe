@@ -22,10 +22,24 @@ Use **JUDGE_ALL** for the complete software demonstration. The other accounts de
 5. **Confirm detection** keeps the investigation open. **Dismiss and resume patrol** or **End investigation and resume patrol** returns the simulated drones to their original patrols.
 6. Review the session's records in **Alerts** and **Reports**. Choose **Stop simulation** when finished.
 
+## Device registration and mission workflow
+
+These accounts have drone-administration capabilities within their assigned judge stations, including real-device registration, lake assignment, mission preview/export, patrol upload requests, retirement, and fleet safety controls. No one-time code is required for the prepared accounts.
+
+1. Open **Drones**, choose a judge station beneath the title, then **Add drone +**.
+2. Register a device public key and assign that device to the station's lake. Keep the device private key on the device; never publish it here.
+3. Use the connection instructions to send signed heartbeats. Registration alone does not establish a live connection.
+4. Preview the mission and download its Mission Planner `.waypoints` file. Review the route, altitude and home location before choosing **Send patrol**.
+5. Inspect acknowledgement/upload status. A queued request is not confirmed delivery, and it does not arm the aircraft. The pilot retains arming and RC override.
+6. The lake workspace provides **Real drone safety** controls, including **Enable real autonomy**, **Pause real autonomy**, and **Request fleet safe return**, with a required reason. Device acknowledgements determine whether the requested state is active.
+7. Retire temporary devices when finished.
+
 ## Scope and limits
 
-These accounts can read their demo workspaces, run simulated patrols, and review simulated alerts. They cannot register or command physical drones, change flight-safety settings, add lakes, manage members, or publish public lake pages. The demo stations contain no real devices and cannot accept real-device registrations.
+The accounts can use simulation and the device workflows above only within the three separate judge stations. Existing devices in the original stations remain inaccessible. Judges cannot add lakes, manage members, or publish public lake pages.
+
+**These credentials are public and shared. Anyone using them can control a device connected to a judge station. Connect only devices you own and intend to make available for this demonstration.** Device registration creates a new credential; it does not grant access to devices already registered elsewhere.
 
 Simulation workspaces are shared: another judge may change or stop the same simulation. State and session history may reset when the API restarts. Findings are generated scenarios, not camera observations; no emergency service is contacted. Keep the **SIMULATED** labels visible in recordings.
 
-Private administrator accounts, hardware demonstrations, and device credentials remain separate. Do not use these passwords for any other service. Ordinary operator enrollment still requires verification, MFA, active station membership, and the appropriate role. Public signup does not grant operational access.
+Private administrator accounts and original-station device credentials remain separate. Do not use these passwords for any other service. Ordinary operator enrollment still requires verification, MFA, active station membership, and the appropriate role. Public signup does not grant operational access.

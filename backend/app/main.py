@@ -457,7 +457,7 @@ def get_current_principal(authorization: str | None = Header(default=None)) -> P
 
 def require_lake_permission(
     lake_id: str, principal: Principal, permission: Permission
-) -> None:
+) -> str:
     try:
         station_id = get_access_repository().lake_station_id(lake_id)
     except ACCESS_REPOSITORY_ERRORS as exc:
@@ -474,6 +474,8 @@ def require_lake_permission(
         ):
             raise HTTPException(status_code=404, detail="Lake not found") from exc
         raise
+
+    return station_id
 
 
 def authorize_lake(
@@ -737,8 +739,8 @@ def start_simulation(lake_id: str, value: StartSimulationRequest | None = None, 
         return _simulation_status(runtime)
     real = _real_drone_ids(lake_id)
     if real and (value or StartSimulationRequest()).real_drones == "replan":
-        require_lake_permission(lake_id, principal, Permission.CHANGE_FLEET_SAFETY)
-        require_recent_mfa(principal, timedelta(minutes=10))
+        station_id = require_lake_permission(lake_id, principal, Permission.CHANGE_FLEET_SAFETY)
+        require_recent_mfa(principal, timedelta(minutes=10), station_id=station_id)
         zones = _divide(runtime, 1 + len(real))
         runtime.zones, runtime.real_zones = zones, None
         runtime.engine.set_fleet(simulated_fleet(runtime, zones[:1]), zones[:1])
@@ -797,8 +799,8 @@ def regenerate_zones(lake_id: str, authorization: str | None = Header(default=No
         raise HTTPException(409,'End the current investigation and wait for patrol to resume before replanning')
     real = [] if runtime.real_zones is not None else _real_drone_ids(lake_id)
     if real:
-        require_lake_permission(lake_id, principal, Permission.CHANGE_FLEET_SAFETY)
-        require_recent_mfa(principal, timedelta(minutes=10))
+        station_id = require_lake_permission(lake_id, principal, Permission.CHANGE_FLEET_SAFETY)
+        require_recent_mfa(principal, timedelta(minutes=10), station_id=station_id)
     simulated = len(runtime.engine.drones)
     if simulated + len(real) == 0:
         raise HTTPException(status_code=409, detail="Start a simulation or assign a drone to this lake first")

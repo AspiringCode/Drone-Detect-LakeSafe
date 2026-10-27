@@ -1,5 +1,5 @@
 begin;
-select plan(11);
+select plan(15);
 select has_column('public','stations','simulation_only','stations declare physical isolation');
 select has_column('public','lakes','demo_source_lake_id','demo lakes identify reviewed catalog source');
 insert into auth.users(id,aud,role,email,encrypted_password,email_confirmed_at,raw_app_meta_data,raw_user_meta_data,created_at,updated_at)
@@ -38,5 +38,13 @@ select is((select count(*) from public.lakes where lake_id='isolation-real-lake'
 select is((select count(*) from public.drone_inventory where source='real'),0::bigint,'public judge sees no real inventory');
 select throws_ok($$insert into public.station_membership_roles(membership_id,role) values('00000000-0000-0000-0000-000000005123','station_admin')$$,'42501',null,'public judge cannot grant administrator roles');
 select throws_ok($$update public.stations set public_pages_open=true where station_id='00000000-0000-0000-0000-000000005111'$$,'42501',null,'public judge cannot publish station pages');
+reset role;
+select throws_ok($$update public.stations set demo_device_access=true where station_id='00000000-0000-0000-0000-000000005112'$$,'23514',null,'ordinary stations cannot opt in to public judge device access');
+update public.stations set demo_device_access=true where station_id='00000000-0000-0000-0000-000000005111';
+select lives_ok($$insert into public.drone_inventory(station_id,source,lifecycle) values('00000000-0000-0000-0000-000000005111','real','available')$$,'opted-in judge station can register devices');
+insert into public.station_membership_roles(membership_id,role) values
+ ('00000000-0000-0000-0000-000000005123','safety_supervisor'),('00000000-0000-0000-0000-000000005124','safety_supervisor');
+select lives_ok($$select private.assert_real_safety_actor('00000000-0000-0000-0000-000000005111','00000000-0000-0000-0000-000000005102')$$,'judge can use fleet safety within the enabled demo station');
+select throws_ok($$select private.assert_real_safety_actor('00000000-0000-0000-0000-000000005112','00000000-0000-0000-0000-000000005102')$$,'42501',null,'even a mistakenly assigned judge safety role cannot control an ordinary station');
 select * from finish();
 rollback;
