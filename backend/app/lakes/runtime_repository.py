@@ -50,7 +50,7 @@ class SupabaseLakeRuntimeRepository:
         self._client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
     def runtime_context(self, lake_id):
-        row = self._client.table("lakes").select("lake_id,station_id,name,shoreline,demo_source_lake_id,stations(simulation_only)").eq("lake_id", lake_id).maybe_single().execute().data
+        row = self._client.table("lakes").select("lake_id,station_id,name,shoreline,demo_source_lake_id,stations!lakes_station_id_fkey(simulation_only)").eq("lake_id", lake_id).maybe_single().execute().data
         if not row:
             return None
         if row.get("demo_source_lake_id") and (row.get("stations") or {}).get("simulation_only") is True:
