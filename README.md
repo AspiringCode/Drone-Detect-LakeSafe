@@ -21,8 +21,8 @@ application data and verifies sign-ins. Public lake browsing requires no account
 
 - **Visitors:** choose a public lake, explore its map, and read published notices
   and patrol updates. No account is required.
-- **Judges:** sign in with the separately supplied fictional CAC operator account,
-  open **Lakes**, and select a lake card. Credentials are not in this repository.
+- **Judges:** use the [public simulation-only demo accounts](submission/demo-credentials.md),
+  open **Lakes**, and select a lake card. Access lasts through December 31, 2026.
   Prepared CAC accounts have a temporary password-only exception; this is not
   the normal operator-enrollment policy.
 - **Developers:** follow [local setup](submission/judge-setup.md) and the
@@ -47,7 +47,7 @@ source. The Drone Test Field is a separate test area, not a public lake.
 
 ## Try the software demonstration
 
-1. Sign in with the prepared operator account and open **Lakes → Beaver Lake**.
+1. Sign in using the [judge demo credentials](submission/demo-credentials.md) and open **Lakes → Beaver Lake**.
 2. Choose **Start simulation**, **Add simulated drone**, then **Regenerate zones**.
 3. Select a **Demo second-drone finding** and choose **Simulate detection**.
 4. Review the detecting drone, location, and second-drone finding. Choose
@@ -55,7 +55,8 @@ source. The Drone Test Field is a separate test area, not a public lake.
    **End investigation and resume patrol** ends continued observation.
 5. Observe the simulated drones resume their original patrols. After two alerts,
    use **Review an alert** to revisit the session's records.
-6. Open **Alerts**, **Reports**, or **Drones** for the corresponding station flows.
+6. Open **Alerts** and **Reports** to review the demo records. Hardware and station
+   administration workflows require separately authorized private accounts.
 
 Simulation activity is labeled **SIMULATED**. Its findings are generated scenarios,
 not camera observations, and the demo records no camera clip. Simulation state

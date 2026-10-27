@@ -3,13 +3,14 @@
 ## Hosted application
 
 Open **https://lakesafe.vercel.app**. Public lake browsing does not require an
-account. For operator access, use the fictional CAC credentials supplied privately
-by the maintainer; no passwords or private keys are included in this repository.
+account. For the interactive software demonstration, use the
+[public simulation-only judge credentials](demo-credentials.md). Private
+administrator passwords and device keys are not included in this repository.
 
 Prepared judge fixtures have a temporary password-only exception. Normal
 operator access requires current verification, MFA, active station membership,
 and the capability needed for the requested action. The seeded CAC exception
-expires **November 1, 2026 at 00:00 America/Los_Angeles**; judging after that date
+expires **January 1, 2027 at 00:00 America/Los_Angeles** (after December 31); judging after that date
 requires the maintainer to arrange appropriate access. Public signup does not
 grant station access.
 
@@ -20,7 +21,8 @@ Signing in to Supabase alone does not establish that the API is available.
 
 1. On the public home page, choose Beaver Lake, Lake Sammamish, or Pine Lake.
    Pan/zoom the map and inspect published notices, patrol presence, and freshness.
-2. Sign in as the prepared operator and open **Lakes → Beaver Lake**.
+2. Sign in as **JUDGE_ALL** using the [demo credential handout](demo-credentials.md)
+   and open **Lakes → Beaver Lake**. The other judge accounts each see one lake.
 3. Select **Start simulation**, **Add simulated drone**, and **Regenerate zones**.
 4. Choose **Detection observed**, **No detection observed**, or **Inconclusive**
    under **Demo second-drone finding**, then select **Simulate detection**.
@@ -31,12 +33,15 @@ Signing in to Supabase alone does not establish that the API is available.
    patrols. Observe the resulting state, not just the button click.
 7. After two alerts in the same runtime session, use **Review an alert** to revisit
    an earlier one. Open **Alerts** and **Reports** for available lake-scoped records.
-8. In **Drones**, switch stations beneath the title, then use **Add drone +** to
-   inspect Register, Assign lake, and Connect. Register/command only a separately
-   approved test device. Preview/export does not arm or launch it.
-9. In Account/Stations, inspect the roles and **Manage station** controls. **Add
-   lake +** searches official King County shorelines and supports an existing or
-   new station. New lakes remain private until explicitly published.
+8. Choose **Stop simulation** when finished. These public accounts have a limited
+   demo-operator role on isolated simulation stations. Hardware setup, real-device
+   commands, flight-safety changes, and station administration are unavailable.
+
+With separately authorized private administrator access, **Drones → Add drone +**
+opens Register, Assign lake, and Connect; mission preview/export does not arm or
+launch a device. **Account → Stations → Manage station** provides member access
+and lake setup. These administrative flows are outside the public credential
+handout. Do not register or command a device without its owner's authorization.
 
 Keep SIMULATED labels visible. Demo findings are generated, no camera clip is
 recorded, and no emergency service is contacted. Simulation/review state may reset
@@ -51,7 +56,7 @@ or drowning detection.
 - Supabase CLI and Docker for a complete local database reset and pgTAP checks.
 
 The tracked migration directory is authoritative and currently ends at
-`0049_station_public_visibility.sql`. Historical `0009` files now use
+`0051_isolated_public_demo_stations.sql`. Historical `0009` files now use
 `000901` and `000902` versions. Follow the [database guide](../supabase/README.md);
 do not reset the hosted judge project or assume migrations create auth passwords.
 

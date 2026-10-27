@@ -11,9 +11,9 @@ or recreate the hosted database.
 ## Migration history
 
 [`migrations/`](migrations/) is the authoritative ordered schema history. It
-currently ends at `0049_station_public_visibility.sql`, including lake setup,
+currently ends at `0051_isolated_public_demo_stations.sql`, including lake setup,
 judge access, member management, durable patrol commands, investigation decisions,
-and public-page visibility.
+public-page visibility, December judge access, and isolated public simulations.
 
 The historical duplicate `0009` filenames were replaced by
 `000901_idme_verification_hardening.sql` and
@@ -58,8 +58,17 @@ Python test is not proof that hosted RLS passed.
   Device private keys belong on the device. Do not commit filled environment files.
 
 CAC judge fixtures have a narrowly scoped, expiring password-only exception.
-Ordinary operator access still requires verification and MFA. These fixtures and
-their credentials are maintained privately, not created by public signup.
+Ordinary operator access still requires verification and MFA. The
+[public judge handout](../submission/demo-credentials.md) contains only shared
+simulation credentials, valid through December 31, 2026. Private administrator
+credentials remain outside the repository; public signup creates neither type.
+
+Public judge memberships use `demo_operator`, limited to reading operations,
+reviewing alerts, and changing simulated circulation on `simulation_only` stations.
+The API caps that role even if another role is accidentally added. Database guards
+reject real inventory in those stations and prevent conversion to physical
+stations. Their demo lake runtimes are rebuilt from reviewed catalog geometry,
+without copying another station's live fleet or alerts.
 
 ## Application checks and release evidence
 
