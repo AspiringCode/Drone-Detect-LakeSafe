@@ -3,7 +3,7 @@ import type { SupabaseLike } from "./supabase";
 
 type LakeReference = { lake_id: string; name: string };
 export type LakeAlert = Alert & { lakeId: string; lakeName: string };
-export type LakeDataScope = { lakeId: string; name: string; available: boolean };
+export type LakeDataScope = { lakeId: string; name: string; available: boolean; unavailableReason?: string };
 export type OperationsOverview = { alerts: LakeAlert[]; lakes: LakeDataScope[] };
 
 export async function loadOperationsAlerts(client: SupabaseLike, fetcher: typeof fetch, apiBaseUrl: string): Promise<LakeAlert[]> {
@@ -18,8 +18,16 @@ export async function loadOperationsOverview(client: SupabaseLike, fetcher: type
   const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
   const groups = await Promise.all(lakes.map(async (lake) => {
     const response = await fetcher(`${apiBaseUrl}/api/lakes/${lake.lake_id}/alerts`, { headers });
-    // 404 = a lake with no live runtime; anything else is a real failure the page must show.
+    // A missing or unready runtime must not hide records from other assigned lakes.
     if (response.status === 404) return { alerts: [], lake: { lakeId: lake.lake_id, name: lake.name, available: false } };
+    if (response.status === 409) {
+      const body = await response.json();
+      const status = body?.detail?.setup_status;
+      if (status === "queued" || status === "failed") return {
+        alerts: [], lake: { lakeId: lake.lake_id, name: lake.name, available: false,
+          unavailableReason: status === "queued" ? "Lake setup is queued" : "Lake setup needs attention" },
+      };
+    }
     if (!response.ok) throw new Error(`Alerts unavailable for ${lake.name}`);
     const alerts = await response.json() as Alert[];
     return { alerts: alerts.map((alert) => ({ ...alert, lakeId: lake.lake_id, lakeName: lake.name })), lake: { lakeId: lake.lake_id, name: lake.name, available: true } };

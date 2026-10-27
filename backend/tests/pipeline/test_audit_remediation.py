@@ -72,6 +72,22 @@ def test_pending_lake_returns_actionable_setup_status(monkeypatch):
     assert error.value.detail["setup_status"] == "queued"
 
 
+def test_stored_plan_accepts_only_planner_scale_boundary_roundoff():
+    from shapely.geometry import Polygon
+    from app.lakes.runtime_repository import zones_from_plan
+    context = _stored_context()
+    original = Polygon([(-122.1, 47.5), (-122.09, 47.5), (-122.09, 47.51), (-122.1, 47.5)])
+    for offset, accepted in [(1e-12, True), (1e-5, False)]:
+        context["cells"][0]["boundary"] = Polygon([
+            (x - offset, y) for x, y in original.exterior.coords
+        ]).wkb_hex
+        if accepted:
+            assert len(zones_from_plan(context)) == 1
+        else:
+            with pytest.raises(ValueError, match="geometry"):
+                zones_from_plan(context)
+
+
 def _stored_context(lake_id="persisted-lake"):
     from shapely.geometry import Polygon, Point
     polygon = Polygon([(-122.1, 47.5), (-122.09, 47.5), (-122.09, 47.51), (-122.1, 47.5)])

@@ -8,7 +8,7 @@ export function RecordFilters({ lakes, lake, source, setLake, setSource }: {
 }
 
 export function LakeDataCoverage({ lakes }: { lakes: LakeDataScope[] }) {
-  return <section className="touch-panel" aria-label="Lake data coverage"><h2>Lake data coverage</h2>{!lakes.length ? <p>No lakes are assigned to this account.</p> : <ul className="coverage-lakes">{lakes.map((lake) => <li key={lake.lakeId}><div><strong>{lake.name}</strong><p>{lake.available ? "Current records available" : "Current records unavailable"}</p></div><Link to={`/lakes/${lake.lakeId}`}>Open lake</Link></li>)}</ul>}<p className="field-help">Record availability does not confirm patrol coverage or current lake conditions.</p></section>;
+  return <section className="touch-panel" aria-label="Lake data coverage"><h2>Lake data coverage</h2>{lakes.some((lake) => !lake.available) && <p role="status">Some lake records are unavailable. Check each lake below before relying on these results.</p>}{!lakes.length ? <p>No lakes are assigned to this account.</p> : <ul className="coverage-lakes">{lakes.map((lake) => <li key={lake.lakeId}><div><strong>{lake.name}</strong><p>{lake.available ? "Current records available" : lake.unavailableReason ?? "Current records unavailable"}</p></div><Link to={`/lakes/${lake.lakeId}`}>Open lake</Link></li>)}</ul>}<p className="field-help">Record availability does not confirm patrol coverage or current lake conditions.</p></section>;
 }
 
 export function IncidentTable({ alerts }: { alerts: LakeAlert[] }) {

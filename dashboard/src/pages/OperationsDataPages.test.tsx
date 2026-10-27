@@ -32,6 +32,22 @@ function dependencies() {
 }
 
 describe("operations data pages", () => {
+  it.each([["Alerts", AlertsPage], ["Reports", ReportsPage]] as const)("keeps %s available when another lake has a failed stored plan", async (_, Page) => {
+    const { client, fetcher } = dependencies();
+    client.from.mockImplementation(() => ({ select: vi.fn(() => ({ order: vi.fn().mockResolvedValue({ data: [
+      { lake_id: "lake-sammamish", name: "Lake Sammamish" },
+      { lake_id: "new-lake", name: "Lake Washington" },
+    ], error: null }) })) }));
+    fetcher.mockImplementation(async (url) => String(url).includes("/new-lake/")
+      ? { ok: false, status: 409, json: async () => ({ detail: { message: "Stored lake plan is invalid", setup_status: "failed" } }) }
+      : { ok: true, status: 200, json: async () => [alert] });
+    render(<MemoryRouter><Page client={client as never} fetcher={fetcher as never}/></MemoryRouter>);
+    expect(await screen.findByText("Lake setup needs attention")).toBeVisible();
+    expect(screen.getByText(/some lake records are unavailable/i)).toBeVisible();
+    expect(screen.getByText("820 ms")).toBeVisible();
+    expect(screen.queryByText(/Could not (load|calculate) operational/)).not.toBeInTheDocument();
+  });
+
   it("populates Alerts with lake-scoped backend data", async () => {
     const { client, fetcher } = dependencies();
     render(<MemoryRouter><AlertsPage client={client as never} fetcher={fetcher as never} /></MemoryRouter>);
@@ -43,9 +59,9 @@ describe("operations data pages", () => {
     expect(fetcher).toHaveBeenCalledWith(expect.stringContaining("/api/lakes/lake-sammamish/alerts"), { headers: { Authorization: "Bearer operator-token" } });
   });
 
-  it("reports an alert service failure instead of showing an empty list", async () => {
+  it.each([401, 403, 409, 503])("reports an unrecognized %s service failure instead of showing an empty list", async (status) => {
     const { client, fetcher } = dependencies();
-    fetcher.mockResolvedValue({ ok: false, status: 401, json: async () => ({}) });
+    fetcher.mockResolvedValue({ ok: false, status, json: async () => ({}) });
     render(<MemoryRouter><AlertsPage client={client as never} fetcher={fetcher as never} /></MemoryRouter>);
     expect(await screen.findByText("Could not load operational alerts.")).toBeInTheDocument();
   });

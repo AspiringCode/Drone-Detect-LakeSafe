@@ -21,7 +21,11 @@ def zones_from_plan(context):
     zones = []
     for cell in context.get("cells") or []:
         boundary, seed = geometry(cell["boundary"]), geometry(cell["seed"])
-        if boundary.geom_type != "Polygon" or boundary.is_empty or not boundary.is_valid or not shoreline.covers(boundary) or seed.geom_type != "Point" or not boundary.covers(seed):
+        if boundary.geom_type != "Polygon" or boundary.is_empty or not boundary.is_valid:
+            raise ValueError("Invalid stored plan geometry")
+        # Match candidate validation's sub-millimetre tolerance after PostGIS round trips.
+        covered = shoreline.covers(boundary) or shoreline.buffer(1e-9).covers(boundary)
+        if not covered or seed.geom_type != "Point" or not boundary.covers(seed):
             raise ValueError("Invalid stored plan geometry")
         metadata = cell.get("metadata") or {}
         mean_lat = boundary.centroid.y
