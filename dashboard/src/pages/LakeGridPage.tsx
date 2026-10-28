@@ -16,13 +16,17 @@ export function LakeGridPage({ client = supabase }: { client?: SupabaseLike }) {
   const [attempt, setAttempt] = useState(0);
   const activeStation = useOptionalActiveStation();
   const canAddLake = useOptionalPrincipal()?.principal?.memberships.some((item) => item.status === "active" && item.capabilities.includes("lake.create"));
+  const lakeGroups = [
+    { label: "Lake workspaces", lakes: lakes.filter((lake) => !lake.demo_source_lake_id) },
+    { label: "Judge demo workspaces", lakes: lakes.filter((lake) => lake.demo_source_lake_id) },
+  ];
   useEffect(() => {
     let current = true;
     setLoading(true);
     setError(false);
     async function load() {
       try {
-        const { data, error: loadError } = await client.from("lakes").select("lake_id,station_id,org_id,name,centroid_lat,centroid_lon,map_bounds").order("name");
+        const { data, error: loadError } = await client.from("lakes").select("lake_id,station_id,org_id,name,centroid_lat,centroid_lon,map_bounds,demo_source_lake_id").order("name");
         if (!current) return;
         if (loadError) throw loadError;
         setLakes(data ?? []);
@@ -46,14 +50,16 @@ export function LakeGridPage({ client = supabase }: { client?: SupabaseLike }) {
         </header>
         {loading && <p className="empty-state" role="status">Loading lakes…</p>}
         {error && <section className="workflow-card"><p className="form-error" role="alert">Could not load lakes. Please try again.</p><button type="button" onClick={() => setAttempt((value) => value + 1)}>Retry</button></section>}
-        {!loading && !error && <div className="lake-grid">
-          {lakes.map((lake) => (
-            <Link className="lake-card" to={`/lakes/${lake.lake_id}`} key={lake.lake_id} onClick={() => { if (lake.station_id) activeStation?.select(lake.station_id); }}>
+        {!loading && !error && lakeGroups.filter((group) => group.lakes.length).map((group) => <section className="lake-grid-group" aria-label={group.label} key={group.label}>
+          {group.label === "Judge demo workspaces" && lakeGroups[0].lakes.length > 0 && <header><h2>Judge demo workspaces</h2><p>Separate workspaces for the shared judge accounts.</p></header>}
+          <div className="lake-grid">{group.lakes.map((lake) => (
+            <Link className="lake-card" aria-label={lake.demo_source_lake_id ? `${lake.name} (Judge demo)` : lake.name} to={`/lakes/${lake.lake_id}`} key={lake.lake_id} onClick={() => { if (lake.station_id) activeStation?.select(lake.station_id); }}>
               <LakePreviewMap name={lake.name} lat={lake.centroid_lat} lon={lake.centroid_lon} bounds={lake.map_bounds} />
-              <span className="lake-card__footer"><strong>{lake.name}</strong><span aria-hidden="true">→</span></span>
+              <span className="lake-card__footer"><span className="lake-card__label"><strong>{lake.name}</strong>{lake.demo_source_lake_id && <small>Judge demo</small>}</span><span aria-hidden="true">→</span></span>
             </Link>
           ))}
-        </div>}
+          </div>
+        </section>)}
         {!loading && !error && !lakes.length && <p className="empty-state">No lakes are assigned to your account yet.</p>}
       </section>
     </main>

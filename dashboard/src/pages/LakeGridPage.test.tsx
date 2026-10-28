@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { LakeGridPage } from "./LakeGridPage";
@@ -8,6 +8,19 @@ import { ActiveStationProvider, useActiveStation } from "../hooks/useActiveStati
 vi.mock("../components/LakePreviewMap", () => ({ LakePreviewMap: () => null }));
 
 describe("managed lake loading", () => {
+  it("separates judge copies from original lakes with the same name", async () => {
+    const lakes = [
+      { lake_id: "lake-sammamish", name: "Lake Sammamish", demo_source_lake_id: null },
+      { lake_id: "judge-lake-sammamish", name: "Lake Sammamish", demo_source_lake_id: "lake-sammamish" },
+    ];
+    const client = { from: () => ({ select: () => ({ order: async () => ({ data: lakes, error: null }) }) }) };
+    render(<MemoryRouter><LakeGridPage client={client as never}/></MemoryRouter>);
+    const judgeGroup = await screen.findByRole("region", { name: "Judge demo workspaces" });
+    expect(within(judgeGroup).getByRole("link", { name: "Lake Sammamish (Judge demo)" })).toHaveAttribute("href", "/lakes/judge-lake-sammamish");
+    expect(screen.getByRole("link", { name: "Lake Sammamish" })).toHaveAttribute("href", "/lakes/lake-sammamish");
+    expect(judgeGroup).not.toContainElement(screen.getByRole("link", { name: "Lake Sammamish" }));
+  });
+
   it("shows loading without claiming the station has no lakes", () => {
     const client = { from: () => ({ select: () => ({ order: () => new Promise(() => {}) }) }) };
     render(<MemoryRouter><LakeGridPage client={client as never} /></MemoryRouter>);
