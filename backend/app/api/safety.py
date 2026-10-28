@@ -120,7 +120,7 @@ def real_fleet_status(station_id: str, lake_id: str, principal: Principal = Depe
 @router.post("/autonomy", status_code=status.HTTP_202_ACCEPTED)
 def set_real_autonomy(station_id: str, lake_id: str, value: AutonomyPolicyInput, request: Request, principal: Principal = Depends(get_principal)) -> dict:
     _station_access(principal, station_id)
-    require_recent_mfa(principal, timedelta(minutes=10), station_id=station_id)
+    require_recent_mfa(principal, timedelta(minutes=10))
     repository = get_safety_repository()
     if not repository.lake_belongs_to_station(station_id, lake_id):
         raise HTTPException(status_code=404, detail="Lake not found")
@@ -135,7 +135,7 @@ def set_real_autonomy(station_id: str, lake_id: str, value: AutonomyPolicyInput,
 @router.post("/safe-return", status_code=status.HTTP_202_ACCEPTED)
 def safe_return(station_id: str, lake_id: str, value: SafeReturnInput, request: Request, principal: Principal = Depends(get_principal)) -> dict:
     _station_access(principal, station_id)
-    require_recent_mfa(principal, timedelta(minutes=10), station_id=station_id)
+    require_recent_mfa(principal, timedelta(minutes=10))
     repository = get_safety_repository()
     if not repository.lake_belongs_to_station(station_id, lake_id):
         raise HTTPException(status_code=404, detail="Lake not found")

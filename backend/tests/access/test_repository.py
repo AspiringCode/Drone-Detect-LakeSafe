@@ -53,21 +53,6 @@ def test_missing_verification_optional_response_preserves_profile_and_roles():
     assert principal.memberships[0].status == "active"
 
 
-def test_public_demo_station_flag_comes_from_the_repository():
-    repository = repository_with({
-        "profiles": SimpleNamespace(data={"account_class": "officer"}),
-        "station_memberships": SimpleNamespace(data=[{
-            "station_id": "demo-station", "status": "active",
-            "stations": {"name": "Public demo", "status": "active", "simulation_only": True, "demo_device_access": True},
-            "station_membership_roles": [{"role": "demo_operator"}],
-        }]),
-    })
-    principal = principal_from_claims({"sub": "user-1", "aal": "aal1"}, repository)
-    assert principal.memberships[0].simulation_only is True
-    assert principal.memberships[0].demo_device_access is True
-    assert str(next(iter(principal.memberships[0].roles))) == "demo_operator"
-
-
 @pytest.mark.parametrize("response, expected", [
     (None, None),
     (SimpleNamespace(data={"station_id": "station-1"}), "station-1"),

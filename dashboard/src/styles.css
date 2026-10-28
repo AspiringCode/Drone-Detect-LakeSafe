@@ -185,9 +185,6 @@ legend { padding: 0 0.4rem; font-weight: 700; }
 .page-heading h1 { margin-bottom: 0.8rem; }
 .page-heading > p:last-child { margin: 0; color: var(--text-muted); line-height: 1.6; }
 .lake-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 21rem), 1fr)); gap: 1rem; margin-top: 2.25rem; }
-.lake-grid-group + .lake-grid-group { margin-top: 3rem; }
-.lake-grid-group > header p { color: var(--text-muted); }
-.lake-grid-group > header + .lake-grid { margin-top: 1.25rem; }
 .lake-card {
   display: grid;
   grid-template-rows: 12rem auto;
@@ -209,9 +206,7 @@ legend { padding: 0 0.4rem; font-weight: 700; }
 .lake-preview__attribution { position: absolute; right: 0.4rem; bottom: 0.35rem; z-index: 500; padding: 0.12rem 0.3rem; border-radius: 4px; background: oklch(99% 0.004 235 / 0.82); color: var(--text-muted); font-size: 0.52rem; }
 .lake-card__footer { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 4rem; padding: 1rem 1.2rem; border-top: 1px solid var(--border); background: var(--surface); }
 .lake-card__footer strong { font-size: 1.05rem; letter-spacing: -0.025em; }
-.lake-card__footer > span[aria-hidden] { color: var(--primary); font-size: 1.25rem; }
-.lake-card__label { display: grid; gap: 0.3rem; }
-.lake-card__label small { color: var(--text-muted); font-size: 0.75rem; font-weight: 600; }
+.lake-card__footer > span { color: var(--primary); font-size: 1.25rem; }
 .empty-state, .panel-empty { color: var(--text-muted); line-height: 1.55; }
 
 .data-shell { width: min(100%, 76rem); margin: 0 auto; padding: clamp(2rem, 5vw, 4rem) clamp(1rem, 4vw, 3rem); }
