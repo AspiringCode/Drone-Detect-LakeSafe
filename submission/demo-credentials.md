@@ -6,10 +6,10 @@ Ask the maintainer for the existing administrator password. Use **ADMIN_MASTER**
 
 | Account | Email | Password | Station access |
 |---|---|---|---|
-| ADMIN_MASTER | `admin_master@lakesafe.example.test` | `Supplied privately` | All original assigned stations and lakes |
-| ADMIN_LS | `admin_ls@lakesafe.example.test` | `Supplied privately` | Lake Sammamish station |
-| ADMIN_BL | `admin_bl@lakesafe.example.test` | `Supplied privately` | Beaver Lake station |
-| ADMIN_PL | `admin_pl@lakesafe.example.test` | `Supplied privately` | Pine Lake station |
+| ADMIN_MASTER | `admin_master@lakesafe.example.test` | `iMo0_Bzp6JBuiH7vvpTYjEE9muOpQsf9B6uk` | All original assigned stations and lakes |
+| ADMIN_LS | `admin_ls@lakesafe.example.test` | `mzCl19hORbIF3akbBrYx3yQPqDYU0iFdA4sq` | Lake Sammamish station |
+| ADMIN_BL | `admin_bl@lakesafe.example.test` | `amjuN0Re-AeXZN-wQ7xH1F5Tr7ZeQ3KM3nZr` | Beaver Lake station |
+| ADMIN_PL | `admin_pl@lakesafe.example.test` | `7AiSakg7YF1ReK5sJayxsYBLUcHVL0b0p3P2` | Pine Lake station |
 
 These administrator accounts retain their original station permissions, including device registration, mission export, patrol requests and retirement. Existing registered devices are part of that scope. Passwords are supplied privately by the maintainer. Connect or command a physical device only with its owner's authorization.
 
